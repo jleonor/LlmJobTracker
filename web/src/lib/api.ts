@@ -1,4 +1,4 @@
-import type { Job } from '@/lib/types'
+import type { Job, RunResult } from '@/lib/types'
 
 export class ApiError extends Error {
   readonly status: number | null
@@ -9,10 +9,10 @@ export class ApiError extends Error {
   }
 }
 
-export async function fetchJobs(): Promise<Job[]> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
-    response = await fetch('/api/jobs')
+    response = await fetch(path, init)
   } catch {
     throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
   }
@@ -26,5 +26,13 @@ export async function fetchJobs(): Promise<Job[]> {
   if (!response.ok) {
     throw new ApiError(`The API returned HTTP ${response.status}.`, response.status)
   }
-  return (await response.json()) as Job[]
+  return (await response.json()) as T
+}
+
+export function fetchJobs(): Promise<Job[]> {
+  return request<Job[]>('/api/jobs')
+}
+
+export function runClaudeCheck(): Promise<RunResult> {
+  return request<RunResult>('/api/runs/check', { method: 'POST' })
 }

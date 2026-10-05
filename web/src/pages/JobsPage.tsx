@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { RunnerCheck } from '@/components/app/RunnerCheck'
 import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -94,6 +95,8 @@ export function JobsPage() {
           </Table>
         </div>
       )}
+
+      <RunnerCheck />
     </section>
   )
 }

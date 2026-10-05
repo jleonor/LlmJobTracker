@@ -9,12 +9,16 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 
 from localjobtracker.jobs import Job, list_jobs
+from localjobtracker.runner import Runner, RunResult
 from localjobtracker.storage import connect
+
+# The one prompt the Phase 1 button sends. It contains no personal data.
+CHECK_PROMPT = "Reply with the single word OK."
 
 TOKEN_HEADER = "X-Launch-Token"
 
 
-def create_app(launch_token: str, db_path: Path) -> FastAPI:
+def create_app(launch_token: str, db_path: Path, runner: Runner) -> FastAPI:
     """Build the app. Requests must send `launch_token` in the X-Launch-Token header."""
 
     def require_token(x_launch_token: str | None = Header(default=None)) -> None:
@@ -37,5 +41,9 @@ def create_app(launch_token: str, db_path: Path) -> FastAPI:
     @app.get("/jobs", response_model=list[Job], dependencies=[Depends(require_token)])
     def jobs(conn: Annotated[Connection, Depends(get_db)]) -> list[Job]:
         return list_jobs(conn)
+
+    @app.post("/runs/check", response_model=RunResult, dependencies=[Depends(require_token)])
+    def run_check() -> RunResult:
+        return runner.run(CHECK_PROMPT)
 
     return app

@@ -33,3 +33,6 @@ files = ["src", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Live tests call the real Claude CLI and cost money. Run them with: uv run pytest -m live
+addopts = "-m 'not live'"
+markers = ["live: calls the real Claude Code CLI"]

@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from localjobtracker import seed
 from localjobtracker.app import create_app
 from localjobtracker.jobs import count_jobs
+from localjobtracker.runner import FakeRunner
 from localjobtracker.storage import connect
 
 FIXTURE = seed.DEFAULT_FIXTURE
@@ -19,7 +20,7 @@ def test_jobs_empty_database_returns_empty_list(client: TestClient) -> None:
 
 
 def test_jobs_without_token_is_rejected(db_path: Path, token: str) -> None:
-    with TestClient(create_app(token, db_path)) as bare:
+    with TestClient(create_app(token, db_path, FakeRunner())) as bare:
         assert bare.get("/jobs").status_code == 401
 
 
