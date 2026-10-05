@@ -45,7 +45,7 @@ Done when
 - [x] `claude -p "reply OK"` returns a reply. (2026-10-05: `OK`, exit 0, run from a scratch folder outside the repo)
 - [x] `runner-notes.md` matches the current `claude` help. (2026-10-05: each flag checked against 2.1.289 help; `--max-turns` confirmed absent)
 - [x] `mockup-notes.md` exists and lists the flaws. (2026-10-05: five flaws, each with file and line)
-- [ ] You approve the four root documents.
+- [x] You approve the four root documents.
 
 ---
 
