@@ -8,23 +8,23 @@ Status: Phase 1 (skeleton) in progress. The API, the web app, the database and a
 
 Prerequisites: Python 3.12 with `uv`, and Node.js.
 
-```powershell
-cd api; uv sync; cd ..
-cd web; npm install; cd ..
-python scripts/dev.py
-```
-
-Then open http://127.0.0.1:5173/. `dev.py` starts the API on 127.0.0.1:8765 and the web dev server with one launch token. The browser never sees the token: the dev server adds it to each `/api` request. Press Ctrl+C to stop both.
-
-To load the synthetic jobs, use a separate data folder so they stay out of the real app database. Set the same folder before starting `dev.py`:
+Start the app with one command from the repo root:
 
 ```powershell
-$env:LJT_DATA_DIR = "$env:LOCALAPPDATA\LocalJobTracker-dev"
-cd api; uv run python -m localjobtracker.seed; cd ..
-python scripts/dev.py
+.\run.ps1
 ```
 
-Without `LJT_DATA_DIR`, the app uses `%LOCALAPPDATA%\LocalJobTracker`.
+If PowerShell blocks the script, use `powershell -ExecutionPolicy Bypass -File .\run.ps1`. The script installs missing dependencies, starts the API on 127.0.0.1:8765 and the web app on http://127.0.0.1:5173/, and opens the browser. Press Ctrl+C in that window to stop both.
+
+Under the hood, `scripts/dev.py` starts both servers with one launch token. The browser never sees the token: the dev server adds it to each `/api` request.
+
+To run with the synthetic jobs, use `-Seed`. The jobs go to a separate folder, `%LOCALAPPDATA%\LocalJobTracker-dev`, so the real app database stays untouched:
+
+```powershell
+.\run.ps1 -Seed
+```
+
+Without `-Seed`, the app uses `%LOCALAPPDATA%\LocalJobTracker`.
 
 Checks: `python scripts/check.py` runs lint, format, types and tests for both halves.
 
