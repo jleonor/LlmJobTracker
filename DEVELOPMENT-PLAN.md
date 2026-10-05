@@ -1,6 +1,6 @@
 # LocalJobTracker: Development Plan
 
-**Current phase: 0.** Status: draft for review.
+**Current phase: 1.** Phase 0 is approved. Phase 1 is built, and its last check is your comparison of the Jobs table with the mockup.
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -62,11 +62,11 @@ Scope
 - One `check` command that runs lint, type checks and tests. Add its command to `CLAUDE.md`.
 
 Done when
-- [ ] `check` is green (output shown).
-- [ ] The real Claude call appears in the UI.
-- [ ] The browser's network log shows no requests to external hosts.
-- [ ] The Jobs table matches the table mockup in `planning/`. You compare the two.
-- [ ] Stopping the backend leaves no orphan process.
+- [x] `check` is green (output shown). (2026-10-05: `python scripts/check.py` on commit f265885: 7 of 7 steps PASS, exit 0. API: 23 passed, 1 live test deselected. Web: lint, build and 2 vitest tests pass.)
+- [x] The real Claude call appears in the UI. (2026-10-05: "Run Claude check" button returned `OK`, 2.7 s, estimated cost $0.0039. Screenshot taken in the browser pane.)
+- [x] The browser's network log shows no requests to external hosts. (2026-10-05: dev server and production build (`vite preview`) both contacted only 127.0.0.1. Fonts are local. The check button's call goes to the local API, which calls Claude Code.)
+- [ ] The Jobs table matches the table mockup in `planning/`. You compare the two. (Built and screenshotted. Known differences: Score column, triage cards, search, filters and footer left out (D-03, D-04, D-10, Phase 3). Icons are Lucide, not Material Symbols. Waiting for your comparison.)
+- [x] Stopping the backend leaves no orphan process. (2026-10-05: stopped the API under `scripts/dev.py`. The launcher exited and stopped Vite. No `localjobtracker`, `vite` or `node` process was left, and ports 5173 and 8765 were free.)
 
 ---
 
