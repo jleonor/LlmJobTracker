@@ -20,7 +20,7 @@ def main() -> None:
     finally:
         conn.close()
     token = os.environ.get("LJT_TOKEN") or secrets.token_urlsafe(32)
-    uvicorn.run(create_app(token), host=HOST, port=PORT)
+    uvicorn.run(create_app(token, database_path(data_dir())), host=HOST, port=PORT)
 
 
 if __name__ == "__main__":

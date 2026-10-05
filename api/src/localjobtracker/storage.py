@@ -1,4 +1,4 @@
-"""Where the app keeps its data, and how it connects to SQLite.
+r"""Where the app keeps its data, and how it connects to SQLite.
 
 The data folder is %LOCALAPPDATA%\LocalJobTracker (D-18). LJT_DATA_DIR overrides it, so
 tests and development runs can use a temporary folder.

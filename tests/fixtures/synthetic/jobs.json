@@ -1,0 +1,8 @@
+[
+  {"company": "Northwind Analytics", "role_title": "Data Analyst", "lane": "Analytics", "status": "Applied", "next_action": "Follow up on application", "due_date": "2026-10-12"},
+  {"company": "Contoso Health", "role_title": "Reporting Analyst", "lane": "Analytics", "status": "Not Started", "next_action": "Read listing and draft positioning", "due_date": "2026-10-09"},
+  {"company": "Fabrikam Logistics", "role_title": "Operations Analyst", "lane": "Operations", "status": "Interview", "next_action": "Prepare for panel interview", "due_date": "2026-10-07"},
+  {"company": "Litware Finance", "role_title": "Business Intelligence Developer", "lane": "Engineering", "status": "Not Started", "next_action": null, "due_date": null},
+  {"company": "Adatum Retail", "role_title": "Insights Lead", "lane": "Analytics", "status": "Rejected", "next_action": null, "due_date": null},
+  {"company": "Tailspin Energy", "role_title": "Commercial Analyst", "lane": "Finance", "status": "Applied", "next_action": "Check for reply", "due_date": "2026-10-15"}
+]
