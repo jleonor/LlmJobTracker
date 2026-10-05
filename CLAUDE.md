@@ -61,7 +61,7 @@ Two rules about the table:
 
 ## Testing and checks
 
-- The check command is defined in phase 1 and listed here then. Until it exists, don't claim anything passes.
+- The check command is `python scripts/check.py` from the repo root. It runs ruff, format, mypy and pytest in `api/`, and lint, the type-checked build and vitest in `web/`. It exits 1 if any step fails. Run it before claiming anything passes.
 - Before each commit (when asked), scan the repo for personal data. The scan patterns live outside the repo.
 
 ## Commit messages
