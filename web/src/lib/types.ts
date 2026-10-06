@@ -141,6 +141,7 @@ export type ClaudeJobPrompt = {
   started_at: string | null
   finished_at: string | null
   skipped: boolean
+  answer_chars: number | null
 }
 
 export type ClaudeJob = {

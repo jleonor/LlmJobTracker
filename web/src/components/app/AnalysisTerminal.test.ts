@@ -16,6 +16,7 @@ function prompt(overrides: Partial<ClaudeJobPrompt>): ClaudeJobPrompt {
     started_at: null,
     finished_at: null,
     skipped: false,
+    answer_chars: null,
     ...overrides,
   }
 }
@@ -75,5 +76,27 @@ describe('analysisLines', () => {
       Date.parse('2026-10-06T09:03:05Z'),
     )
     expect(lines.map((line) => line.text)).toContain('Career history: still running, 3:05 so far')
+  })
+})
+
+describe('answer received', () => {
+  it('logs the answer before its check result', () => {
+    const lines = analysisLines(
+      job('failed', [
+        prompt({
+          prompt_kind: 'full_cv_history',
+          status: 'failed',
+          error: 'history H-014: date must be YYYY.',
+          answer_chars: 4213,
+          finished_at: '2026-10-06T09:02:00Z',
+        }),
+      ]),
+    )
+    const texts = lines.map((line) => line.text)
+    const expected = `Career history: answer received, ${(4213).toLocaleString()} characters`
+    const answer = texts.findIndex((text) => text === expected)
+    const failure = texts.findIndex((text) => text.startsWith('Career history: failed.'))
+    expect(answer).toBeGreaterThan(-1)
+    expect(answer).toBeLessThan(failure)
   })
 })

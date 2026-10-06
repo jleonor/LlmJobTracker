@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { ApiError, fetchPromptExchange } from '@/lib/api'
 import { useClaudeJobs } from '@/lib/useClaudeJobs'
@@ -46,6 +46,14 @@ export function analysisLines(job: ClaudeJob, now: number = Date.now()): Line[] 
       const minutes = Math.floor(elapsed / 60)
       const seconds = String(elapsed % 60).padStart(2, '0')
       lines.push({ time: null, text: `${name}: still running, ${minutes}:${seconds} so far`, tone: 'info' })
+    }
+    // The answer is kept as soon as it arrives, so its arrival is logged before any check on it.
+    if ((prompt.status === 'done' || prompt.status === 'failed') && prompt.answer_chars !== null) {
+      lines.push({
+        time: clock(prompt.finished_at),
+        text: `${name}: answer received, ${prompt.answer_chars.toLocaleString()} characters`,
+        tone: 'info',
+      })
     }
     if (prompt.status === 'done') {
       const seconds = prompt.duration_ms === null ? '' : ` in ${(prompt.duration_ms / 1000).toFixed(1)} s`
@@ -96,33 +104,43 @@ export function AnalysisTerminal() {
   )
 }
 
-// What was sent to Claude and what came back, for each prompt that has finished (D-77).
+// What was sent to Claude and what came back, for each prompt that has finished (D-77). The
+// exchange of a failed prompt opens by itself, since that is the answer the check rejected.
 // Opening one reads it from the API. Nothing is sent to Claude by opening it.
 function Exchanges({ jobId, prompts }: { jobId: number; prompts: ClaudeJob['prompts'] }) {
-  const [open, setOpen] = useState<number | null>(null)
-  const [exchange, setExchange] = useState<PromptExchange | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  // -1 means the user closed it. null means "the failed one, if there is one".
+  const [chosen, setChosen] = useState<number | null>(null)
+  const [loaded, setLoaded] = useState<{ position: number; exchange: PromptExchange } | null>(null)
+  const [loadError, setLoadError] = useState<{ position: number; message: string } | null>(null)
+
   // A skipped prompt sent nothing, so it has no exchange to show.
   const finished = prompts.filter(
     (prompt) => !prompt.skipped && (prompt.status === 'done' || prompt.status === 'failed'),
   )
+  const failed = [...finished].reverse().find((prompt) => prompt.status === 'failed')
+  const open = chosen === -1 ? null : (chosen ?? failed?.position ?? null)
+
+  useEffect(() => {
+    if (open === null) return
+    let cancelled = false
+    fetchPromptExchange(jobId, open)
+      .then((exchange) => {
+        if (!cancelled) setLoaded({ position: open, exchange })
+      })
+      .catch((failure: unknown) => {
+        if (cancelled) return
+        const message = failure instanceof ApiError ? failure.message : 'Could not read the exchange.'
+        setLoadError({ position: open, message })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [jobId, open])
 
   if (finished.length === 0) return null
 
-  function toggle(position: number) {
-    if (open === position) {
-      setOpen(null)
-      return
-    }
-    setOpen(position)
-    setExchange(null)
-    setLoadError(null)
-    fetchPromptExchange(jobId, position)
-      .then(setExchange)
-      .catch((failure: unknown) => {
-        setLoadError(failure instanceof ApiError ? failure.message : 'Could not read the exchange.')
-      })
-  }
+  const shown = open !== null && loaded?.position === open ? loaded.exchange : null
+  const shownError = open !== null && loadError?.position === open ? loadError.message : null
 
   return (
     <div className="flex flex-col gap-2 border-t border-zinc-800 pt-2 font-mono text-xs">
@@ -130,27 +148,25 @@ function Exchanges({ jobId, prompts }: { jobId: number; prompts: ClaudeJob['prom
         <div key={prompt.position} className="flex flex-col gap-2">
           <button
             type="button"
-            onClick={() => toggle(prompt.position)}
+            onClick={() => setChosen(open === prompt.position ? -1 : prompt.position)}
             className="self-start text-left text-zinc-300 underline-offset-2 hover:underline"
           >
             {open === prompt.position ? 'Hide' : 'Show'} what was sent and returned:{' '}
             {PROMPT_LABELS[prompt.prompt_kind] ?? prompt.prompt_kind}
+            {prompt.status === 'failed' && ' (check failed)'}
           </button>
           {open === prompt.position && (
             <div className="flex flex-col gap-2">
-              {loadError && <p className="text-red-400">{loadError}</p>}
-              {!loadError && !exchange && <p className="text-zinc-500">Reading...</p>}
-              {exchange && (
+              {shownError && <p className="text-red-400">{shownError}</p>}
+              {!shownError && !shown && <p className="text-zinc-500">Reading...</p>}
+              {shown && (
                 <>
                   <ExchangeBlock
-                    title={`Sent to Claude (${exchange.prompt_text.length.toLocaleString()} characters)`}
-                    text={exchange.prompt_text}
+                    title={`Sent to Claude (${shown.prompt_text.length.toLocaleString()} characters)`}
+                    text={shown.prompt_text}
                   />
-                  <ExchangeBlock
-                    title="Claude answered"
-                    text={exchange.result_text ?? '(no answer was kept)'}
-                  />
-                  {exchange.error && <p className="text-red-400">Check failed: {exchange.error}</p>}
+                  <ExchangeBlock title="Claude answered" text={shown.result_text ?? '(no answer was kept)'} />
+                  {shown.error && <p className="text-red-400">Check failed: {shown.error}</p>}
                 </>
               )}
             </div>
