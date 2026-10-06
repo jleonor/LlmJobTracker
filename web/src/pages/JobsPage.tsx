@@ -53,7 +53,7 @@ export function JobsPage() {
 
       {state.kind === 'ready' && state.jobs.length === 0 && (
         <p className="rounded border border-border p-6 text-center text-sm text-muted-foreground">
-          No jobs yet. Seed synthetic jobs with the command in the README.
+          No jobs yet. To load synthetic jobs, close this and run .\run.ps1 -Seed
         </p>
       )}
 
