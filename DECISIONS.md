@@ -64,6 +64,7 @@ To change a decision, add a new entry that supersedes the old one. Don't edit th
 | D-41 | 2026-10-05 | Accepted | Job intake accepts four inputs: raw text, a URL, a saved HTML page, and a PDF. `.txt` and `.docx` are also accepted. Code extracts the text, the user reviews it, and then Claude structures it with no tools. This confirms D-32. | The user's decision. |
 | D-42 | 2026-10-05 | Accepted | Code folders are named `api/` (FastAPI backend) and `web/` (React front end), not `backend/` and `frontend/`. | Short names that match each folder's role. `web/` stays accurate when Phase 8 wraps the same front end in Electron. |
 | D-43 | 2026-10-05 | Accepted | The browser never holds the launch token. The Vite dev server proxies `/api` to the API and adds the `X-Launch-Token` header on the server side. `scripts/dev.py` creates one token per launch and gives it to both processes. In Phase 8 the Electron main process will do the same job. | Keeps the token out of page scripts and out of the browser's network log. Needs no login screen. |
+| D-60 | 2026-10-06 | Accepted | When a phase is done, its branch is merged into local `main` with a fast-forward merge. Nothing is pushed until the whole project is done, and the user pushes. Phase branches are kept after merging, for history. This extends D-33. | The user's decision. Keeps everything local for now. |
 
 ## Product model (2026-10-06)
 
