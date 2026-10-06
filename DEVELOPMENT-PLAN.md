@@ -1,6 +1,6 @@
 # LocalJobTracker: Development Plan
 
-**Current phase: 1.** Phase 0 is approved. Phase 1 is built, and its last check is your comparison of the Jobs table with the mockup.
+**Current phase: 1.** Phase 0 is approved. Phase 1 is built. Two items remain: the table changes to the D-46 columns, and then your comparison of the Jobs table with the mockup.
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -17,11 +17,11 @@ This plan says what gets built, in what order, and how we know a phase is done. 
 |---|---|---|
 | 0 | Setup | Repo docs, Agent folder, tools checked, Claude runner confirmed |
 | 1 | Skeleton | Backend, UI, runner and database run end to end with fake data |
-| 2 | Profile onboarding | Your files in, a reviewed Fact Sheet out |
-| 3 | Tracker | Real data in a table, editable, with file preview |
-| 4 | Add job | A listing (text, URL, HTML file or PDF) becomes a file and a tracker row |
-| 5 | Job workspace | Positioning, tailored CV and cover letter, revised by comment |
-| 6 | Emails and chat | Email files attached to a job; chat proposes actions you confirm |
+| 2 | Profile onboarding | Your files in, a reviewed Fact Sheet out, and the Claude Jobs queue running |
+| 3 | Tracker | Real data in a table with status history, editable, with file preview |
+| 4 | Add job | A listing (text, URL, HTML file or PDF) becomes a file, a tracker row and a queued positioning Claude Job |
+| 5 | Job workspace | Job page with positioning and match score, tailored CV and cover letter, revised by comment |
+| 6 | Emails and chat | Email history on the job page; chat proposes actions you confirm |
 | 7 | Question memory | Answered clarifying questions are found again |
 | 8 | Shell and hardening | Electron shell, backups, run log, optional board |
 | Parked | Not scheduled | Browser assist, managed agent loop, form filling |
@@ -56,7 +56,7 @@ Done when
 Scope
 - FastAPI backend on 127.0.0.1 with a per-launch token and a health endpoint.
 - Vite, React, TypeScript, Tailwind v4 and shadcn/ui. Fonts self-hosted.
-- App shell, and a Jobs table page with synthetic seed jobs in `tests/fixtures/synthetic/`.
+- App shell, and a Jobs table page with synthetic seed jobs in `tests/fixtures/synthetic/`. The table columns change to the D-46 list (added 2026-10-06).
 - `Runner` interface with `FakeRunner` and `ClaudeCodeRunner`. One real Claude call started from a button, with its output shown in the UI.
 - SQLite database at `%LOCALAPPDATA%\LocalJobTracker\` with a first migration.
 - One `check` command that runs lint, type checks and tests. Add its command to `CLAUDE.md`.
@@ -65,7 +65,8 @@ Done when
 - [x] `check` is green (output shown). (2026-10-05: `python scripts/check.py` on commit f265885: 7 of 7 steps PASS, exit 0. API: 23 passed, 1 live test deselected. Web: lint, build and 2 vitest tests pass.)
 - [x] The real Claude call appears in the UI. (2026-10-05: "Run Claude check" button returned `OK`, 2.7 s, estimated cost $0.0039. Screenshot taken in the browser pane.)
 - [x] The browser's network log shows no requests to external hosts. (2026-10-05: dev server and production build (`vite preview`) both contacted only 127.0.0.1. Fonts are local. The check button's call goes to the local API, which calls Claude Code.)
-- [ ] The Jobs table matches the table mockup in `planning/`. You compare the two. (Built and screenshotted. Known differences: Score column, triage cards, search, filters and footer left out (D-03, D-04, D-10, Phase 3). Icons are Lucide, not Material Symbols. Waiting for your comparison.)
+- [ ] The table shows the D-46 columns (Company, Title, Lane, Location, Status, Last updated, Match score, queue badge), with synthetic data in each. Screenshot required.
+- [ ] The Jobs table matches the look of the table mockup in `planning/`. You compare the two. (Built as the first column set and screenshotted. Known differences: triage cards, search, filters and footer left out (D-03, D-04, Phase 3). Icons are Lucide, not Material Symbols. Waiting for your comparison, after the D-46 columns are in.)
 - [x] Stopping the backend leaves no orphan process. (2026-10-05: stopped the API under `scripts/dev.py`. The launcher exited and stopped Vite. No `localjobtracker`, `vite` or `node` process was left, and ports 5173 and 8765 were free.)
 
 ---
@@ -80,12 +81,17 @@ Scope
 - Conflicts between files: the master CVs win, and the conflict is shown to you.
 - Review screen: edit facts, mark each one verified or rejected. Only verified facts are usable later.
 - Upload screen for your own writing rules. They are stored in app data and override the defaults in `Agent/rules/`.
+- Profile page (D-58): old CVs, old cover letters, master CVs, the questionnaire, the questionnaire report, and the positioning strategy with its lanes (O-12).
+- Claude Jobs queue (D-49 to D-52): one Claude Job runs at a time, in creation order, and all of its prompts finish before the next one starts. The queue is stored in SQLite and survives a restart (O-10). A plan limit pauses the queue and shows a Resume button (O-09). The queue sits between the app and the runner. `ClaudeCodeRunner` does not know about it.
+- O-09 and O-10 are answered before this phase's step list is approved.
 - Create `Agent/specs/profile-steps.md` (inputs, outputs, validation) and `Agent/rules/honesty.md` (default) before this phase's code.
 
 Done when
 - [ ] The analysis runs on your real files, and you check its output.
 - [ ] Every fact has a source and a date (automated check).
 - [ ] You verify or correct the Fact Sheet in the UI.
+- [ ] A queued Claude Job pauses at a simulated plan limit (fake runner) and resumes on click.
+- [ ] Queued Claude Jobs survive an app restart.
 - [ ] Personal-data scan of the repo is clean.
 
 Out of scope: positioning for a specific job.
@@ -98,17 +104,22 @@ Out of scope: positioning for a specific job.
 
 Scope
 - Import from `Job Application Tracker.xlsx`. A dry-run report comes first. The import is idempotent and read-only on the source. The 8 "Identified" rows become "Not Started" (see DECISIONS.md), and the dry run lists them.
-- Table: sort, filter by status, search, and a due or overdue section at the top.
-- Inline editing: status, lane, dates, next action, notes, file links. Each status change writes a history row.
+- Table: the D-46 columns, sort, filter by status and search. The due or overdue section is removed (D-46). A queue badge (idle, queued, processing) comes from the Claude Jobs queue, and a queue counter sits beside Add Job.
+- Statuses per D-44: Not Started, Applied, Screening, Interview, Offer, with Rejected and Withdrawn as end states. The import maps the spreadsheet's values to these (D-05, D-44).
+- Status history (D-45): each change is stored with its date and time. "Last updated" is the newest row's date. Only forward moves count as progress.
+- Job Application fields (D-54, D-55): portal (name and URL), location, work mode, contract type, description, requirements, lane, notes, next action, due date, file links. Location is free text, and Claude's suggested city match is confirmed by the user (D-53).
+- Inline editing on the table: status, lane, location, and the file links. Next action, due date and notes are edited on the job page (D-56).
 - File preview: `.docx` is converted to PDF in a temporary file and deleted after viewing. `.eml` and `.msg` are rendered as HTML or text. An "Open in Word" button opens the file with the system handler.
 - Skills in `Agent/skills/`: convert docx to PDF, and read docx. Check how the runner loads them (this is verified in this phase, not assumed).
-- Specs: `Agent/specs/domain.md` (entities and statuses), `Agent/specs/files.md` (managed folder layout).
+- Specs: `Agent/specs/domain.md` (entities: Job Application, status history, Claude Job with its prompts, requirement with weight and match; statuses), `Agent/specs/files.md` (managed folder layout).
 
 Done when
 - [ ] The dry-run report matches the spreadsheet: row counts, the 8 changed rows, and three spot-checked rows.
 - [ ] Running the import twice creates no duplicates.
 - [ ] An edit survives an app restart.
 - [ ] One `.docx`, one `.eml` and one `.msg` preview correctly. "Open in Word" works.
+- [ ] Each status change writes a history row. "Last updated" matches the newest row, and the job page timeline shows the dates reached (screenshot).
+- [ ] The table shows the D-46 columns, and the queue badge reflects the queue state.
 - [ ] Migrations apply and roll back.
 
 Out of scope: the Kanban board (see Phase 8).
@@ -130,9 +141,10 @@ Scope
 - Every intake records how the text was obtained: method, source URL or file name, and the date.
 - The extracted text is shown to you before Claude runs. You can edit it, so a bad capture (cookie banner, cut-off PDF) is caught early.
 - Fallbacks: a blocked URL, a page with no readable text (for example one that loads its content with JavaScript), or a PDF with no text layer. In each case the UI says which one happened and suggests saving the page as HTML or pasting the text.
-- Claude receives the reviewed text and returns the listing file plus structured fields: company, role, lane suggestion, location, work mode, requirements. This step gets no tools.
+- Claude receives the reviewed text and returns the listing file plus structured fields: company, role, lane suggestion, location (matched to an existing city value where one fits, for the user to confirm), work mode (Onsite, Hybrid, Remote, Unknown), contract type (Full-Time, Part-Time, Contract/Short Term, Other, Unknown), portal (name and URL, or "Email"), description and requirements. This step gets no tools.
 - Duplicate check by URL and by content hash.
 - The listing is saved to the managed folder (`files/<company>/<role>/listing.txt`), and a tracker row is created.
+- A new Job Application starts as Not Started, and it queues one positioning Claude Job (D-49). The positioning output itself is built in Phase 5.
 - Create `Agent/specs/intake-steps.md` (extraction rules per input type, and the Claude step contract).
 - Candidate libraries, confirmed in this phase: `pypdf` (or PyMuPDF) for PDF, an HTML-to-text extractor such as `trafilatura`, and `python-docx` for DOCX.
 
@@ -143,6 +155,7 @@ Done when
 - [ ] The extracted text can be edited before Claude runs.
 - [ ] A hostile fixture ("ignore previous instructions...") changes nothing beyond the extracted fields.
 - [ ] A repeat of an added listing is detected.
+- [ ] Adding a listing creates its tracker row with status Not Started and queues one positioning Claude Job, which the queue badge shows.
 - [ ] Synthetic fixtures for each input type exist under `tests/fixtures/synthetic/`.
 
 ---
@@ -152,8 +165,10 @@ Done when
 **Goal:** for one job, the positioning, tailored CV and cover letter are produced and revised by comment.
 
 Scope
-- Job page: the listing on one side, the documents on the other.
-- Buttons: Prepare positioning (fit, gaps, one score, with evidence per requirement), Write tailored CV, Write cover letter, and Prepare all. The positioning comes first in the chain.
+- Job page, top to bottom (D-56): header with title and company; the "not done yet" flags for positioning, tailored CV and cover letter (D-48); job details (portal, description, requirements, location, work mode, contract type); application history (status timeline with achieved statuses dated and the rest greyed out, notes, next action, due date); positioning analysis; files.
+- Positioning runs automatically when a Job Application is added (D-49). Each requirement gets a weight (0 to 10) and a match (0 to 10), each with evidence. Code computes the fit % (D-47). The analysis also gives fit bullets, gap bullets and a job-specific strategy. The match score shows in the table too.
+- Buttons: Re-run positioning, Write tailored CV, Write cover letter, and Prepare all. Each button queues a Claude Job. Positioning comes first in the chain.
+- Files (D-57): Claude proposes a master CV when the listing is added, and the user can change it. Tailored CV and cover letter each have a button to write one.
 - Each output is a new version file. Nothing is overwritten.
 - A comment on any version produces a new version. Comments are kept with the versions.
 - Positioning may ask clarifying questions. Answers go into the job's record. (Storage of answers for reuse is Phase 7.)
@@ -164,6 +179,8 @@ Scope
 
 Done when
 - [ ] On a real listing, you judge the positioning, CV and letter. Quality is your call.
+- [ ] The fit % matches a hand calculation from the stored weights and matches.
+- [ ] The "not done yet" flags clear as each output is written.
 - [ ] A comment produces v2, and v1 is kept.
 - [ ] Every cited fact id exists and is verified (automated check).
 - [ ] Cover letter checks pass on positive and negative samples.
@@ -176,7 +193,7 @@ Done when
 **Goal:** email files attach to a job, and chat can propose changes that you confirm.
 
 Scope
-- "Add email" button on a job and in the table.
+- "Add email" button on a job. The email history on the job page lists each email by title as a preview, and clicking one expands it (D-57).
 - Parse `.eml` (standard library) and `.msg` (`extract-msg`). Store each file in the job's correspondence folder.
 - Claude proposes status or next-action changes from the email. Each proposal shows as a preview with Confirm.
 - Chat panel: slide-out on the right, scoped to a job or to General. It can only propose actions. Nothing runs without Confirm.
@@ -184,6 +201,7 @@ Scope
 Done when
 - [ ] Injection text in an email changes nothing without Confirm.
 - [ ] A proposed update applies only after Confirm.
+- [ ] Email previews list by title and expand on click (screenshot).
 - [ ] Three real emails are filed to the right jobs (you check).
 
 ---

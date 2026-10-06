@@ -9,6 +9,15 @@ Read first, in this order:
 
 A local, single-user desktop app. It takes job listings and produces what an application needs: a tracker, a listing file, a positioning, a tailored CV, a cover letter, and the record of emails. The user reviews and approves every result. It automates the manual workflow described in the reference folder (see rule 1).
 
+## Terms (use these exact words in code, UI and docs)
+
+- **Job Application**: one tracker row for one listing (not "job" alone).
+- **Claude Job**: one queued unit of Claude work, made of ordered prompts. Claude Jobs run one at a time.
+- **Claude Jobs queue**: the list of Claude Jobs, with idle, queued and processing states.
+- **Lane**: a positioning group, defined by the positioning strategy.
+- **Fit %**: the match score, computed in code from weights and matches (D-47).
+- **Statuses**: Not Started, Applied, Screening, Interview, Offer, Rejected, Withdrawn (D-44).
+
 ## Stack (decided, see DECISIONS.md)
 
 - Backend: Python 3.12, FastAPI on 127.0.0.1 with a per-launch token. Managed with `uv`.
