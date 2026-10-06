@@ -502,3 +502,42 @@ def test_the_outputs_route_returns_the_latest_version_of_each(
 
     assert [item["kind"] for item in listed] == list(PROMPT_KINDS)
     assert listed[0]["body"]["items"][0]["id"] == "H-001"
+
+
+def test_malformed_ids_are_renumbered_and_their_references_follow(
+    db_path: Path, cv_id: int, questionnaire_id: int
+) -> None:
+    answers = good_answers(cv_id)
+    answers["full_cv_history"]["items"][0]["id"] = "H1"
+    answers["full_cv_history"]["items"][1]["id"] = "2"
+    answers["full_cv_history"]["items"][1]["conflicts"] = [{"with": "H1", "note": "End year."}]
+    answers["full_cv_history"]["items"][0]["conflicts"] = [{"with": "2", "note": "End year."}]
+    answers["fact_sheet"]["facts"][0]["id"] = "F1"
+    answers["fact_sheet"]["facts"][1]["id"] = "F2"
+    answers["fact_sheet"]["conflicts"] = [{"id": "C1", "fact_ids": ["F1", "F2"], "note": "End."}]
+    queue = make_queue(db_path, CannedRunner(answers))
+    job_id = start(db_path, queue)
+
+    run_all(queue)
+
+    assert job_state(db_path, job_id)[0] == "done"
+    conn = connect(db_path)
+    try:
+        history = json.loads(
+            conn.execute(
+                "SELECT body_json FROM profile_outputs WHERE kind = 'full_cv_history'"
+            ).fetchone()[0]
+        )
+        fact_sheet = json.loads(
+            conn.execute(
+                "SELECT body_json FROM profile_outputs WHERE kind = 'fact_sheet'"
+            ).fetchone()[0]
+        )
+    finally:
+        conn.close()
+    assert [item["id"] for item in history["items"]] == ["H-001", "H-002"]
+    assert history["items"][0]["conflicts"][0]["with"] == "H-002"
+    assert history["items"][1]["conflicts"][0]["with"] == "H-001"
+    assert [fact["id"] for fact in fact_sheet["facts"]] == ["F-001", "F-002"]
+    assert fact_sheet["conflicts"][0]["fact_ids"] == ["F-001", "F-002"]
+    assert fact_sheet["conflicts"][0]["id"] == "C-01"

@@ -859,6 +859,68 @@ def _known(conn: sqlite3.Connection) -> dict[str, set[Any]]:
     }
 
 
+def _renumber(items: Any, key: str, prefix: str, width: int, rename: dict[str, str]) -> None:
+    """Give every item a valid, unique id, in order (D-76).
+
+    A model's id is not always in the form asked for (H-001, not H1). A malformed or repeated
+    id is replaced, and the old id is recorded in `rename`, so references to it can follow.
+    """
+    if not isinstance(items, list):
+        return
+    pattern = re.compile(rf"{re.escape(prefix)}\d{{{width}}}")
+    taken: set[str] = set()
+    for index, item in enumerate(items, start=1):
+        if not isinstance(item, dict):
+            continue
+        current = item.get(key)
+        if isinstance(current, str) and pattern.fullmatch(current) and current not in taken:
+            taken.add(current)
+            continue
+        number = index
+        while f"{prefix}{number:0{width}d}" in taken:
+            number += 1
+        new_id = f"{prefix}{number:0{width}d}"
+        if isinstance(current, str):
+            rename.setdefault(current, new_id)
+        item[key] = new_id
+        taken.add(new_id)
+
+
+def _follow(value: Any, rename: dict[str, str]) -> Any:
+    if isinstance(value, str):
+        return rename.get(value, value)
+    if isinstance(value, list):
+        return [rename.get(v, v) if isinstance(v, str) else v for v in value]
+    return value
+
+
+def normalise_ids(kind: str, body: dict[str, Any]) -> dict[str, Any]:
+    """Make the ids of an answer valid and unique, and follow them through its references."""
+    if kind == "full_cv_history":
+        rename: dict[str, str] = {}
+        items = body.get("items")
+        _renumber(items, "id", "H-", 3, rename)
+        for item in items if isinstance(items, list) else []:
+            for conflict in item.get("conflicts", []) if isinstance(item, dict) else []:
+                if isinstance(conflict, dict):
+                    conflict["with"] = _follow(conflict.get("with"), rename)
+    elif kind == "fact_sheet":
+        rename = {}
+        facts = body.get("facts")
+        _renumber(facts, "id", "F-", 3, rename)
+        conflicts = body.get("conflicts")
+        _renumber(conflicts, "id", "C-", 2, {})
+        for conflict in conflicts if isinstance(conflicts, list) else []:
+            if isinstance(conflict, dict):
+                conflict["fact_ids"] = _follow(conflict.get("fact_ids"), rename)
+    elif kind == "questionnaire_analysis":
+        _renumber(body.get("patterns"), "id", "Q-", 3, {})
+    elif kind == "strategy":
+        for group in ("primary_lanes", "secondary_lanes"):
+            _renumber(body.get(group), "id", "L-", 2, {})
+    return body
+
+
 def make_pipeline(
     rules_path: Path = DEFAULT_RULES_PATH,
 ) -> tuple[Renderer, OnResult]:
@@ -871,7 +933,7 @@ def make_pipeline(
         kind = prompt.prompt_kind
         if kind not in SCHEMAS:
             return  # Not a profile prompt: the queue stores its answer as it is.
-        body = parse_answer(result.text)
+        body = normalise_ids(kind, parse_answer(result.text))
         known = _known(conn)
         evidence = usable_files(conn, EVIDENCE_KINDS)
         questionnaire = usable_files(conn, QUESTIONNAIRE_KINDS)
