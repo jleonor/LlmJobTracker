@@ -23,6 +23,7 @@ from localjobtracker.claude_job_queue import (
     Renderer,
 )
 from localjobtracker.claude_jobs import PromptRow
+from localjobtracker.profile_files import refresh_extracted_text
 from localjobtracker.runner import RunResult
 
 JOB_KIND: Final = "profile_analysis"
@@ -464,7 +465,11 @@ def decide(conn: sqlite3.Connection, kind: str, job_id: int | None) -> str:
     return "skip"
 
 
-def submit_profile_analysis(conn: sqlite3.Connection, queue: ClaudeJobQueue) -> int:
+def submit_profile_analysis(
+    conn: sqlite3.Connection, queue: ClaudeJobQueue, data_folder: Path
+) -> int:
+    # Every upload is read again first, so the newest extraction is used (D-83).
+    refresh_extracted_text(conn, data_folder)
     plan = {kind: decide(conn, kind, None) for kind in PROMPT_KINDS}
     if all(action == "skip" for action in plan.values()):
         raise ProfileNotReady(

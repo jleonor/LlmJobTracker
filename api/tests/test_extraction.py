@@ -98,3 +98,28 @@ def test_upload_of_a_scan_is_kept_and_reported(upload_client: TestClient) -> Non
 
 def test_text_route_returns_404_for_an_unknown_file(upload_client: TestClient) -> None:
     assert upload_client.get("/profile/files/999/text").status_code == 404
+
+
+def test_a_docx_text_box_and_footer_are_read(tmp_path: Path) -> None:
+    import docx as python_docx
+    from lxml import etree
+
+    document = python_docx.Document()
+    document.add_paragraph("Alex Sample, Analyst")
+    footer = document.sections[0].footer.paragraphs[0]
+    footer.text = "Available since 2021"
+    box = etree.fromstring(
+        '<w:r xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        "<w:txbxContent><w:p><w:r><w:t>Mar 2023 to present</w:t></w:r></w:p></w:txbxContent>"
+        "</w:r>"
+    )
+    document.element.body.append(box)
+    path = tmp_path / "older.docx"
+    document.save(str(path))
+
+    result = extract(path)
+
+    assert result.status == "ok"
+    assert "Alex Sample, Analyst" in result.text
+    assert "Mar 2023 to present" in result.text
+    assert "Available since 2021" in result.text

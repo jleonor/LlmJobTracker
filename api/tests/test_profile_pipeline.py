@@ -174,7 +174,7 @@ def make_queue(db_path: Path, runner: CannedRunner) -> ClaudeJobQueue:
 def start(db_path: Path, queue: ClaudeJobQueue) -> int:
     conn = connect(db_path)
     try:
-        return submit_profile_analysis(conn, queue)
+        return submit_profile_analysis(conn, queue, db_path.parent)
     finally:
         conn.close()
 
@@ -645,3 +645,29 @@ def test_not_stated_is_no_date_and_a_range_takes_its_start_month(
         conn.close()
     assert history["items"][0]["date"] == "2026-04"
     assert dates[0] == "2026-04"  # the fact took its history item's date
+
+
+def test_an_analysis_reads_each_upload_again_from_its_copy(
+    db_path: Path, cv_id: int, questionnaire_id: int
+) -> None:
+    conn = connect(db_path)
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE profile_files SET extracted_text = 'stale text' WHERE id = ?", (cv_id,)
+            )
+    finally:
+        conn.close()
+    queue = make_queue(db_path, CannedRunner(good_answers(cv_id)))
+
+    start(db_path, queue)
+
+    conn = connect(db_path)
+    try:
+        text = conn.execute(
+            "SELECT extracted_text FROM profile_files WHERE id = ?", (cv_id,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert text != "stale text"
+    assert "Analyst, Example Corp" in text

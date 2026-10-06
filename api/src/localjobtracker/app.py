@@ -256,7 +256,7 @@ def create_app(
     )
     def start_profile_analysis(conn: Annotated[Connection, Depends(get_db)]) -> ClaudeJob:
         try:
-            job_id = submit_profile_analysis(conn, queue)
+            job_id = submit_profile_analysis(conn, queue, db_path.parent)
         except ProfileNotReady as error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)

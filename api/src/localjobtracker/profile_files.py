@@ -191,3 +191,17 @@ def delete_profile_file(conn: sqlite3.Connection, data_folder: Path, file_id: in
         conn.execute("DELETE FROM profile_files WHERE id = ?", (file_id,))
     (data_folder / str(row["stored_path"])).unlink(missing_ok=True)
     return removed
+
+
+def refresh_extracted_text(conn: sqlite3.Connection, data_folder: Path) -> None:
+    """Read every upload again from its stored copy (D-83). Used when an analysis starts, so a
+    file uploaded before an extraction fix is read with the fixed code."""
+    rows = conn.execute("SELECT id, stored_path FROM profile_files").fetchall()
+    with conn:
+        for row in rows:
+            result = extract(data_folder / str(row["stored_path"]))
+            conn.execute(
+                "UPDATE profile_files SET extraction_status = ?, extraction_message = ?, "
+                "extracted_text = ? WHERE id = ?",
+                (result.status, result.message, result.text, row["id"]),
+            )
