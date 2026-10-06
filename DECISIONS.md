@@ -117,6 +117,7 @@ Written from the user's answers on 2026-10-06. The full picture for the phase sp
 | D-77 | 2026-10-06 | Accepted | Claude's answer is kept as soon as it arrives, before any check, and the sent text and the answer can be read for each prompt on the Profile page. | The user needs to see what goes in and what comes back when a check fails. |
 | D-78 | 2026-10-06 | Accepted | A date in another form, such as a range, a month name or a slash form, is read by code as YYYY, YYYY-MM or YYYY-MM-DD. A date with no year is still refused. The prompt states the form. | Like D-76, a format difference should not fail a run. Facts without a year still fail. |
 | D-79 | 2026-10-06 | Accepted | A career history item may have no date, since skills and other items often have none. The fact sheet still requires a date for each fact. The log shows each answer when it arrives, and opens the answer of a failed check by itself. | A run failed on an undated item. Undated facts still fail, since they need a source date. |
+| D-80 | 2026-10-06 | Accepted | A conflict in the career history may name another item, or another source in words. It need not be listed back on the other item. The note stays required. Source files, dates and fact links stay strict. | Most conflicts are with files outside the answer, so the check refused valid answers. The checks that protect the content stay as they are. |
 
 ## Open
 
