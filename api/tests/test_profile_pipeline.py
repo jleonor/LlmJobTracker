@@ -320,9 +320,9 @@ BAD_ANSWERS: list[tuple[str, str, Any, str]] = [
     ),
     (
         "full_cv_history",
-        "one-sided conflict",
-        lambda a: a["items"][1].update(conflicts=[]),
-        "must be listed on both items",
+        "empty conflict note",
+        lambda a: a["items"][1]["conflicts"][0].update(note=" "),
+        "note' is empty",
     ),
     (
         "fact_sheet",
@@ -577,6 +577,22 @@ def test_a_history_item_without_a_date_is_accepted(
     answers = good_answers(cv_id)
     answers["full_cv_history"]["items"][1]["date"] = ""
     answers["full_cv_history"]["items"][1]["end"] = ""
+    queue = make_queue(db_path, CannedRunner(answers))
+    job_id = start(db_path, queue)
+
+    run_all(queue)
+
+    assert job_state(db_path, job_id)[0] == "done"
+
+
+def test_a_conflict_may_name_another_source_in_words(
+    db_path: Path, cv_id: int, questionnaire_id: int
+) -> None:
+    answers = good_answers(cv_id)
+    answers["full_cv_history"]["items"][0]["conflicts"] = [
+        {"with": "Cover letter, 2023, Work Experience", "note": "The end year differs."}
+    ]
+    answers["full_cv_history"]["items"][1]["conflicts"] = []
     queue = make_queue(db_path, CannedRunner(answers))
     job_id = start(db_path, queue)
 

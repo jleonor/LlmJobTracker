@@ -210,8 +210,10 @@ INSTRUCTIONS: Final[dict[str, str]] = {
         "Make one item per role, education entry, skill or achievement. For each role fill the "
         "employer, the title, the start date in date, and in end a date, 'present', or empty "
         "when the source gives no end. Keep the wording close to the source. Use an empty "
-        "string for any field the source does not state. Where two items disagree, list each "
-        "in the other's conflicts with a note. Do not choose between them."
+        "string for any field the source does not state. Where two sources disagree, list it in "
+        "conflicts with a note: 'with' is the id of the other item in this history, or a short "
+        "description of the other source (a CV or a letter) when it is not an item here. Do not "
+        "choose between them."
     ),
     "fact_sheet": (
         "Build the Fact Sheet from the FULL_CV_HISTORY below. One fact per claim. Give each fact "
@@ -258,7 +260,8 @@ IMPORT_INSTRUCTIONS: Final[dict[str, str]] = {
         "the title, the start date in date, and end, using an empty string for anything the file "
         "does not state. Each item's source is the file it comes from, by file_id. If the history "
         "file is the source, use its file_id. Do not add anything the material does not say. "
-        "Where two items disagree, list them as conflicts."
+        "Where two sources disagree, list it in conflicts, with 'with' as the other item's id or a "
+        "short description of the other source."
     ),
     "questionnaire_analysis": (
         "The file below is the person's own questionnaire analysis. Convert it into the sections "
@@ -684,18 +687,13 @@ def check_full_cv_history(body: dict[str, Any], file_ids: set[int]) -> None:
         if item_id in by_id:
             raise PromptRejected("history: ids must be unique.")
         by_id[item_id] = item
+    # A conflict names the other item, or the other source in words, such as a CV or a letter
+    # (D-80). The note says what differs, and is required.
     for item_id, item in by_id.items():
         for raw in _list(item, "conflicts", allow_empty=True):
             conflict = _dict(raw, f"conflict on {item_id}")
-            with_id = str(conflict.get("with", ""))
-            if with_id not in by_id or with_id == item_id:
-                raise PromptRejected(f"history {item_id}: conflict names an unknown item.")
+            _text(conflict, "with", f"history {item_id}")
             _text(conflict, "note", f"history {item_id}")
-            mirror = _list(by_id[with_id], "conflicts", allow_empty=True)
-            if not any(_dict(m, "").get("with") == item_id for m in mirror):
-                raise PromptRejected(
-                    f"history {item_id} and {with_id}: a conflict must be listed on both items."
-                )
 
 
 def check_fact_sheet(body: dict[str, Any], file_ids: set[int], history_ids: set[str]) -> None:
