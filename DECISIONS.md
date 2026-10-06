@@ -114,6 +114,7 @@ Written from the user's answers on 2026-10-06. The full picture for the phase sp
 | D-74 | 2026-10-06 | Accepted | Every profile prompt runs on Claude Sonnet 5, passed as the full id claude-sonnet-5. The model each prompt reports is recorded with it, and the Profile page shows an analysis log. | The user prefers Sonnet 5. The CLI alias "sonnet" points at a newer model, so the full id is used. |
 | D-75 | 2026-10-06 | Accepted | Runs have no per-prompt dollar cap. The timeout is 15 minutes. The API key is removed from the environment of the CLI, so runs use the claude.ai login and its plan limits, as Claude Code does. A job paused at a plan limit resumes by itself two minutes after the reset time the CLI reports. Resume stays as a manual option. | The user chose these. A cap estimates API cost and stopped a valid run. The timeout is the real stop for a run that goes on too long. |
 | D-76 | 2026-10-06 | Accepted | A malformed or repeated id in a model answer is renumbered in order by code, and references to it follow. The answer is not rejected for its ids. | A run should not fail because of an id format. The checks still reject wrong sources, dates and links. |
+| D-77 | 2026-10-06 | Accepted | Claude's answer is kept as soon as it arrives, before any check, and the sent text and the answer can be read for each prompt on the Profile page. | The user needs to see what goes in and what comes back when a check fails. |
 
 ## Open
 
