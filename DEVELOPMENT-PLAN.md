@@ -1,6 +1,6 @@
 # LocalJobTracker: Development Plan
 
-**Current phase: 2.** Phase 0 and Phase 1 are done. Phase 2's step list needs your approval, and O-09 and O-10 need answers first. Tables are renamed as D-59 proposes (`job_applications`, `status_history`).
+**Current phase: 2.** Phase 0 and Phase 1 are done. Phase 2's step list is approved in chat (2026-10-06) and waits for your go to start. O-08, O-09 and O-10 are answered (D-62 to D-64). Tables are renamed as D-59 proposes (`job_applications`, `status_history`).
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -78,14 +78,29 @@ Done when
 
 Scope
 - Upload screen for: master CVs (English and French), older CVs, older cover letters, and the questionnaire. Files are copied into app data. Originals are never touched.
-- Claude produces three outputs from these files: a questionnaire analysis, a strategy overview, and a non-positioned CV Fact Sheet. Each fact has a source file, a location in it, and a date.
+- Claude produces four outputs from these files, in this order: `FULL_CV_HISTORY` (D-40, D-64), a non-positioned CV Fact Sheet, a questionnaire analysis, and a strategy overview. Each fact has a source file, a location in it, and a date.
 - Conflicts between files: the master CVs win, and the conflict is shown to you.
 - Review screen: edit facts, mark each one verified or rejected. Only verified facts are usable later.
 - Upload screen for your own writing rules. They are stored in app data and override the defaults in `Agent/rules/`.
 - Profile page (D-58): old CVs, old cover letters, master CVs, the questionnaire, the questionnaire report, and the positioning strategy with its lanes (O-12).
 - Claude Jobs queue (D-49 to D-52): one Claude Job runs at a time, in creation order, and all of its prompts finish before the next one starts. The queue is stored in SQLite and survives a restart (O-10). A plan limit pauses the queue and shows a Resume button (O-09). The queue sits between the app and the runner. `ClaudeCodeRunner` does not know about it.
-- O-09 and O-10 are answered before this phase's step list is approved.
+- O-08, O-09 and O-10 are answered (D-62, D-63, D-64). The queue pauses on a plan limit and resumes on a Resume click (D-63).
 - Create `Agent/specs/profile-steps.md` (inputs, outputs, validation) and `Agent/rules/honesty.md` (default) before this phase's code.
+
+Step list (approved in chat 2026-10-06; starts when you say go)
+
+1. Cut `phase-2-profile` from `main` (D-61). Write `Agent/specs/profile-steps.md` (inputs, outputs, validation for the four prompts, including `FULL_CV_HISTORY`) and `Agent/rules/honesty.md` (generic default). Docs only.
+2. Migration 3: `claude_jobs` (kind, optional `job_application_id`, status), `claude_job_prompts` (ordered), `profile_files` (kind, app-data path, SHA-256, upload date, extracted text), `profile_outputs` (versioned `FULL_CV_HISTORY`, Fact Sheet, questionnaire analysis, strategy), `facts` (text, source file, location, date, status unverified, verified or rejected). Tests: applies on a copy of the dev database, and an empty database.
+3. Runner: a `RateLimitError` type in the `Runner` interface. `FakeRunner` can simulate it. `ClaudeCodeRunner` maps the CLI's `rate_limit` events to it (runner-notes). Check whether the CLI reports a reset time: record the result in `planning/runner-notes.md`. The only outcome the app relies on is Resume (D-63).
+4. Claude Jobs queue as an app module between the API and the `Runner` (D-51). One job at a time, in creation order, all prompts before the next. Stored in SQLite (D-62). On startup, a job left `processing` returns to `queued`, and its interrupted prompt runs again from the start. Pause on `RateLimitError`. Resume and Cancel endpoints. Cancel sends SIGTERM and marks the job cancelled (runner-notes). Tests with `FakeRunner`: pause at a simulated limit, resume, restart survival, cancel.
+5. Upload endpoints and screen for master CVs (EN and FR), older CVs, older cover letters, and the questionnaire. Files are copied into `%LOCALAPPDATA%\LocalJobTracker\`, with a SHA-256 hash. Upload of your own writing rules, also in app data. Test: the source file is unchanged after upload.
+6. Text extraction by code: `pypdf` for PDF, `python-docx` for DOCX, plain text for `.txt`. The result is stored with the file, and any file with no text is reported. Synthetic fixtures under `tests/fixtures/synthetic/`.
+7. The four Claude Jobs, one per output, in the D-64 order: `FULL_CV_HISTORY`, Fact Sheet, questionnaire analysis, strategy. Each is a headless prompt with a structured output (`--json-schema`), checked against `Agent/specs/profile-steps.md`. Code checks that every fact has a source and a date, and that each source file exists. Conflicts between sources are recorded with both sides.
+8. Fact Sheet review screen: edit, verify or reject each fact, and see its conflicts. One function returns only verified facts; later steps may use only that function.
+9. Profile page (D-58): old CVs, old cover letters, master CVs, questionnaire, questionnaire report, `FULL_CV_HISTORY`, and the strategy with editable lanes (O-12).
+10. Claude Jobs queue screen: idle, queued, processing, paused, cancelled and done. Resume and Cancel buttons. The header counter, and the table badge later, read "Claude: queued" (D-59).
+11. Checks: `python scripts/check.py` output; personal-data scan of the repo; screenshots of the pause and resume (fake runner) and of a queue that survives a restart; a note in `planning/runner-notes.md` for the reset-time result.
+12. The real-file run: you upload your files, the four Claude Jobs run, and you check the output. Quality is your call.
 
 Done when
 - [ ] The analysis runs on your real files, and you check its output.

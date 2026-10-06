@@ -88,7 +88,17 @@ Written from the user's answers on 2026-10-06. The full picture for the phase sp
 | D-56 | 2026-10-06 | Accepted | Job Application page, in order: header (title, company); job details (portal, description, requirements, location, work mode, contract type); application history (status timeline with achieved and greyed-out statuses, notes, next action, due date); positioning analysis (fit, gaps, strategy, match score); files. The "not done yet" flags from D-48 sit at the top. | The user's layout. |
 | D-57 | 2026-10-06 | Accepted | Files on a Job Application: the master CV is proposed by Claude when the listing is added, and the user can change it. Tailored CV and cover letter each have a button to write one. Email history lists previews by title, and clicking one expands it. | The user's workflow. |
 | D-58 | 2026-10-06 | Accepted | The Profile page shows the old CVs, old cover letters, master CVs, the questionnaire, the questionnaire report, and the positioning strategy, which outlines the lanes. | The user's layout. The strategy output from Phase 2 is the source of the lanes. |
-| D-59 | 2026-10-06 | Proposed | Two kinds of job get two names in the code and the UI. A tracker row is a Job Application: table `job_applications`, route `/job-applications`, model `JobApplication`, and the page heading "Job Applications". A queued unit of work is a Claude Job: table `claude_jobs` (Phase 2), route `/claude-jobs`, model `ClaudeJob`. A Claude Job links to one Job Application, or to none (for example preparing the profile). The queue badge reads "Claude: queued", not "job". The old `jobs` table is renamed in migration 2. | The user asked for the distinction. Renaming while the tables hold synthetic data only is cheap. |
+| D-59 | 2026-10-06 | Accepted | Two kinds of job get two names in the code and the UI. A tracker row is a Job Application: table `job_applications`, route `/job-applications`, model `JobApplication`, and the page heading "Job Applications". A queued unit of work is a Claude Job: table `claude_jobs` (Phase 2), route `/claude-jobs`, model `ClaudeJob`. A Claude Job links to one Job Application, or to none (for example preparing the profile). The queue badge reads "Claude: queued", not "job". The old `jobs` table is renamed in migration 2. | The user asked for the distinction. Renaming while the tables hold synthetic data only is cheap. |
+
+## Phase 2 decisions (2026-10-06)
+
+| ID | Date | Status | Decision | Reason |
+|---|---|---|---|---|
+| D-62 | 2026-10-06 | Accepted | Claude Jobs and their prompts are stored in SQLite and survive an app restart (answers O-10). A job left `processing` at restart returns to `queued`, and its interrupted prompt runs again from the start. Finished prompts are kept. | The user's answer. Keeps the queue reliable without a second store. |
+| D-63 | 2026-10-06 | Accepted | On a plan limit (`RateLimitError`), the queue pauses and shows a Resume button. There is no automatic retry (answers O-09). The reset-time check in Phase 2 step 3 is recorded, but Resume stays the only restart. | The user's answer. The CLI may not report a reset time. |
+| D-64 | 2026-10-06 | Accepted | `FULL_CV_HISTORY` is a fourth Claude prompt, generated from all uploaded CVs (answers O-08). It is the main input for resolving conflicts (D-40). | The user's answer. Extends the three outputs in the Phase 2 scope. |
+| D-65 | 2026-10-06 | Accepted | Phase 2 uses `pypdf` for PDF and `python-docx` for DOCX, confirmed now rather than in Phase 4. The HTML extractor and the PDF fallback remain Phase 4 choices. | The user's answer. The profile uploads need text extraction first. |
+| D-66 | 2026-10-06 | Proposed | Prompt order is `FULL_CV_HISTORY`, Fact Sheet, questionnaire analysis, then strategy, so each later prompt can use the earlier outputs. `FULL_CV_HISTORY` is shown and editable on the Profile page, but only verified facts count as usable (D-09). The queue also has a Cancel button (runner-notes). | Defaults chosen by Claude. The user may change them. |
 
 ## Open
 
@@ -96,9 +106,9 @@ Written from the user's answers on 2026-10-06. The full picture for the phase sp
 |---|---|---|
 | O-01 | Which embedding model supports FAISS, given that Claude has no embeddings API? A local model keeps data on the machine. A cloud model would send personal answers out. | Decide before Phase 7. Local is preferred. |
 | O-03 | Is the GitHub repo private? | Yes. |
-| O-08 | Does `FULL_CV_HISTORY` need its own spec (fields, how conflicts are recorded, and what the user reviews)? | Write it in `Agent/specs/profile-steps.md` during Phase 2. |
-| O-09 | When the plan limit is hit, should the queue pause and wait for a Resume click, or retry by itself after a delay? | Pause and show it, with a Resume button. Automatic retry needs to know the limit's reset time, which the CLI may not report. Decide before the Phase 2 step list. |
-| O-10 | Should queued Claude Jobs survive an app restart? | Yes. Store them in SQLite. |
+| O-08 | Does `FULL_CV_HISTORY` need its own spec (fields, how conflicts are recorded, and what the user reviews)? | Answered: yes, D-64 and D-66. Spec in `Agent/specs/profile-steps.md` (Phase 2, step 1). |
+| O-09 | When the plan limit is hit, should the queue pause and wait for a Resume click, or retry by itself after a delay? | Answered: pause and show it, with a Resume button (D-63). |
+| O-10 | Should queued Claude Jobs survive an app restart? | Answered: yes, stored in SQLite (D-62). |
 | O-11 | After Offer, which end states do you need besides Rejected and Withdrawn (for example Accepted or Declined)? | Ask the user. |
 | O-12 | Where do lanes come from: the questionnaire analysis, the positioning strategy, or manual entry? | The strategy output defines them in Phase 2. The user edits them. |
 | O-13 | Should the user see and edit the per-requirement weights and matches, or only the final %? | Show them with their evidence. Read-only in v1. |
