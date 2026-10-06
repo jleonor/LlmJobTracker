@@ -71,3 +71,61 @@ export type FactChange = {
   source_location?: string
   status?: FactStatus
 }
+
+// The profile outputs (Profile page, step 9). The bodies follow Agent/specs/profile-steps.md.
+export type HistoryItem = {
+  id: string
+  kind: string
+  text: string
+  date: string
+  source: { file_id: number; location: string }
+  conflicts: { with: string; note: string }[]
+}
+
+export type FullCvHistoryBody = { items: HistoryItem[] }
+
+export type QuestionnaireBody = {
+  themes: { id: string; text: string; questionnaire_ref: string; fact_ids: string[] }[]
+  gaps: { text: string }[]
+}
+
+export type Lane = {
+  id: string
+  name: string
+  description: string
+  fact_ids: string[]
+  questionnaire_ids: string[]
+}
+
+export type StrategyBody = { overview: string; lanes: Lane[]; open_points: string[] }
+
+export type ProfileOutput = {
+  id: number
+  kind: 'full_cv_history' | 'fact_sheet' | 'questionnaire_analysis' | 'strategy'
+  version: number
+  claude_job_id: number | null
+  body: Record<string, unknown>
+  created_at: string
+}
+
+// A Claude Job as the API lists it (no prompt text).
+export type ClaudeJobPrompt = {
+  position: number
+  prompt_kind: string
+  status: string
+  error: string | null
+  cost_usd: number | null
+  duration_ms: number | null
+}
+
+export type ClaudeJob = {
+  id: number
+  label: string
+  kind: string
+  job_application_id: number | null
+  status: string
+  error: string | null
+  created_at: string
+  updated_at: string
+  prompts: ClaudeJobPrompt[]
+}

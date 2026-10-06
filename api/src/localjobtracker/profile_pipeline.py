@@ -581,7 +581,7 @@ def _store_output(
     conn: sqlite3.Connection,
     kind: str,
     body: dict[str, Any],
-    job_id: int,
+    job_id: int | None,
     input_hashes: list[str],
 ) -> int:
     with conn:
@@ -670,3 +670,35 @@ def make_pipeline(
             _store_facts(conn, output_id, body["facts"])
 
     return render, on_result
+
+
+# Edits made by the user (Profile page, D-66, O-12). Each edit is stored as a new version,
+# checked the same way as an answer from Claude, and it has no claude_job_id.
+EDITABLE_KINDS: Final = ("full_cv_history", "strategy")
+
+
+def save_user_version(conn: sqlite3.Connection, kind: str, body: dict[str, Any]) -> ProfileOutput:
+    if kind not in EDITABLE_KINDS:
+        raise PromptRejected(f"{kind} cannot be edited here.")
+    known = _known(conn)
+    evidence_ids = {file.id for file in usable_files(conn, EVIDENCE_KINDS)}
+    if kind == "full_cv_history":
+        check_full_cv_history(body, evidence_ids)
+        hashes = [file.sha256 for file in usable_files(conn, EVIDENCE_KINDS)]
+    else:
+        check_strategy(body, known["facts"], known["themes"])
+        hashes = []
+    output_id = _store_output(conn, kind, body, None, hashes)
+    row = conn.execute(
+        "SELECT id, kind, version, claude_job_id, body_json, created_at "
+        "FROM profile_outputs WHERE id = ?",
+        (output_id,),
+    ).fetchone()
+    return ProfileOutput(
+        id=row["id"],
+        kind=row["kind"],
+        version=row["version"],
+        claude_job_id=row["claude_job_id"],
+        body=json.loads(row["body_json"]),
+        created_at=row["created_at"],
+    )

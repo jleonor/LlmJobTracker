@@ -1,10 +1,12 @@
 import type {
+  ClaudeJob,
   Fact,
   FactChange,
   FactSheet,
   JobApplication,
   ProfileFile,
   ProfileFileKind,
+  ProfileOutput,
   RunResult,
 } from '@/lib/types'
 
@@ -87,4 +89,21 @@ export function updateFact(id: number, change: FactChange): Promise<Fact> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(change),
   })
+}
+
+export function fetchProfileOutputs(): Promise<ProfileOutput[]> {
+  return request<ProfileOutput[]>('/api/profile/outputs')
+}
+
+// Saves an edited output as a new version. The API checks it the same way as Claude's answer.
+export function saveProfileOutput(kind: string, body: Record<string, unknown>): Promise<ProfileOutput> {
+  return request<ProfileOutput>(`/api/profile/outputs/${kind}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function startProfileAnalysis(): Promise<ClaudeJob> {
+  return request<ClaudeJob>('/api/profile/analysis', { method: 'POST' })
 }

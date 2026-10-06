@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { FactSheetReview } from '@/components/app/FactSheetReview'
+import { ProfileOutputs } from '@/components/app/ProfileOutputs'
 import { ApiError, fetchProfileFiles, uploadProfileFile } from '@/lib/api'
 import type { ProfileFile, ProfileFileKind } from '@/lib/types'
 
@@ -63,6 +64,8 @@ export function ProfilePage() {
           Upload your files here. The app keeps its own copy, and your originals are not changed.
         </p>
       </div>
+
+      <ProfileOutputs />
 
       <FactSheetReview />
 

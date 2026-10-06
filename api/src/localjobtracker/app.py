@@ -5,12 +5,12 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from sqlite3 import Connection
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import unquote
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 
-from localjobtracker.claude_job_queue import ClaudeJobQueue
+from localjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
 from localjobtracker.claude_jobs import (
     ClaudeJob,
     get_claude_job,
@@ -40,6 +40,7 @@ from localjobtracker.profile_pipeline import (
     ProfileOutput,
     list_latest_outputs,
     make_pipeline,
+    save_user_version,
     submit_profile_analysis,
 )
 from localjobtracker.runner import Runner, RunResult
@@ -189,6 +190,21 @@ def create_app(
     )
     def profile_outputs(conn: Annotated[Connection, Depends(get_db)]) -> list[ProfileOutput]:
         return list_latest_outputs(conn)
+
+    @app.put(
+        "/profile/outputs/{kind}",
+        response_model=ProfileOutput,
+        dependencies=[Depends(require_token)],
+    )
+    def save_profile_output(
+        kind: str, body: dict[str, Any], conn: Annotated[Connection, Depends(get_db)]
+    ) -> ProfileOutput:
+        try:
+            return save_user_version(conn, kind, body)
+        except PromptRejected as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
 
     @app.post(
         "/profile/analysis",
