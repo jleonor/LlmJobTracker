@@ -20,8 +20,7 @@ export type RunResult = {
 
 // One uploaded profile file (Profile page). The kinds follow migration 3.
 export type ProfileFileKind =
-  | 'master_cv_en'
-  | 'master_cv_fr'
+  | 'master_cv'
   | 'older_cv'
   | 'older_letter'
   | 'questionnaire'

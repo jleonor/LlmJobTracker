@@ -42,18 +42,18 @@ def rows(db_path: Path) -> list[sqlite3.Row]:
 
 
 def test_upload_copies_the_bytes_into_app_data(upload_client: TestClient, db_path: Path) -> None:
-    response = upload(upload_client, "master_cv_en", "Master CV EN.pdf", SYNTHETIC_CV)
+    response = upload(upload_client, "master_cv", "Master CV EN.pdf", SYNTHETIC_CV)
 
     assert response.status_code == 201
     body = response.json()
-    assert body["kind"] == "master_cv_en"
+    assert body["kind"] == "master_cv"
     assert body["original_name"] == "Master CV EN.pdf"
     assert body["sha256"] == hashlib.sha256(SYNTHETIC_CV).hexdigest()
     assert body["size_bytes"] == len(SYNTHETIC_CV)
 
     row = rows(db_path)[0]
     stored = db_path.parent / row["stored_path"]
-    assert stored.parent == profile_folder(db_path.parent) / "master_cv_en"
+    assert stored.parent == profile_folder(db_path.parent) / "master_cv"
     assert stored.read_bytes() == SYNTHETIC_CV
 
 
@@ -117,7 +117,7 @@ def test_writing_rules_are_stored_as_their_own_kind(
 
 
 def test_list_returns_the_uploads_without_their_bytes(upload_client: TestClient) -> None:
-    upload(upload_client, "master_cv_fr", "cv fr.pdf", SYNTHETIC_CV)
+    upload(upload_client, "master_cv", "cv fr.pdf", SYNTHETIC_CV)
     listed = upload_client.get("/profile/files").json()
     assert [item["original_name"] for item in listed] == ["cv fr.pdf"]
     assert "stored_path" not in listed[0]

@@ -28,7 +28,7 @@ from localjobtracker.runner import RunResult
 JOB_KIND: Final = "profile_analysis"
 JOB_LABEL: Final = "Profile analysis"
 PROMPT_KINDS: Final = ("full_cv_history", "fact_sheet", "questionnaire_analysis", "strategy")
-CV_KINDS: Final = ("master_cv_en", "master_cv_fr", "older_cv")
+CV_KINDS: Final = ("master_cv", "older_cv")
 EVIDENCE_KINDS: Final = (*CV_KINDS, "older_letter")
 QUESTIONNAIRE_KINDS: Final = ("questionnaire",)
 HISTORY_KINDS: Final = ("role", "education", "skill", "achievement", "other")

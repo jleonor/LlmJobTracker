@@ -8,8 +8,7 @@ import type { ProfileFile, ProfileFileKind } from '@/lib/types'
 
 // The upload sections, in the order of the Profile page (D-58). Labels are the user's words.
 const SECTIONS: { kind: ProfileFileKind; title: string; hint: string }[] = [
-  { kind: 'master_cv_en', title: 'Master CVs (English)', hint: 'Layout and wording templates.' },
-  { kind: 'master_cv_fr', title: 'Master CVs (French)', hint: 'Layout and wording templates.' },
+  { kind: 'master_cv', title: 'Master CVs', hint: 'English and French. Layout and wording templates.' },
   { kind: 'older_cv', title: 'Older CVs', hint: 'Evidence for the Fact Sheet. Older ones may be out of date.' },
   { kind: 'older_letter', title: 'Older cover letters', hint: 'Evidence for the Fact Sheet.' },
   { kind: 'questionnaire', title: 'Questionnaire', hint: 'Your answers, used for the analysis.' },

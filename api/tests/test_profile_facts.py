@@ -26,7 +26,7 @@ def seed_fact_sheet(db_path: Path, version: int = 1) -> tuple[int, int, int]:
                 """
                 INSERT INTO profile_files
                     (kind, original_name, stored_path, sha256, size_bytes, extraction_status)
-                VALUES ('master_cv_en', 'cv_en.pdf', 'profile/cv.pdf', 'abc', 10, 'ok')
+                VALUES ('master_cv', 'cv_en.pdf', 'profile/cv.pdf', 'abc', 10, 'ok')
                 """
             ).lastrowid
             body = {

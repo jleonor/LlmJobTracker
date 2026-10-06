@@ -15,13 +15,26 @@ CONTRACT_TYPES = ("Full-Time", "Part-Time", "Contract/Short Term", "Other", "Unk
 # Phase 2 values (D-62, D-64, D-66; Agent/specs/profile-steps.md).
 CLAUDE_JOB_STATUSES = ("queued", "processing", "paused", "cancelled", "done", "failed")
 PROMPT_STATUSES = ("queued", "running", "done", "failed", "cancelled")
-PROFILE_FILE_KINDS = (
+# Kinds as migration 3 defined them. Kept here so that migration stays as it was applied.
+_V3_FILE_KINDS = (
     "master_cv_en",
     "master_cv_fr",
     "older_cv",
     "older_letter",
     "questionnaire",
     "writing_rules",
+)
+# Master CVs are one kind (English and French alike), and the user's own outputs have kinds of
+# their own (2026-10-06, D-67, D-68). Migration 4 moves the rows over.
+PROFILE_FILE_KINDS = (
+    "master_cv",
+    "older_cv",
+    "older_letter",
+    "questionnaire",
+    "writing_rules",
+    "own_full_cv_history",
+    "own_questionnaire_analysis",
+    "own_strategy",
 )
 EXTRACTION_STATUSES = ("ok", "no_text", "unsupported", "failed")
 PROFILE_OUTPUT_KINDS = ("full_cv_history", "fact_sheet", "questionnaire_analysis", "strategy")
@@ -38,6 +51,9 @@ class Migration:
     name: str
     up: tuple[str, ...]
     down: tuple[str, ...]
+    # A migration that rebuilds a table other tables reference (a CHECK can only change that way).
+    # Foreign keys are switched off for it, and checked again before it commits.
+    rebuild: bool = False
 
 
 _V1_JOBS = """
@@ -118,7 +134,7 @@ CREATE TABLE claude_job_prompts (
 _V3_PROFILE_FILES = f"""
 CREATE TABLE profile_files (
     id INTEGER PRIMARY KEY,
-    kind TEXT NOT NULL CHECK (kind IN ({_in_list(PROFILE_FILE_KINDS)})),
+    kind TEXT NOT NULL CHECK (kind IN ({_in_list(_V3_FILE_KINDS)})),
     original_name TEXT NOT NULL,
     stored_path TEXT NOT NULL,
     sha256 TEXT NOT NULL,
@@ -159,6 +175,26 @@ CREATE TABLE facts (
     UNIQUE (profile_output_id, fact_key)
 )
 """
+
+
+def _profile_files_table(table: str, kinds: tuple[str, ...]) -> str:
+    return f"""
+CREATE TABLE {table} (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ({_in_list(kinds)})),
+    original_name TEXT NOT NULL,
+    stored_path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    uploaded_at TEXT NOT NULL DEFAULT ({_NOW}),
+    extraction_status TEXT CHECK (
+        extraction_status IS NULL OR extraction_status IN ({_in_list(EXTRACTION_STATUSES)})
+    ),
+    extraction_message TEXT,
+    extracted_text TEXT
+)
+"""
+
 
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(
@@ -227,6 +263,47 @@ MIGRATIONS: tuple[Migration, ...] = (
             "DROP TABLE claude_jobs",
         ),
     ),
+    Migration(
+        version=4,
+        name="one master CV kind, and kinds for the user's own outputs",
+        rebuild=True,
+        up=(
+            _profile_files_table("profile_files_new", PROFILE_FILE_KINDS),
+            """
+            INSERT INTO profile_files_new
+                (id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                 extraction_status, extraction_message, extracted_text)
+            SELECT id,
+                   CASE WHEN kind IN ('master_cv_en', 'master_cv_fr')
+                        THEN 'master_cv' ELSE kind END,
+                   original_name, stored_path, sha256, size_bytes, uploaded_at,
+                   extraction_status, extraction_message, extracted_text
+            FROM profile_files
+            """,
+            "DROP TABLE profile_files",
+            "ALTER TABLE profile_files_new RENAME TO profile_files",
+        ),
+        down=(
+            # The English/French split cannot be recovered, so master CVs go back to English.
+            # The user's own outputs have no place in the older kinds, so their rows are removed,
+            # along with any fact that cites one of them.
+            "DELETE FROM facts WHERE source_file_id IN "
+            "(SELECT id FROM profile_files WHERE kind LIKE 'own_%')",
+            "DELETE FROM profile_files WHERE kind LIKE 'own_%'",
+            _profile_files_table("profile_files_old", _V3_FILE_KINDS),
+            """
+            INSERT INTO profile_files_old
+                (id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                 extraction_status, extraction_message, extracted_text)
+            SELECT id, CASE WHEN kind = 'master_cv' THEN 'master_cv_en' ELSE kind END,
+                   original_name, stored_path, sha256, size_bytes, uploaded_at,
+                   extraction_status, extraction_message, extracted_text
+            FROM profile_files
+            """,
+            "DROP TABLE profile_files",
+            "ALTER TABLE profile_files_old RENAME TO profile_files",
+        ),
+    ),
 )
 
 _LEDGER = """
@@ -249,16 +326,25 @@ def _run(
     statements: tuple[str, ...],
     ledger_sql: str,
     params: tuple[object, ...],
+    rebuild: bool = False,
 ) -> None:
-    conn.execute("BEGIN")
+    if rebuild:
+        # Must be set outside a transaction. It is restored below, whatever happens.
+        conn.execute("PRAGMA foreign_keys = OFF")
     try:
+        conn.execute("BEGIN")
         for statement in statements:
             conn.execute(statement)
+        if rebuild and conn.execute("PRAGMA foreign_key_check").fetchall():
+            raise RuntimeError("The rebuild would leave rows with broken references.")
         conn.execute(ledger_sql, params)
         conn.commit()
     except Exception:
         conn.rollback()
         raise
+    finally:
+        if rebuild:
+            conn.execute("PRAGMA foreign_keys = ON")
 
 
 def migrate(conn: sqlite3.Connection) -> list[int]:
@@ -273,6 +359,7 @@ def migrate(conn: sqlite3.Connection) -> list[int]:
             migration.up,
             "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
             (migration.version, migration.name),
+            migration.rebuild,
         )
         applied.append(migration.version)
     return applied
@@ -284,6 +371,12 @@ def rollback(conn: sqlite3.Connection, steps: int = 1) -> list[int]:
     reverted: list[int] = []
     for version in sorted(applied_versions(conn), reverse=True)[:steps]:
         migration = by_version[version]
-        _run(conn, migration.down, "DELETE FROM schema_migrations WHERE version = ?", (version,))
+        _run(
+            conn,
+            migration.down,
+            "DELETE FROM schema_migrations WHERE version = ?",
+            (version,),
+            migration.rebuild,
+        )
         reverted.append(version)
     return reverted

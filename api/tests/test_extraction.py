@@ -71,7 +71,7 @@ def upload_client(db_path: Path) -> Iterator[TestClient]:
 def test_upload_records_the_extraction_and_serves_the_text(upload_client: TestClient) -> None:
     content = (FIXTURES / "cv_en.pdf").read_bytes()
     created = upload_client.post(
-        "/profile/files/master_cv_en",
+        "/profile/files/master_cv",
         content=content,
         headers={"X-File-Name": "cv_en.pdf"},
     )

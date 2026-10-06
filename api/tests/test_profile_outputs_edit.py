@@ -26,7 +26,7 @@ TOKEN = "test-token"
 @pytest.fixture
 def analysed(db_path: Path) -> int:
     """A finished analysis. Returns the id of the CV the answers cite."""
-    cv = store(db_path, "master_cv_en", "cv_en.pdf", (FIXTURES / "cv_en.pdf").read_bytes())
+    cv = store(db_path, "master_cv", "cv_en.pdf", (FIXTURES / "cv_en.pdf").read_bytes())
     store(db_path, "questionnaire", "q.txt", (FIXTURES / "questionnaire.txt").read_bytes())
     queue = make_queue(db_path, CannedRunner(good_answers(cv)))
     start(db_path, queue)

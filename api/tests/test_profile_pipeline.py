@@ -69,7 +69,7 @@ def store(db_path: Path, kind: str, name: str, content: bytes) -> int:
 
 @pytest.fixture
 def cv_id(db_path: Path) -> int:
-    return store(db_path, "master_cv_en", "cv_en.pdf", (FIXTURES / "cv_en.pdf").read_bytes())
+    return store(db_path, "master_cv", "cv_en.pdf", (FIXTURES / "cv_en.pdf").read_bytes())
 
 
 @pytest.fixture
