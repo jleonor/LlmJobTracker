@@ -77,7 +77,7 @@ Done when
 **Goal:** your background becomes a reviewed Fact Sheet that later documents may use.
 
 Scope
-- Upload screen for: master CVs (English and French), older CVs, older cover letters, and the questionnaire. Files are copied into app data. Originals are never touched.
+- Upload screen for: master CVs (one kind for English and French, D-67), older CVs, older cover letters, the questionnaire, and optionally the user's own career history, questionnaire analysis and positioning strategy (D-68). Files are copied into app data. Originals are never touched.
 - Claude produces four outputs from these files, in this order: `FULL_CV_HISTORY` (D-40, D-64), a non-positioned CV Fact Sheet, a questionnaire analysis, and a strategy overview. Each fact has a source file, a location in it, and a date.
 - Conflicts between files: the master CVs win, and the conflict is shown to you.
 - Review screen: edit facts, mark each one verified or rejected. Only verified facts are usable later.
@@ -95,7 +95,7 @@ Step list (approved in chat 2026-10-06; starts when you say go)
 4. Claude Jobs queue as an app module between the API and the `Runner` (D-51). One job at a time, in creation order, all prompts before the next. Stored in SQLite (D-62). On startup, a job left `processing` returns to `queued`, and its interrupted prompt runs again from the start. Pause on `RateLimitError`. Resume and Cancel endpoints. Cancel sends SIGTERM and marks the job cancelled (runner-notes). Tests with `FakeRunner`: pause at a simulated limit, resume, restart survival, cancel.
 5. Upload endpoints and screen for master CVs (EN and FR), older CVs, older cover letters, and the questionnaire. Files are copied into `%LOCALAPPDATA%\LocalJobTracker\`, with a SHA-256 hash. Upload of your own writing rules, also in app data. Test: the source file is unchanged after upload.
 6. Text extraction by code: `pypdf` for PDF, `python-docx` for DOCX, plain text for `.txt`. The result is stored with the file, and any file with no text is reported. Synthetic fixtures under `tests/fixtures/synthetic/`.
-7. The four Claude Jobs, one per output, in the D-64 order: `FULL_CV_HISTORY`, Fact Sheet, questionnaire analysis, strategy. Each is a headless prompt with a structured output (`--json-schema`), checked against `Agent/specs/profile-steps.md`. Code checks that every fact has a source and a date, and that each source file exists. Conflicts between sources are recorded with both sides.
+7. The four Claude Jobs, one per output, in the D-64 order: `FULL_CV_HISTORY`, Fact Sheet, questionnaire analysis, strategy. Each makes only what is missing, and converts the user's own version where one is uploaded (D-68, D-69). Each is a headless prompt with a structured output (`--json-schema`), checked against `Agent/specs/profile-steps.md`. Code checks that every fact has a source and a date, and that each source file exists. Conflicts between sources are recorded with both sides.
 8. Fact Sheet review screen: edit, verify or reject each fact, and see its conflicts. One function returns only verified facts; later steps may use only that function.
 9. Profile page (D-58): old CVs, old cover letters, master CVs, questionnaire, questionnaire report, `FULL_CV_HISTORY`, and the strategy with editable lanes (O-12).
 10. Claude Jobs queue screen: idle, queued, processing, paused, cancelled and done. Resume and Cancel buttons. The header counter, and the table badge later, read "Claude: queued" (D-59).

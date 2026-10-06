@@ -100,6 +100,14 @@ Written from the user's answers on 2026-10-06. The full picture for the phase sp
 | D-65 | 2026-10-06 | Accepted | Phase 2 uses `pypdf` for PDF and `python-docx` for DOCX, confirmed now rather than in Phase 4. The HTML extractor and the PDF fallback remain Phase 4 choices. | The user's answer. The profile uploads need text extraction first. |
 | D-66 | 2026-10-06 | Proposed | Prompt order is `FULL_CV_HISTORY`, Fact Sheet, questionnaire analysis, then strategy, so each later prompt can use the earlier outputs. `FULL_CV_HISTORY` is shown and editable on the Profile page, but only verified facts count as usable (D-09). The queue also has a Cancel button (runner-notes). | Defaults chosen by Claude. The user may change them. |
 
+## Phase 2 decisions (2026-10-06, continued)
+
+| ID | Date | Status | Decision | Reason |
+|---|---|---|---|---|
+| D-67 | 2026-10-06 | Accepted | Master CVs are one kind, for English and French alike. The separate English and French kinds are removed (migration 4). The language is not stored. Choosing a master CV for a listing is decided in Phase 4 (O-14). This supersedes the English and French split in D-06. | The user's decision. Both languages are master CVs. |
+| D-68 | 2026-10-06 | Accepted | The user can upload their own career history, questionnaire analysis and positioning strategy. The analysis converts an upload into the structured form (with the same checks as a generated answer) and uses it in place of a generated output. The Fact Sheet has no own version. | The user's decision. Keeps the facts traceable to sources while using the user's own work. |
+| D-69 | 2026-10-06 | Proposed | A run makes only what is missing. An output that is already there is kept, and a run with everything in place is refused. An output is rebuilt in a run only when an output it is built on was made again in that run, or when the user's own version of it is converted against the new outputs. | Claude's choice of how to apply the user's request. The user may change the rule. |
+
 ## Open
 
 | ID | Question | Recommendation |

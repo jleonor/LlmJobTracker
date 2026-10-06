@@ -134,3 +134,19 @@ The overview and lanes are not job positioning. Positioning for a specific job i
 ## Storage
 
 Each validated output is stored as a row in `profile_outputs` with its kind, version number, the job that produced it, the input file hashes, and the JSON. A failed check stores nothing and marks the Claude Job as failed, with the check's message.
+
+## Own versions and what a run does (D-68, D-69)
+
+The user can upload their own version of three outputs: the career history (`own_full_cv_history`), the questionnaire analysis (`own_questionnaire_analysis`) and the positioning strategy (`own_strategy`). These are used in place of a generated output. The Fact Sheet has no own version, because it is always checked against the sources.
+
+Each run decides what to do for each output, in order, before the prompt is sent:
+
+- **import**: an own file exists and either has not been converted yet, or an output it is built on was made again in this run. The prompt converts the file into the schema and keeps its wording. It is checked with the same rules as a generated answer. The file's hash is stored with the new version, so the same file is not converted twice.
+- **generate**: no own file, and the output is missing, or an output it is built on was made again in this run.
+- **skip**: anything else. The prompt is not sent, and it is recorded as "Skipped: already in place."
+
+The outputs are built on each other in this order: the career history, then the Fact Sheet, the questionnaire analysis and the strategy. So a new career history makes a new Fact Sheet, and that makes a new questionnaire analysis and strategy, unless the user's own version of one of them is imported.
+
+The run refuses to start when nothing is missing, and it says what to upload. A run needs a CV or an own career history if it has to make the career history or the Fact Sheet, and a questionnaire or an own questionnaire analysis if it has to make the questionnaire analysis.
+
+Master CVs are one kind, `master_cv`, for English and French alike (D-67). The language is not stored.
