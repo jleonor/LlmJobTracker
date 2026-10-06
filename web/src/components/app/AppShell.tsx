@@ -4,15 +4,23 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-// Only Jobs has a screen in Phase 1. The other entries are placeholders for later phases.
-const NAV = [
-  { label: 'Jobs', icon: BriefcaseBusiness, active: true },
-  { label: 'Profile', icon: UserRound, active: false },
-  { label: 'Settings', icon: Settings, active: false },
-  { label: 'Run Trace', icon: GitBranch, active: false },
+export type Screen = 'jobs' | 'profile'
+
+// Jobs and Profile have screens. The other entries are placeholders for later phases.
+const NAV: { label: string; icon: typeof UserRound; screen: Screen | null }[] = [
+  { label: 'Jobs', icon: BriefcaseBusiness, screen: 'jobs' },
+  { label: 'Profile', icon: UserRound, screen: 'profile' },
+  { label: 'Settings', icon: Settings, screen: null },
+  { label: 'Run Trace', icon: GitBranch, screen: null },
 ]
 
-export function AppShell({ children }: { children: ReactNode }) {
+type Props = {
+  children: ReactNode
+  current: Screen
+  onNavigate: (screen: Screen) => void
+}
+
+export function AppShell({ children, current, onNavigate }: Props) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <aside className="fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border bg-card">
@@ -20,24 +28,30 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="text-sm font-semibold tracking-tight">LocalJobTracker</span>
         </div>
         <nav className="flex flex-col gap-0.5 p-2" aria-label="Main">
-          {NAV.map(({ label, icon: Icon, active }) => (
-            <button
-              key={label}
-              type="button"
-              disabled={!active}
-              aria-current={active ? 'page' : undefined}
-              title={active ? undefined : 'Not in this phase yet'}
-              className={cn(
-                'flex items-center gap-2 rounded px-3 py-2 text-left text-sm transition-colors',
-                active
-                  ? 'border-l-2 border-primary bg-secondary pl-[10px] font-semibold text-foreground'
-                  : 'cursor-not-allowed text-muted-foreground opacity-60',
-              )}
-            >
-              <Icon className="size-4" aria-hidden="true" />
-              {label}
-            </button>
-          ))}
+          {NAV.map(({ label, icon: Icon, screen }) => {
+            const active = screen !== null && screen === current
+            return (
+              <button
+                key={label}
+                type="button"
+                disabled={screen === null}
+                onClick={screen === null ? undefined : () => onNavigate(screen)}
+                aria-current={active ? 'page' : undefined}
+                title={screen === null ? 'Not in this phase yet' : undefined}
+                className={cn(
+                  'flex items-center gap-2 rounded px-3 py-2 text-left text-sm transition-colors',
+                  active
+                    ? 'border-l-2 border-primary bg-secondary pl-[10px] font-semibold text-foreground'
+                    : screen === null
+                      ? 'cursor-not-allowed text-muted-foreground opacity-60'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <Icon className="size-4" aria-hidden="true" />
+                {label}
+              </button>
+            )
+          })}
         </nav>
       </aside>
 

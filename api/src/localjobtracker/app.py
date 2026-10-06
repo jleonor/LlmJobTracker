@@ -6,8 +6,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from sqlite3 import Connection
 from typing import Annotated
+from urllib.parse import unquote
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 
 from localjobtracker.claude_job_queue import ClaudeJobQueue
 from localjobtracker.claude_jobs import (
@@ -17,6 +18,12 @@ from localjobtracker.claude_jobs import (
     recover_interrupted,
 )
 from localjobtracker.job_applications import JobApplication, list_job_applications
+from localjobtracker.profile_files import (
+    ProfileFile,
+    ProfileUploadError,
+    list_profile_files,
+    store_profile_file,
+)
 from localjobtracker.runner import Runner, RunResult
 from localjobtracker.storage import connect
 
@@ -111,6 +118,33 @@ def create_app(
         if not queue.cancel(conn, job_id):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already finished.")
         return _job_or_404(conn, job_id)
+
+    @app.get(
+        "/profile/files",
+        response_model=list[ProfileFile],
+        dependencies=[Depends(require_token)],
+    )
+    def profile_files(conn: Annotated[Connection, Depends(get_db)]) -> list[ProfileFile]:
+        return list_profile_files(conn)
+
+    @app.post(
+        "/profile/files/{kind}",
+        response_model=ProfileFile,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    async def upload_profile_file(kind: str, request: Request) -> ProfileFile:
+        # The body is the file's bytes. Its name comes in a header, URL-encoded. The request
+        # is async, so it opens its own connection: a SQLite connection must stay in one thread.
+        name = unquote(request.headers.get("X-File-Name", ""))
+        content = await request.body()
+        conn = connect(db_path)
+        try:
+            return store_profile_file(conn, db_path.parent, kind, name, content)
+        except ProfileUploadError as error:
+            raise HTTPException(status_code=error.status, detail=error.message) from error
+        finally:
+            conn.close()
 
     return app
 
