@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { FactSheetReview } from '@/components/app/FactSheetReview'
 import { ProfileOutputs } from '@/components/app/ProfileOutputs'
 import { ApiError, fetchProfileFiles, uploadProfileFile } from '@/lib/api'
+import { useClaudeJobs } from '@/lib/useClaudeJobs'
 import type { ProfileFile, ProfileFileKind } from '@/lib/types'
 
 // The upload sections, in the order of the Profile page (D-58). Labels are the user's words.
@@ -61,6 +62,11 @@ export function ProfilePage() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
   // Bumped when the outputs are read again, so the Fact Sheet review reloads with them.
   const [revision, setRevision] = useState(0)
+  // When the latest analysis finishes, the outputs and the Fact Sheet are read again.
+  const queue = useClaudeJobs()
+  const analysis = [...queue.jobs].reverse().find((job) => job.kind === 'profile_analysis')
+  const finishedAnalysis =
+    analysis && (analysis.status === 'done' || analysis.status === 'failed') ? analysis.id : null
 
   useEffect(() => {
     let cancelled = false
@@ -132,13 +138,18 @@ export function ProfilePage() {
               files={state.files.filter((file) => file.kind === section.kind)}
               onUploaded={reload}
             >
-              {section.kind === 'own_fact_sheet' && <FactSheetReview key={revision} />}
+              {section.kind === 'own_fact_sheet' && (
+                <FactSheetReview key={`${revision}-${finishedAnalysis ?? 'none'}`} />
+              )}
             </UploadSection>
           ))}
         </>
       )}
 
-      <ProfileOutputs onChanged={() => setRevision((current) => current + 1)} />
+      <ProfileOutputs
+        onChanged={() => setRevision((current) => current + 1)}
+        refreshKey={finishedAnalysis}
+      />
     </section>
   )
 }
