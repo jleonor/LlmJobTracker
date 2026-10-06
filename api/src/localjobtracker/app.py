@@ -32,7 +32,10 @@ from localjobtracker.profile_files import (
     ProfileFile,
     ProfileFileText,
     ProfileUploadError,
+    delete_profile_file,
     list_profile_files,
+    open_in_default_app,
+    profile_file_path,
     profile_file_text,
     store_profile_file,
 )
@@ -163,6 +166,30 @@ def create_app(
     )
     def profile_files(conn: Annotated[Connection, Depends(get_db)]) -> list[ProfileFile]:
         return list_profile_files(conn)
+
+    @app.post(
+        "/profile/files/{file_id}/open",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_token)],
+    )
+    def open_profile_file(file_id: int, conn: Annotated[Connection, Depends(get_db)]) -> None:
+        path = profile_file_path(conn, db_path.parent, file_id)
+        if path is None or not path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        open_in_default_app(path)
+
+    @app.delete(
+        "/profile/files/{file_id}",
+        dependencies=[Depends(require_token)],
+    )
+    def remove_profile_file(
+        file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> dict[str, int]:
+        try:
+            removed = delete_profile_file(conn, db_path.parent, file_id)
+        except ProfileUploadError as error:
+            raise HTTPException(status_code=error.status, detail=error.message) from error
+        return {"removed_facts": removed}
 
     @app.get(
         "/profile/files/{file_id}/text",

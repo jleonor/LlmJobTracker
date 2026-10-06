@@ -6,7 +6,10 @@ its SHA-256, so the same content is never stored twice.
 """
 
 import hashlib
+import os
 import sqlite3
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
@@ -157,3 +160,34 @@ def profile_file_text(conn: sqlite3.Connection, file_id: int) -> ProfileFileText
         extraction_message=row["extraction_message"],
         text=row["extracted_text"] or "",
     )
+
+
+def profile_file_path(conn: sqlite3.Connection, data_folder: Path, file_id: int) -> Path | None:
+    row = conn.execute("SELECT stored_path FROM profile_files WHERE id = ?", (file_id,)).fetchone()
+    return None if row is None else data_folder / str(row["stored_path"])
+
+
+def open_in_default_app(path: Path) -> None:
+    """Open a file in the program the system uses for it (D-82)."""
+    if sys.platform == "win32":
+        os.startfile(path)
+    elif sys.platform == "darwin":
+        subprocess.run(["open", str(path)], check=False)
+    else:
+        subprocess.run(["xdg-open", str(path)], check=False)
+
+
+def delete_profile_file(conn: sqlite3.Connection, data_folder: Path, file_id: int) -> int:
+    """Remove an upload, its copy, and the facts that cite it (D-82). Returns the facts removed.
+
+    Later outputs keep the snapshot they were made from. They are rebuilt on the next run that
+    changes what they depend on.
+    """
+    row = conn.execute("SELECT stored_path FROM profile_files WHERE id = ?", (file_id,)).fetchone()
+    if row is None:
+        raise ProfileUploadError(404, "No such file.")
+    with conn:
+        removed = conn.execute("DELETE FROM facts WHERE source_file_id = ?", (file_id,)).rowcount
+        conn.execute("DELETE FROM profile_files WHERE id = ?", (file_id,))
+    (data_folder / str(row["stored_path"])).unlink(missing_ok=True)
+    return removed
