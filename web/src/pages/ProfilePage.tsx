@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { FactSheetReview } from '@/components/app/FactSheetReview'
@@ -30,8 +30,8 @@ const SECTIONS: { kind: ProfileFileKind; title: string; hint: string }[] = [
   },
   {
     kind: 'own_fact_sheet',
-    title: 'Your Fact Sheet',
-    hint: 'Optional. Your facts with their sources. The analysis converts yours, and you still verify each fact below.',
+    title: 'Fact Sheet',
+    hint: 'Optional. Upload yours, or leave it out and the analysis makes one. Verify each fact below before it is used.',
   },
   {
     kind: 'own_strategy',
@@ -131,14 +131,14 @@ export function ProfilePage() {
               hint={section.hint}
               files={state.files.filter((file) => file.kind === section.kind)}
               onUploaded={reload}
-            />
+            >
+              {section.kind === 'own_fact_sheet' && <FactSheetReview key={revision} />}
+            </UploadSection>
           ))}
         </>
       )}
 
       <ProfileOutputs onChanged={() => setRevision((current) => current + 1)} />
-
-      <FactSheetReview key={revision} />
     </section>
   )
 }
@@ -149,9 +149,10 @@ type SectionProps = {
   hint: string
   files: ProfileFile[]
   onUploaded: () => void
+  children?: ReactNode
 }
 
-function UploadSection({ kind, title, hint, files, onUploaded }: SectionProps) {
+function UploadSection({ kind, title, hint, files, onUploaded, children }: SectionProps) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
@@ -229,6 +230,8 @@ function UploadSection({ kind, title, hint, files, onUploaded }: SectionProps) {
           ))}
         </ul>
       )}
+
+      {children}
     </section>
   )
 }

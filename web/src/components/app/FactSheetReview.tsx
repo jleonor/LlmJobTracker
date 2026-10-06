@@ -34,12 +34,12 @@ export function FactSheetReview() {
   }, [])
 
   return (
-    <section aria-labelledby="fact-sheet-heading" className="flex flex-col gap-3 rounded border border-border bg-card p-4">
+    <div className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-4">
         <div>
-          <h2 id="fact-sheet-heading" className="text-sm font-semibold">
-            Fact Sheet
-          </h2>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Facts to verify
+          </h3>
           <p className="text-xs text-muted-foreground">
             Check each fact against your CV. Only verified facts are used in documents.
           </p>
@@ -89,7 +89,7 @@ export function FactSheetReview() {
           </ul>
         </div>
       )}
-    </section>
+    </div>
   )
 }
 
