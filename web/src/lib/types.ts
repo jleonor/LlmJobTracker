@@ -25,6 +25,9 @@ export type ProfileFileKind =
   | 'older_letter'
   | 'questionnaire'
   | 'writing_rules'
+  | 'own_full_cv_history'
+  | 'own_questionnaire_analysis'
+  | 'own_strategy'
 
 export type ProfileFile = {
   id: number

@@ -59,7 +59,8 @@ export function ProfileOutputs() {
             Profile analysis
           </h2>
           <p className="text-xs text-muted-foreground">
-            Claude reads your uploads and writes these. Edit them if they are not right.
+            Run the analysis to make what is missing. Anything you uploaded is converted, and
+            anything you edit is saved as a new version.
           </p>
         </div>
         <div className="flex gap-2">

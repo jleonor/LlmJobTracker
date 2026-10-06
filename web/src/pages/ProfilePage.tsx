@@ -13,6 +13,21 @@ const SECTIONS: { kind: ProfileFileKind; title: string; hint: string }[] = [
   { kind: 'older_letter', title: 'Older cover letters', hint: 'Evidence for the Fact Sheet.' },
   { kind: 'questionnaire', title: 'Questionnaire', hint: 'Your answers, used for the analysis.' },
   { kind: 'writing_rules', title: 'Your writing rules', hint: 'Overrides the default rules in Agent/rules/.' },
+  {
+    kind: 'own_full_cv_history',
+    title: 'Your career history',
+    hint: 'Optional. If you have one, upload it. The analysis converts yours instead of writing a new one.',
+  },
+  {
+    kind: 'own_questionnaire_analysis',
+    title: 'Your questionnaire analysis',
+    hint: 'Optional. If you have one, upload it. The analysis converts yours instead of writing a new one.',
+  },
+  {
+    kind: 'own_strategy',
+    title: 'Your positioning strategy',
+    hint: 'Optional. If you have one, upload it. The analysis converts yours instead of writing a new one.',
+  },
 ]
 
 const ACCEPT = '.pdf,.docx,.txt,.md'
