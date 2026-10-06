@@ -263,18 +263,19 @@ def test_a_second_analysis_is_refused_while_one_is_unfinished(
         start(db_path, queue)
 
 
-def test_a_second_run_stores_new_versions_and_keeps_the_first(
+def test_a_second_run_creates_nothing_when_everything_is_there(
     db_path: Path, cv_id: int, questionnaire_id: int
 ) -> None:
     runner = CannedRunner(good_answers(cv_id))
     queue = make_queue(db_path, runner)
     start(db_path, queue)
     run_all(queue)
-    start(db_path, queue)
-    run_all(queue)
+    before = outputs(db_path)
 
-    assert outputs(db_path).count(("fact_sheet", 1)) == 1
-    assert outputs(db_path).count(("fact_sheet", 2)) == 1
+    with pytest.raises(ProfileNotReady, match="Nothing is missing"):
+        start(db_path, queue)
+    assert outputs(db_path) == before
+    assert len(runner.prompts) == 4
 
 
 BAD_ANSWERS: list[tuple[str, str, Any, str]] = [

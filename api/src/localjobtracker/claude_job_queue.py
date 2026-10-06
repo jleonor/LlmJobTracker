@@ -50,6 +50,8 @@ class RenderedPrompt:
 
     text: str
     json_schema: dict[str, Any] | None = None
+    # True when the output is already in place. The prompt is then not sent (D-69).
+    skip: bool = False
 
 
 # Builds a prompt from what earlier prompts have stored. Raise PromptRejected if it cannot.
@@ -186,6 +188,15 @@ class ClaudeJobQueue:
                 except PromptRejected as rejected:
                     self._fail_prompt(conn, job_id, prompt.id, str(rejected), None, None)
                     return
+                if rendered.skip:
+                    set_prompt_status(
+                        conn,
+                        prompt.id,
+                        ("running",),
+                        "done",
+                        result_text="Skipped: already in place.",
+                    )
+                    continue
                 text, schema = rendered.text, rendered.json_schema
                 set_prompt_text(conn, prompt.id, text)
             try:
