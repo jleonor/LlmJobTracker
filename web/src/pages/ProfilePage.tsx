@@ -50,6 +50,8 @@ function formatSize(bytes: number): string {
 
 export function ProfilePage() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
+  // Bumped when the outputs are read again, so the Fact Sheet review reloads with them.
+  const [revision, setRevision] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -84,9 +86,9 @@ export function ProfilePage() {
         </p>
       </div>
 
-      <ProfileOutputs />
+      <ProfileOutputs onChanged={() => setRevision((current) => current + 1)} />
 
-      <FactSheetReview />
+      <FactSheetReview key={revision} />
 
       {state.kind === 'loading' && <p className="text-sm text-muted-foreground">Loading your files...</p>}
 

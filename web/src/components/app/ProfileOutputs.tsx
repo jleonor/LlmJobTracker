@@ -20,12 +20,13 @@ function latest(outputs: ProfileOutput[], kind: ProfileOutput['kind']): ProfileO
 }
 
 // The analysis outputs on the Profile page (D-58). Edits are saved as new versions (D-66, O-12).
-export function ProfileOutputs() {
+export function ProfileOutputs({ onChanged }: { onChanged: () => void }) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
   const [starting, setStarting] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   function load() {
+    onChanged()
     fetchProfileOutputs()
       .then((outputs) => setState({ kind: 'ready', outputs }))
       .catch((error: unknown) => {
@@ -35,7 +36,12 @@ export function ProfileOutputs() {
   }
 
   useEffect(() => {
-    load()
+    fetchProfileOutputs()
+      .then((outputs) => setState({ kind: 'ready', outputs }))
+      .catch((error: unknown) => {
+        const message = error instanceof ApiError ? error.message : 'Could not load the outputs.'
+        setState({ kind: 'error', message })
+      })
   }, [])
 
   async function handleStart() {
