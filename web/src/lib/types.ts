@@ -1,11 +1,13 @@
-export type Job = {
+// One row of the Applications table (D-46). Field names match the API.
+export type JobApplication = {
   id: number
   company: string
   role_title: string
   lane: string | null
+  location: string | null
   status: string
-  next_action: string | null
-  due_date: string | null
+  last_updated: string
+  match_score: number | null
 }
 
 export type RunResult = {

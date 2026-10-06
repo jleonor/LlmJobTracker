@@ -1,4 +1,4 @@
-import type { Job, RunResult } from '@/lib/types'
+import type { JobApplication, RunResult } from '@/lib/types'
 
 export class ApiError extends Error {
   readonly status: number | null
@@ -29,8 +29,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export function fetchJobs(): Promise<Job[]> {
-  return request<Job[]>('/api/jobs')
+export function fetchJobApplications(): Promise<JobApplication[]> {
+  return request<JobApplication[]>('/api/job-applications')
 }
 
 export function runClaudeCheck(): Promise<RunResult> {
