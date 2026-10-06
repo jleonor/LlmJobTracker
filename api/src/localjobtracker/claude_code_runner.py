@@ -28,8 +28,10 @@ MAX_BUDGET_USD = "0.25"
 ALLOWED_RATE_LIMIT_STATUSES = frozenset({"allowed", "allowed_warning"})
 
 
-def build_args(executable: str, prompt: str) -> list[str]:
-    return [
+def build_args(
+    executable: str, prompt: str, json_schema: dict[str, Any] | None = None
+) -> list[str]:
+    args = [
         executable,
         "-p",
         prompt,
@@ -46,6 +48,9 @@ def build_args(executable: str, prompt: str) -> list[str]:
         "--max-budget-usd",
         MAX_BUDGET_USD,
     ]
+    if json_schema is not None:
+        args += ["--json-schema", json.dumps(json_schema)]
+    return args
 
 
 def _events(stdout: str) -> list[dict[str, Any]]:
@@ -107,16 +112,21 @@ def parse_stream(stdout: str, exit_code: int, duration_ms: int) -> RunResult:
     cost = message.get("total_cost_usd")
     cost_usd = float(cost) if isinstance(cost, int | float) else None
     if exit_code != 0 or message.get("is_error"):
-        reason = message.get("subtype") or f"exit {exit_code}"
+        # An API error comes as the result text (for example "API Error: 529 ..."). Show that.
+        detail = str(message.get("result") or "").strip()
+        reason = detail[:300] or message.get("subtype") or f"exit {exit_code}"
         return RunResult(
             ok=False,
             error=f"Claude Code run failed ({reason}).",
             duration_ms=duration_ms,
             cost_usd=cost_usd,
         )
+    # With --json-schema the answer can come as structured_output. Use it when it is there.
+    structured = message.get("structured_output")
+    text = json.dumps(structured) if structured is not None else str(message.get("result", ""))
     return RunResult(
         ok=True,
-        text=str(message.get("result", "")),
+        text=text,
         duration_ms=duration_ms,
         cost_usd=cost_usd,
     )
@@ -127,14 +137,19 @@ class ClaudeCodeRunner:
         self.workdir = workdir
         self.timeout_s = timeout_s
 
-    def run(self, prompt: str, cancel: threading.Event | None = None) -> RunResult:
+    def run(
+        self,
+        prompt: str,
+        cancel: threading.Event | None = None,
+        json_schema: dict[str, Any] | None = None,
+    ) -> RunResult:
         executable = shutil.which("claude")
         if executable is None:
             return RunResult(ok=False, error="The claude command was not found on PATH.")
         self.workdir.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
         process = subprocess.Popen(
-            build_args(executable, prompt),
+            build_args(executable, prompt, json_schema),
             cwd=self.workdir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

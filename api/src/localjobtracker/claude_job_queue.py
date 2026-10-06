@@ -12,7 +12,9 @@ import logging
 import sqlite3
 import threading
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from localjobtracker.claude_jobs import (
     PromptRow,
@@ -23,6 +25,7 @@ from localjobtracker.claude_jobs import (
     prompt_rows,
     resume_job,
     set_prompt_status,
+    set_prompt_text,
     transition,
 )
 from localjobtracker.runner import RateLimitError, Runner, RunResult
@@ -41,6 +44,18 @@ class PromptRejected(Exception):
 OnResult = Callable[[sqlite3.Connection, PromptRow, RunResult], None]
 
 
+@dataclass(frozen=True)
+class RenderedPrompt:
+    """A prompt built just before it runs, with the schema its answer must follow."""
+
+    text: str
+    json_schema: dict[str, Any] | None = None
+
+
+# Builds a prompt from what earlier prompts have stored. Raise PromptRejected if it cannot.
+Renderer = Callable[[sqlite3.Connection, PromptRow], RenderedPrompt]
+
+
 def _paused_message(limit: RateLimitError) -> str:
     if limit.resets_at is None:
         return "Paused at a plan limit. Resume when you want the job to continue."
@@ -52,10 +67,17 @@ def _paused_message(limit: RateLimitError) -> str:
 
 
 class ClaudeJobQueue:
-    def __init__(self, db_path: Path, runner: Runner, on_result: OnResult | None = None) -> None:
+    def __init__(
+        self,
+        db_path: Path,
+        runner: Runner,
+        on_result: OnResult | None = None,
+        render: Renderer | None = None,
+    ) -> None:
         self._db_path = db_path
         self._runner = runner
         self._on_result = on_result
+        self._render = render
         self._lock = threading.Lock()
         self._current: tuple[int, threading.Event] | None = None
         self._wake = threading.Event()
@@ -157,8 +179,17 @@ class ClaudeJobQueue:
             if self._stop.is_set() or job_status(conn, job_id) != "processing":
                 return
             set_prompt_status(conn, prompt.id, ("queued",), "running")
+            text, schema = prompt.prompt_text, None
+            if self._render is not None:
+                try:
+                    rendered = self._render(conn, prompt)
+                except PromptRejected as rejected:
+                    self._fail_prompt(conn, job_id, prompt.id, str(rejected), None, None)
+                    return
+                text, schema = rendered.text, rendered.json_schema
+                set_prompt_text(conn, prompt.id, text)
             try:
-                result = self._runner.run(prompt.prompt_text, cancel=cancel)
+                result = self._runner.run(text, cancel=cancel, json_schema=schema)
             except RateLimitError as limit:
                 if self._stop.is_set():
                     return
@@ -171,32 +202,22 @@ class ClaudeJobQueue:
                 set_prompt_status(conn, prompt.id, ("running",), "cancelled", error="Cancelled.")
                 return
             if not result.ok:
-                set_prompt_status(
-                    conn,
-                    prompt.id,
-                    ("running",),
-                    "failed",
-                    error=result.error,
-                    cost_usd=result.cost_usd,
-                    duration_ms=result.duration_ms,
+                self._fail_prompt(
+                    conn, job_id, prompt.id, result.error, result.cost_usd, result.duration_ms
                 )
-                transition(conn, job_id, ("processing",), "failed", error=result.error)
                 return
             try:
                 if self._on_result is not None:
                     self._on_result(conn, prompt, result)
             except PromptRejected as rejected:
-                message = str(rejected)
-                set_prompt_status(
+                self._fail_prompt(
                     conn,
+                    job_id,
                     prompt.id,
-                    ("running",),
-                    "failed",
-                    error=message,
-                    cost_usd=result.cost_usd,
-                    duration_ms=result.duration_ms,
+                    str(rejected),
+                    result.cost_usd,
+                    result.duration_ms,
                 )
-                transition(conn, job_id, ("processing",), "failed", error=message)
                 return
             set_prompt_status(
                 conn,
@@ -208,3 +229,23 @@ class ClaudeJobQueue:
                 duration_ms=result.duration_ms,
             )
         transition(conn, job_id, ("processing",), "done")
+
+    def _fail_prompt(
+        self,
+        conn: sqlite3.Connection,
+        job_id: int,
+        prompt_id: int,
+        message: str | None,
+        cost_usd: float | None,
+        duration_ms: int | None,
+    ) -> None:
+        set_prompt_status(
+            conn,
+            prompt_id,
+            ("running", "queued"),
+            "failed",
+            error=message,
+            cost_usd=cost_usd,
+            duration_ms=duration_ms,
+        )
+        transition(conn, job_id, ("processing",), "failed", error=message)

@@ -5,16 +5,19 @@ Phase 2 (D-64, D-66). Each prompt is one Claude Job prompt, run through the `Run
 ## Common rules
 
 - **Order:** `FULL_CV_HISTORY`, then the Fact Sheet, then the questionnaire analysis, then the strategy. Each later prompt may read the earlier outputs.
-- **Input:** the extracted text of the profile files (see Phase 2 step 6), written into the prompt with a label for each file. The runner gives the model no tools (`--tools ""`), so a prompt never reads files itself.
-- **Size:** if the input does not fit in one prompt, the prompt is not sent. The job stops with a message that says which input is too large. Splitting large inputs is not part of Phase 2.
-- **Source:** a source is always `{file, location}`. `file` is the name of an uploaded profile file. `location` says where in it the text is: a page, a section heading, a line range, or a role title with its dates.
+- **Input:** the extracted text of the profile files that extracted with status `ok` (see Phase 2 step 6). Each file is written into the prompt in a block headed with its `file_id`, its kind and its name. The runner gives the model no tools (`--tools ""`), so a prompt never reads files itself.
+- **Building:** each prompt is built when it runs, not when the job is queued, because each one uses the outputs stored before it. The built text is stored with the prompt.
+- **Writing rules:** every prompt includes the writing rules in force. These are the user's own uploaded rules if there are any (their latest extracted text), otherwise `Agent/rules/honesty.md`.
+- **Size:** if the built prompt is larger than 150,000 characters, the prompt is not sent. The prompt fails with a message that says the input is too large. Splitting large inputs is not part of Phase 2.
+- **Schema:** each answer is requested with `--json-schema`. Code validates the answer again against the checks below, because the schema does not check the rules that link one output to another.
+- **Source:** a source is always `{file_id, location}`. `file_id` is the id of an uploaded profile file, as stored. `location` says where in it the text is: a page, a section heading, a line range, or a role title with its dates.
 - **Dates:** a date is `YYYY`, `YYYY-MM` or `YYYY-MM-DD`. A range is written as its start date. A fact with no date in its source gets the date of the source file if the file's name or metadata gives one. Otherwise the prompt returns the date as `""`, and the code check fails.
 - **IDs:** `H-001` for history items, `F-001` for facts, `Q-001` for questionnaire themes, `L-01` for lanes. IDs are unique within one output.
 - **Honesty:** outputs follow `Agent/rules/honesty.md`. They use only what the inputs say.
 
 ## 1. FULL_CV_HISTORY
 
-Input: every master CV (English and French) and every older CV, as extracted text.
+Input: every master CV (English and French), every older CV and every older cover letter, as extracted text (D-07).
 
 Purpose: one history of the career, built from all CVs. Conflicts between sources are recorded, not resolved (D-40). The user reviews the result on the Profile page.
 
@@ -28,7 +31,7 @@ Output (JSON):
       "kind": "role | education | skill | achievement | other",
       "text": "string, in the wording of the source",
       "date": "YYYY | YYYY-MM | YYYY-MM-DD",
-      "source": {"file": "string", "location": "string"},
+      "source": {"file_id": 0, "location": "string"},
       "conflicts": [{"with": "H-002", "note": "string, what differs"}]
     }
   ]
@@ -36,7 +39,7 @@ Output (JSON):
 ```
 
 Code checks:
-- Each item has `id`, `kind` from the list, non-empty `text`, a valid `date`, and a `source` whose `file` is an uploaded CV.
+- Each item has `id`, `kind` from the list, non-empty `text`, a valid `date`, and a `source` whose `file_id` is one of the input files.
 - Each `conflicts[].with` names an item in the same output, and the conflict is listed on both items.
 
 ## 2. Fact Sheet
@@ -54,7 +57,7 @@ Output (JSON):
       "id": "F-001",
       "text": "string, one claim per fact",
       "date": "YYYY | YYYY-MM | YYYY-MM-DD",
-      "source": {"file": "string", "location": "string"},
+      "source": {"file_id": 0, "location": "string"},
       "history_ids": ["H-001"]
     }
   ],
@@ -65,7 +68,7 @@ Output (JSON):
 ```
 
 Code checks (the automated check from the Phase 2 Done-when list):
-- Every fact has a `source.file` that is an uploaded profile file, a non-empty `source.location`, and a valid `date`.
+- Every fact has a `source.file_id` that is one of the input files, a non-empty `source.location`, and a valid `date`.
 - Every `history_ids` entry exists in the `FULL_CV_HISTORY` output.
 - Every `fact_ids` entry in `conflicts` exists, and the conflict is shown in the review screen.
 

@@ -170,3 +170,33 @@ def test_cancel_terminates_the_cli_process(monkeypatch: pytest.MonkeyPatch, tmp_
     assert process.terminated is True
     assert result.ok is False
     assert result.error == "Cancelled."
+
+
+def test_a_json_schema_is_passed_to_the_cli() -> None:
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+    args = build_args("claude", "Reply.", schema)
+    assert args[args.index("--json-schema") + 1] == json.dumps(schema)
+    assert "--json-schema" not in build_args("claude", "Reply.")
+
+
+def test_structured_output_is_used_as_the_answer() -> None:
+    answered = {**RESULT_OK, "result": "", "structured_output": {"ok": True}}
+    parsed = parse_stream(stream(answered), exit_code=0, duration_ms=1)
+    assert parsed.ok is True
+    assert json.loads(parsed.text) == {"ok": True}
+
+
+def test_an_api_error_shows_its_text_instead_of_the_subtype() -> None:
+    overloaded = {
+        **RESULT_OK,
+        "subtype": "success",
+        "is_error": True,
+        "result": "API Error: 529 Overloaded. Try again in a moment.",
+        "api_error_status": 529,
+    }
+    parsed = parse_stream(stream(overloaded), exit_code=1, duration_ms=1)
+    assert parsed.ok is False
+    assert (
+        parsed.error
+        == "Claude Code run failed (API Error: 529 Overloaded. Try again in a moment.)."
+    )

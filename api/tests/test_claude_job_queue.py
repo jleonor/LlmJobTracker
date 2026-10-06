@@ -2,6 +2,7 @@ import sqlite3
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -128,7 +129,12 @@ def test_a_failed_prompt_fails_the_job_and_skips_the_rest(db_path: Path) -> None
         def __init__(self) -> None:
             self.prompts: list[str] = []
 
-        def run(self, prompt: str, cancel: threading.Event | None = None) -> RunResult:
+        def run(
+            self,
+            prompt: str,
+            cancel: threading.Event | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> RunResult:
             self.prompts.append(prompt)
             return RunResult(ok=False, error="Claude Code run failed (error_max_budget).")
 
@@ -226,7 +232,12 @@ def test_cancel_during_a_run_stops_the_prompt_and_keeps_the_job_cancelled(
         def __init__(self) -> None:
             self.started = threading.Event()
 
-        def run(self, prompt: str, cancel: threading.Event | None = None) -> RunResult:
+        def run(
+            self,
+            prompt: str,
+            cancel: threading.Event | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> RunResult:
             self.started.set()
             assert cancel is not None
             cancel.wait(5)

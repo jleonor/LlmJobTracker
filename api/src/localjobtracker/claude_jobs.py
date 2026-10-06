@@ -39,6 +39,7 @@ class PromptRow:
     """One prompt as the worker needs it. The text is not sent to the browser."""
 
     id: int
+    claude_job_id: int
     position: int
     prompt_kind: str
     prompt_text: str
@@ -129,12 +130,20 @@ def job_status(conn: sqlite3.Connection, job_id: int) -> str | None:
 def prompt_rows(conn: sqlite3.Connection, job_id: int) -> list[PromptRow]:
     rows = conn.execute(
         """
-        SELECT id, position, prompt_kind, prompt_text, status
+        SELECT id, claude_job_id, position, prompt_kind, prompt_text, status
         FROM claude_job_prompts WHERE claude_job_id = ? ORDER BY position
         """,
         (job_id,),
     ).fetchall()
     return [PromptRow(**dict(row)) for row in rows]
+
+
+def set_prompt_text(conn: sqlite3.Connection, prompt_id: int, text: str) -> None:
+    """Store the text a prompt was built into, just before it runs."""
+    with conn:
+        conn.execute(
+            "UPDATE claude_job_prompts SET prompt_text = ? WHERE id = ?", (text, prompt_id)
+        )
 
 
 def next_queued_job_id(conn: sqlite3.Connection) -> int | None:

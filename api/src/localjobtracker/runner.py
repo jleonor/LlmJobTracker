@@ -2,7 +2,7 @@
 
 import threading
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel
 
@@ -28,11 +28,17 @@ class RateLimitError(Exception):
 
 
 class Runner(Protocol):
-    def run(self, prompt: str, cancel: threading.Event | None = None) -> RunResult:
+    def run(
+        self,
+        prompt: str,
+        cancel: threading.Event | None = None,
+        json_schema: dict[str, Any] | None = None,
+    ) -> RunResult:
         """Run one prompt. Raise RateLimitError when the plan's limit is hit.
 
         When `cancel` is set during the run, the runner stops the run and returns a failed
-        RunResult (SIGTERM for the CLI, runner-notes.md).
+        RunResult (SIGTERM for the CLI, runner-notes.md). `json_schema` asks for an answer that
+        follows the schema (the CLI's --json-schema flag).
         """
         ...
 
@@ -43,14 +49,21 @@ class FakeRunner:
     def __init__(self, text: str = "OK") -> None:
         self.text = text
         self.prompts: list[str] = []
+        self.schemas: list[dict[str, Any] | None] = []
         self._rate_limits_left = 0
 
     def rate_limit_next(self, times: int = 1) -> None:
         """Make the next `times` calls raise RateLimitError, as a plan limit would."""
         self._rate_limits_left = times
 
-    def run(self, prompt: str, cancel: threading.Event | None = None) -> RunResult:
+    def run(
+        self,
+        prompt: str,
+        cancel: threading.Event | None = None,
+        json_schema: dict[str, Any] | None = None,
+    ) -> RunResult:
         self.prompts.append(prompt)
+        self.schemas.append(json_schema)
         if self._rate_limits_left > 0:
             self._rate_limits_left -= 1
             raise RateLimitError("Simulated plan limit (fake runner).")

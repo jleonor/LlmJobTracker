@@ -26,6 +26,14 @@ from localjobtracker.profile_files import (
     profile_file_text,
     store_profile_file,
 )
+from localjobtracker.profile_pipeline import (
+    ProfileBusy,
+    ProfileNotReady,
+    ProfileOutput,
+    list_latest_outputs,
+    make_pipeline,
+    submit_profile_analysis,
+)
 from localjobtracker.runner import Runner, RunResult
 from localjobtracker.storage import connect
 
@@ -43,7 +51,8 @@ def create_app(
     `run_worker` starts the Claude Jobs worker with the app. Tests leave it off and step the
     queue themselves (ClaudeJobQueue.process_next), so the results are repeatable.
     """
-    queue = ClaudeJobQueue(db_path, runner)
+    render, on_result = make_pipeline()
+    queue = ClaudeJobQueue(db_path, runner, on_result=on_result, render=render)
 
     # A stopped worker can leave jobs half done. Put them back in the queue (D-62).
     startup_conn = connect(db_path)
@@ -141,6 +150,31 @@ def create_app(
         if text is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         return text
+
+    @app.get(
+        "/profile/outputs",
+        response_model=list[ProfileOutput],
+        dependencies=[Depends(require_token)],
+    )
+    def profile_outputs(conn: Annotated[Connection, Depends(get_db)]) -> list[ProfileOutput]:
+        return list_latest_outputs(conn)
+
+    @app.post(
+        "/profile/analysis",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def start_profile_analysis(conn: Annotated[Connection, Depends(get_db)]) -> ClaudeJob:
+        try:
+            job_id = submit_profile_analysis(conn, queue)
+        except ProfileNotReady as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        except ProfileBusy as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        return _job_or_404(conn, job_id)
 
     @app.post(
         "/profile/files/{kind}",
