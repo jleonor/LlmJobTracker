@@ -13,6 +13,8 @@ class RunResult(BaseModel):
     error: str | None = None
     duration_ms: int = 0
     cost_usd: float | None = None
+    # The model the run used, as the CLI reports it.
+    model: str | None = None
 
 
 class RateLimitError(Exception):
@@ -67,4 +69,4 @@ class FakeRunner:
         if self._rate_limits_left > 0:
             self._rate_limits_left -= 1
             raise RateLimitError("Simulated plan limit (fake runner).")
-        return RunResult(ok=True, text=self.text, duration_ms=0, cost_usd=0.0)
+        return RunResult(ok=True, text=self.text, duration_ms=0, cost_usd=0.0, model="fake-model")

@@ -249,6 +249,7 @@ class ClaudeJobQueue:
                 result_text=result.text,
                 cost_usd=result.cost_usd,
                 duration_ms=result.duration_ms,
+                model=result.model,
             )
         transition(conn, job_id, ("processing",), "done")
 

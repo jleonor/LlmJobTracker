@@ -389,6 +389,12 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE profile_files_old RENAME TO profile_files",
         ),
     ),
+    Migration(
+        version=7,
+        name="record the model each prompt ran on",
+        up=("ALTER TABLE claude_job_prompts ADD COLUMN model TEXT",),
+        down=("ALTER TABLE claude_job_prompts DROP COLUMN model",),
+    ),
 )
 
 _LEDGER = """

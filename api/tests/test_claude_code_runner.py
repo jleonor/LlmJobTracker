@@ -9,6 +9,7 @@ import pytest
 
 from localjobtracker.claude_code_runner import (
     MAX_BUDGET_USD,
+    MODEL,
     ClaudeCodeRunner,
     build_args,
     parse_stream,
@@ -236,3 +237,14 @@ def test_the_prompt_is_written_to_standard_input_not_the_command_line(
     assert process.stdin.written == [long_prompt]
     assert process.stdin.closed is True
     assert long_prompt not in commands[0]
+
+
+def test_the_model_is_read_from_the_start_event() -> None:
+    start = {"type": "system", "subtype": "init", "model": "claude-sonnet-5"}
+    parsed = parse_stream(stream(start, RESULT_OK), exit_code=0, duration_ms=1)
+    assert parsed.model == "claude-sonnet-5"
+
+
+def test_the_runner_asks_for_the_profile_model() -> None:
+    args = build_args("claude")
+    assert args[args.index("--model") + 1] == MODEL == "claude-sonnet-5"

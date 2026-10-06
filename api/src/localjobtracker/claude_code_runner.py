@@ -24,6 +24,9 @@ DEFAULT_TIMEOUT_S = 180
 POLL_INTERVAL_S = 0.2
 # The CLI's budget cap is an estimate, not a strict limit (runner-notes.md). Leave a margin.
 MAX_BUDGET_USD = "0.25"
+# The model every profile prompt runs on (D-74). The id is given in full, because the
+# CLI's "sonnet" alias points at a newer model.
+MODEL = "claude-sonnet-5"
 # rate_limit_info.status values that mean the run may continue. Any other status is a limit.
 ALLOWED_RATE_LIMIT_STATUSES = frozenset({"allowed", "allowed_warning"})
 
@@ -34,6 +37,8 @@ def build_args(executable: str, json_schema: dict[str, Any] | None = None) -> li
     args = [
         executable,
         "-p",
+        "--model",
+        MODEL,
         "--output-format",
         "stream-json",
         "--verbose",
@@ -83,6 +88,15 @@ def _rate_limit(events: list[dict[str, Any]]) -> RateLimitError | None:
     return None
 
 
+def _model(events: list[dict[str, Any]]) -> str | None:
+    """The model the CLI reports in its start event, so each run records what it used."""
+    for event in events:
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            model = event.get("model")
+            return model if isinstance(model, str) else None
+    return None
+
+
 def _reset_time(value: object) -> datetime | None:
     if isinstance(value, int | float) and not isinstance(value, bool):
         return datetime.fromtimestamp(value, UTC)
@@ -99,6 +113,7 @@ def parse_stream(stdout: str, exit_code: int, duration_ms: int) -> RunResult:
     limit = _rate_limit(events)
     if limit is not None:
         raise limit
+    model = _model(events)
 
     results = [event for event in events if event.get("type") == "result"]
     if not results:
@@ -119,6 +134,7 @@ def parse_stream(stdout: str, exit_code: int, duration_ms: int) -> RunResult:
             error=f"Claude Code run failed ({reason}).",
             duration_ms=duration_ms,
             cost_usd=cost_usd,
+            model=model,
         )
     # With --json-schema the answer can come as structured_output. Use it when it is there.
     structured = message.get("structured_output")
@@ -128,6 +144,7 @@ def parse_stream(stdout: str, exit_code: int, duration_ms: int) -> RunResult:
         text=text,
         duration_ms=duration_ms,
         cost_usd=cost_usd,
+        model=model,
     )
 
 

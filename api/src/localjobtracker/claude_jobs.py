@@ -20,6 +20,10 @@ class ClaudeJobPrompt(BaseModel):
     error: str | None
     cost_usd: float | None
     duration_ms: int | None
+    model: str | None
+    started_at: str | None
+    finished_at: str | None
+    skipped: bool
 
 
 class ClaudeJob(BaseModel):
@@ -89,7 +93,9 @@ def create_claude_job(
 def _prompts_for(conn: sqlite3.Connection, job_id: int) -> list[ClaudeJobPrompt]:
     rows = conn.execute(
         """
-        SELECT position, prompt_kind, status, error, cost_usd, duration_ms
+        SELECT position, prompt_kind, status, error, cost_usd, duration_ms, model,
+               started_at, finished_at,
+               COALESCE(result_text LIKE 'Skipped%', 0) AS skipped
         FROM claude_job_prompts WHERE claude_job_id = ? ORDER BY position
         """,
         (job_id,),
@@ -241,6 +247,7 @@ def set_prompt_status(
     error: str | None = None,
     cost_usd: float | None = None,
     duration_ms: int | None = None,
+    model: str | None = None,
 ) -> bool:
     """Change one prompt's status if it is in `from_statuses`. Returns whether it changed."""
     placeholders = ", ".join("?" for _ in from_statuses)
@@ -254,6 +261,7 @@ def set_prompt_status(
                 error = ?,
                 cost_usd = COALESCE(?, cost_usd),
                 duration_ms = COALESCE(?, duration_ms),
+                model = COALESCE(?, model),
                 started_at = CASE WHEN ? = 'running' THEN ? ELSE started_at END,
                 finished_at = CASE WHEN ? IN ('done', 'failed', 'cancelled') THEN ? ELSE NULL END
             WHERE id = ? AND status IN ({placeholders})
@@ -264,6 +272,7 @@ def set_prompt_status(
                 error,
                 cost_usd,
                 duration_ms,
+                model,
                 to_status,
                 now,
                 to_status,

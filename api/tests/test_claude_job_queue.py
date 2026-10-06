@@ -300,3 +300,21 @@ def test_an_unexpected_runner_error_fails_the_job_with_a_message(db_path: Path) 
         conn.close()
     assert job is not None and job.error is not None
     assert "The run failed" in job.error and "too long" in job.error
+
+
+def test_a_finished_prompt_records_its_model_and_times(db_path: Path, runner: FakeRunner) -> None:
+    queue = ClaudeJobQueue(db_path, runner)
+    job_id = submit(db_path, queue, "timed", ["one", "two"])
+
+    queue.process_next()
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None
+    first = job.prompts[0]
+    assert first.model == "fake-model"
+    assert first.started_at is not None and first.finished_at is not None
+    assert first.skipped is False
