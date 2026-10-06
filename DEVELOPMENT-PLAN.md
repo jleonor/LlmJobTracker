@@ -1,6 +1,6 @@
 # LocalJobTracker: Development Plan
 
-**Current phase: 2.** Phase 0 and Phase 1 are done. Phase 2's step list is approved in chat (2026-10-06) and waits for your go to start. O-08, O-09 and O-10 are answered (D-62 to D-64). Tables are renamed as D-59 proposes (`job_applications`, `status_history`).
+**Current phase: 2.** Phase 0 and Phase 1 are done. Phase 2 is in progress: steps 1 to 11 are built and committed on `phase-2-profile`. Step 12 (the run on your real files and your review) waits for you. O-08, O-09 and O-10 are answered (D-62 to D-64). Tables are renamed as D-59 proposes (`job_applications`, `status_history`).
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -104,10 +104,10 @@ Step list (approved in chat 2026-10-06; starts when you say go)
 
 Done when
 - [ ] The analysis runs on your real files, and you check its output.
-- [ ] Every fact has a source and a date (automated check).
+- [x] Every fact has a source and a date (automated check). (2026-10-06: `check_facts` in `profile_pipeline.py`, run after a full analysis in `test_a_full_run_stores_the_four_outputs_and_their_facts`, returns no problems. The answer checks reject a missing source or date, and the database rejects an empty date or location.)
 - [ ] You verify or correct the Fact Sheet in the UI.
-- [ ] A queued Claude Job pauses at a simulated plan limit (fake runner) and resumes on click.
-- [ ] Queued Claude Jobs survive an app restart.
+- [x] A queued Claude Job pauses at a simulated plan limit (fake runner) and resumes on click. (2026-10-06: `test_a_plan_limit_pauses_the_job_and_resume_runs_the_prompt_again`. In the browser, Resume on a paused demo job moved it to done, with both prompts done. Screen read through the page text.)
+- [x] Queued Claude Jobs survive an app restart. (2026-10-06: tests in `api/tests/test_claude_job_queue.py` restart the app with a job paused, a job left processing, and a prompt half done. Each comes back as the decisions say (D-62, D-63).)
 - [ ] Personal-data scan of the repo is clean.
 
 Out of scope: positioning for a specific job.
