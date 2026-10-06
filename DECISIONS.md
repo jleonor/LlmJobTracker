@@ -110,6 +110,7 @@ Written from the user's answers on 2026-10-06. The full picture for the phase sp
 | D-70 | 2026-10-06 | Accepted | The Fact Sheet can be uploaded as the user's own version, like the other outputs (D-68). An uploaded Fact Sheet is converted with the same checks, and its facts start unverified. | The user's request. |
 | D-71 | 2026-10-06 | Accepted | The user uploads a cover letter template on the Profile page (kind `cover_letter_template`, migration 6). Phase 5 uses it when cover letters are written. The analysis does not need it. | The user's request. It is the user's own template, so it is kept as an upload and never generated. |
 | D-72 | 2026-10-06 | Accepted | An uploaded Fact Sheet is the Fact Sheet. It is converted from its own file alone, and its facts cite only that file. The CVs and the history are not added to it, and it is not rebuilt when they change. This supersedes the part of D-70 that let it cite the CVs. | The user's decision. Facts that are not in the user's own Fact Sheet should not appear in it. |
+| D-73 | 2026-10-06 | Accepted | The questionnaire report and the positioning strategy have the sections of the documents the user already writes, and the Fact Sheet has a category per fact. Career history items have employer, title, start and end. A strategy fit is a rating from 0.5 to 5 in steps of 0.5, as the user rates lanes. The prompts, the schemas and the checks follow this. | The user asked for generated files that match their own. Each field is checked in code, not only requested. |
 
 ## Open
 

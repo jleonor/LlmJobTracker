@@ -17,123 +17,63 @@ Phase 2 (D-64, D-66). Each prompt is one Claude Job prompt, run through the `Run
 
 ## 1. FULL_CV_HISTORY
 
-Input: every master CV (English and French), every older CV and every older cover letter, as extracted text (D-07).
+Input: every master CV, every older CV, every older cover letter and the user's own career history, as extracted text.
 
-Purpose: one history of the career, built from all CVs. Conflicts between sources are recorded, not resolved (D-40). The user reviews the result on the Profile page.
+Purpose: one history of the career. Conflicts between sources are recorded, not resolved (D-40). The user reviews the result on the Profile page.
 
-Output (JSON):
+Output: an object with `items`. Each item has every field, using an empty string where the source does not state it:
 
-```json
-{
-  "items": [
-    {
-      "id": "H-001",
-      "kind": "role | education | skill | achievement | other",
-      "text": "string, in the wording of the source",
-      "date": "YYYY | YYYY-MM | YYYY-MM-DD",
-      "source": {"file_id": 0, "location": "string"},
-      "conflicts": [{"with": "H-002", "note": "string, what differs"}]
-    }
-  ]
-}
-```
+- `id` (`H-001`), `kind` (role, education, skill, achievement or other), `text` (the wording of the source)
+- `employer`, `title`
+- `date`: the start date (`YYYY`, `YYYY-MM` or `YYYY-MM-DD`)
+- `end`: empty, `present`, or a date
+- `source`: `{file_id, location}`
+- `conflicts`: `[{with, note}]`
 
-Code checks:
-- Each item has `id`, `kind` from the list, non-empty `text`, a valid `date`, and a `source` whose `file_id` is one of the input files.
-- Each `conflicts[].with` names an item in the same output, and the conflict is listed on both items.
+Code checks: ids are unique, `kind` is from the list, `text` is not empty, `date` is valid, `end` is empty, `present` or a date, the source file is one of the inputs, and each conflict is listed on both items.
 
 ## 2. Fact Sheet
 
-Input: the `FULL_CV_HISTORY` output and the extracted text of the CVs (for locations).
+Input: the `FULL_CV_HISTORY` output and the extracted text of the CVs and letters (for locations). An uploaded Fact Sheet is converted from its own file alone (see below).
 
-Purpose: the non-positioned list of facts that later documents may use, once the user verifies each one (D-09). The Fact Sheet holds no lanes and no positioning.
+Purpose: the list of facts that later documents may use, once the user verifies each one (D-09). Each fact is one claim, with a category, so the facts can be picked by kind.
 
-Output (JSON):
+Output: `facts`, each with `id` (`F-001`), `category` (role, responsibility, achievement, skill, tool, education, language, certification or other), `text`, `date`, `source` (`{file_id, location}`) and `history_ids`. Then `conflicts`: `[{id, fact_ids, note}]`, each naming at least two facts.
 
-```json
-{
-  "facts": [
-    {
-      "id": "F-001",
-      "text": "string, one claim per fact",
-      "date": "YYYY | YYYY-MM | YYYY-MM-DD",
-      "source": {"file_id": 0, "location": "string"},
-      "history_ids": ["H-001"]
-    }
-  ],
-  "conflicts": [
-    {"id": "C-01", "fact_ids": ["F-002", "F-009"], "note": "string"}
-  ]
-}
-```
+Code checks: ids are unique, `category` is from the list, every source file is an input, every `history_ids` entry exists, and every conflict names known facts.
 
-Code checks (the automated check from the Phase 2 Done-when list):
-- Every fact has a `source.file_id` that is one of the input files, a non-empty `source.location`, and a valid `date`.
-- Every `history_ids` entry exists in the `FULL_CV_HISTORY` output.
-- Every `fact_ids` entry in `conflicts` exists, and the conflict is shown in the review screen.
+Facts are stored unverified. Only verified facts are usable later (Phase 2 step 8).
 
-Facts are stored with status `unverified`. Only verified facts are usable later (Phase 2 step 8).
+## 3. Questionnaire analysis (the questionnaire report)
 
-## 3. Questionnaire analysis
+Input: the questionnaire (extracted text), and the Fact Sheet (fact ids and text).
 
-Input: the questionnaire (extracted text), and the Fact Sheet (fact IDs and text, not the status).
+Purpose: the report on what the questionnaire says. Its sections follow the report the user writes (D-73):
 
-Purpose: what the questionnaire says about the user's goals, preferences and limits, linked to the facts that support each point.
+- `how_the_material_reads`: a text on how the answers read as a whole
+- `career_narrative`: a text on the reasons behind the career choices
+- `patterns`: recurring themes, each `{id (Q-001), title, text, questionnaire_ref, fact_ids}`
+- `independent_work`: projects or products made outside a job, each `{title, text, fact_ids}`
+- `cv_support`: points that support the patterns, reframed for the CV, each `{text, fact_ids}`
+- `nuance`: what a first reading would miss, each `{text, questionnaire_ref}`
+- `cv_implications`: a list of text
+- `open_items`: a list of text
 
-Output (JSON):
+Code checks: the first two texts are not empty, pattern ids are unique, every pattern has a title, text and questionnaire reference, and every fact id exists.
 
-```json
-{
-  "themes": [
-    {
-      "id": "Q-001",
-      "text": "string",
-      "questionnaire_ref": "string, the question or section",
-      "fact_ids": ["F-004"]
-    }
-  ],
-  "gaps": [{"text": "string, a question the questionnaire leaves open"}]
-}
-```
-
-Code checks:
-- Every `fact_ids` entry exists in the Fact Sheet output.
-- `questionnaire_ref` is non-empty.
-
-## 4. Strategy overview (with lanes)
+## 4. Strategy (the positioning strategy)
 
 Input: the questionnaire analysis, and the Fact Sheet.
 
-Purpose: a non-positioned overview of the user's strategy, and the lanes that group the job search (D-58, O-12). A lane is a positioning group, which the user edits on the Profile page.
+Purpose: the positioning strategy. Its sections follow the strategy the user writes (D-73):
 
-Output (JSON):
+- `differentiator`: one paragraph
+- `primary_lanes` and `secondary_lanes`: each lane is `{id (L-01), role, fit, why, fact_ids, questionnaire_ids}`. A fit is a rating from 0.5 to 5 in steps of 0.5.
+- `avoid`: roles not to target as primary, each `{role, why}`
+- `geography`, `comp_anchor` (empty if the material does not state it), `effort_allocation`
+- `open_questions`: a list of text
 
-```json
-{
-  "overview": "string, a short plain-language summary",
-  "lanes": [
-    {
-      "id": "L-01",
-      "name": "string",
-      "description": "string",
-      "fact_ids": ["F-001"],
-      "questionnaire_ids": ["Q-001"]
-    }
-  ],
-  "open_points": ["string"]
-}
-```
-
-Code checks:
-- Every `fact_ids` entry exists in the Fact Sheet. Every `questionnaire_ids` entry exists in the questionnaire analysis.
-- Each lane has a non-empty `name` and at least one fact.
-- Lane names are unique.
-
-The overview and lanes are not job positioning. Positioning for a specific job is Phase 5.
-
-## Storage
-
-Each validated output is stored as a row in `profile_outputs` with its kind, version number, the job that produced it, the input file hashes, and the JSON. A failed check stores nothing and marks the Claude Job as failed, with the check's message.
+Code checks: lane ids are unique, a lane has a role, a fit in steps of 0.5 between 0.5 and 5, a reason, and at least one known fact. Lane roles are unique, and every questionnaire id exists.
 
 ## Own versions and what a run does (D-68, D-69)
 

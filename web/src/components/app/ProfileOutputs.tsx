@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ApiError, fetchProfileOutputs, saveProfileOutput, startProfileAnalysis } from '@/lib/api'
@@ -118,29 +118,84 @@ function QuestionnaireReport({ output }: { output: ProfileOutput | undefined }) 
   if (!output) return null
   const body = output.body as QuestionnaireBody
   return (
-    <div className="flex flex-col gap-2 rounded border border-border bg-background p-3">
+    <div className="flex flex-col gap-3 rounded border border-border bg-background p-3">
       <h3 className="text-sm font-semibold">Questionnaire report</h3>
       <VersionLine output={output} />
-      <ul className="flex flex-col gap-1 text-sm">
-        {body.themes.map((theme) => (
-          <li key={theme.id}>
-            <span className="font-mono text-xs text-muted-foreground">
-              {theme.questionnaire_ref}:
-            </span>{' '}
-            {theme.text}
-          </li>
-        ))}
-      </ul>
-      {body.gaps.length > 0 && (
-        <div className="text-sm">
-          <p className="text-xs font-semibold text-muted-foreground">Left open by the questionnaire</p>
-          <ul className="list-disc pl-5">
-            {body.gaps.map((gap) => (
-              <li key={gap.text}>{gap.text}</li>
+      <ReportSection title="How the material reads">
+        <p className="text-sm">{body.how_the_material_reads}</p>
+      </ReportSection>
+      <ReportSection title="Career narrative">
+        <p className="text-sm">{body.career_narrative}</p>
+      </ReportSection>
+      <ReportSection title="Patterns">
+        <ul className="flex flex-col gap-2 text-sm">
+          {body.patterns.map((pattern) => (
+            <li key={pattern.id}>
+              <span className="font-semibold">{pattern.title}.</span> {pattern.text}{' '}
+              <span className="font-mono text-xs text-muted-foreground">({pattern.questionnaire_ref})</span>
+            </li>
+          ))}
+        </ul>
+      </ReportSection>
+      {body.independent_work.length > 0 && (
+        <ReportSection title="Independent work">
+          <ul className="flex flex-col gap-2 text-sm">
+            {body.independent_work.map((item) => (
+              <li key={item.title}>
+                <span className="font-semibold">{item.title}.</span> {item.text}
+              </li>
             ))}
           </ul>
-        </div>
+        </ReportSection>
       )}
+      {body.cv_support.length > 0 && (
+        <ReportSection title="Support in the CV">
+          <ul className="list-disc pl-5 text-sm">
+            {body.cv_support.map((item) => (
+              <li key={item.text}>{item.text}</li>
+            ))}
+          </ul>
+        </ReportSection>
+      )}
+      {body.nuance.length > 0 && (
+        <ReportSection title="Nuance a first reading misses">
+          <ul className="flex flex-col gap-1 text-sm">
+            {body.nuance.map((item) => (
+              <li key={item.text}>
+                {item.text}{' '}
+                <span className="font-mono text-xs text-muted-foreground">({item.questionnaire_ref})</span>
+              </li>
+            ))}
+          </ul>
+        </ReportSection>
+      )}
+      {body.cv_implications.length > 0 && (
+        <ReportSection title="Implications for the CV">
+          <ul className="list-disc pl-5 text-sm">
+            {body.cv_implications.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </ReportSection>
+      )}
+      {body.open_items.length > 0 && (
+        <ReportSection title="Open items">
+          <ul className="list-disc pl-5 text-sm">
+            {body.open_items.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </ReportSection>
+      )}
+    </div>
+  )
+}
+
+function ReportSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h4>
+      {children}
     </div>
   )
 }
@@ -219,16 +274,17 @@ function StrategyEditor({ output, onSaved }: { output: ProfileOutput | undefined
   return <StrategyForm key={output.id} output={output} onSaved={onSaved} />
 }
 
+// The strategy by its sections (D-73). The user edits the differentiator, the lanes' roles and
+// reasons, and the closing sections. Fits, fact links and the lists stay as Claude wrote them.
 function StrategyForm({ output, onSaved }: { output: ProfileOutput; onSaved: () => void }) {
   const [body, setBody] = useState(() => structuredClone(output.body) as StrategyBody)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  function changeLane(index: number, change: Partial<Pick<Lane, 'name' | 'description'>>) {
+  function changeLane(group: 'primary_lanes' | 'secondary_lanes', index: number, change: Partial<Lane>) {
     setBody((current) => {
-      if (!current) return current
-      const lanes = current.lanes.map((lane, i) => (i === index ? { ...lane, ...change } : lane))
-      return { ...current, lanes }
+      const lanes = current[group].map((lane, i) => (i === index ? { ...lane, ...change } : lane))
+      return { ...current, [group]: lanes }
     })
   }
 
@@ -246,32 +302,94 @@ function StrategyForm({ output, onSaved }: { output: ProfileOutput; onSaved: () 
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded border border-border bg-background p-3">
-      <h3 className="text-sm font-semibold">Strategy and lanes</h3>
+    <div className="flex flex-col gap-4 rounded border border-border bg-background p-3">
+      <h3 className="text-sm font-semibold">Positioning strategy</h3>
       <VersionLine output={output} />
-      <p className="text-sm">{body.overview}</p>
-      <ul className="flex flex-col gap-3">
-        {body.lanes.map((lane, index) => (
-          <li key={lane.id} className="flex flex-col gap-1 rounded border border-border p-2">
-            <input
-              aria-label={`Name of lane ${lane.id}`}
-              className="rounded border border-border bg-card p-1 text-sm font-semibold text-foreground"
-              value={lane.name}
-              onChange={(event) => changeLane(index, { name: event.target.value })}
-            />
-            <textarea
-              aria-label={`Description of lane ${lane.id}`}
-              className="rounded border border-border bg-card p-1 text-sm text-foreground"
-              rows={2}
-              value={lane.description}
-              onChange={(event) => changeLane(index, { description: event.target.value })}
-            />
-            <p className="font-mono text-xs text-muted-foreground">
-              facts: {lane.fact_ids.join(', ')}
-            </p>
-          </li>
-        ))}
-      </ul>
+
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Differentiator
+        <textarea
+          aria-label="Differentiator"
+          className="rounded border border-border bg-card p-1 text-sm text-foreground"
+          rows={3}
+          value={body.differentiator}
+          onChange={(event) => setBody({ ...body, differentiator: event.target.value })}
+        />
+      </label>
+
+      {(['primary_lanes', 'secondary_lanes'] as const).map((group) => (
+        <div key={group} className="flex flex-col gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {group === 'primary_lanes' ? 'Primary lanes' : 'Secondary lanes'}
+          </h4>
+          <ul className="flex flex-col gap-2">
+            {body[group].map((lane, index) => (
+              <li key={lane.id} className="flex flex-col gap-1 rounded border border-border p-2">
+                <div className="flex items-baseline gap-2">
+                  <input
+                    aria-label={`Role of lane ${lane.id}`}
+                    className="flex-1 rounded border border-border bg-card p-1 text-sm font-semibold text-foreground"
+                    value={lane.role}
+                    onChange={(event) => changeLane(group, index, { role: event.target.value })}
+                  />
+                  <span className="font-mono text-xs text-muted-foreground">fit {lane.fit} / 5</span>
+                </div>
+                <textarea
+                  aria-label={`Why lane ${lane.id}`}
+                  className="rounded border border-border bg-card p-1 text-sm text-foreground"
+                  rows={2}
+                  value={lane.why}
+                  onChange={(event) => changeLane(group, index, { why: event.target.value })}
+                />
+                <p className="font-mono text-xs text-muted-foreground">
+                  facts: {lane.fact_ids.join(', ')}
+                </p>
+              </li>
+            ))}
+            {body[group].length === 0 && <li className="text-xs text-muted-foreground">None.</li>}
+          </ul>
+        </div>
+      ))}
+
+      {body.avoid.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Avoid as primary targets
+          </h4>
+          <ul className="flex flex-col gap-1 text-sm">
+            {body.avoid.map((item) => (
+              <li key={item.role}>
+                <span className="font-semibold">{item.role}.</span> {item.why}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {(['geography', 'comp_anchor', 'effort_allocation'] as const).map((key) => (
+        <label key={key} className="flex flex-col gap-1 text-xs text-muted-foreground">
+          {key === 'geography' ? 'Geography' : key === 'comp_anchor' ? 'Comp anchor' : 'Effort allocation'}
+          <textarea
+            aria-label={key}
+            className="rounded border border-border bg-card p-1 text-sm text-foreground"
+            rows={2}
+            value={body[key]}
+            onChange={(event) => setBody({ ...body, [key]: event.target.value })}
+          />
+        </label>
+      ))}
+
+      {body.open_questions.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Open questions</h4>
+          <ul className="list-disc pl-5 text-sm">
+            {body.open_questions.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

@@ -89,19 +89,36 @@ export type HistoryItem = {
 export type FullCvHistoryBody = { items: HistoryItem[] }
 
 export type QuestionnaireBody = {
-  themes: { id: string; text: string; questionnaire_ref: string; fact_ids: string[] }[]
-  gaps: { text: string }[]
+  how_the_material_reads: string
+  career_narrative: string
+  patterns: { id: string; title: string; text: string; questionnaire_ref: string; fact_ids: string[] }[]
+  independent_work: { title: string; text: string; fact_ids: string[] }[]
+  cv_support: { text: string; fact_ids: string[] }[]
+  nuance: { text: string; questionnaire_ref: string }[]
+  cv_implications: string[]
+  open_items: string[]
 }
 
+// A lane of the strategy. A fit is a rating from 0.5 to 5 in steps of 0.5 (D-73).
 export type Lane = {
   id: string
-  name: string
-  description: string
+  role: string
+  fit: number
+  why: string
   fact_ids: string[]
   questionnaire_ids: string[]
 }
 
-export type StrategyBody = { overview: string; lanes: Lane[]; open_points: string[] }
+export type StrategyBody = {
+  differentiator: string
+  primary_lanes: Lane[]
+  secondary_lanes: Lane[]
+  avoid: { role: string; why: string }[]
+  geography: string
+  comp_anchor: string
+  effort_allocation: string
+  open_questions: string[]
+}
 
 export type ProfileOutput = {
   id: number
