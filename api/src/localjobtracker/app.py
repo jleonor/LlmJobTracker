@@ -13,8 +13,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from localjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
 from localjobtracker.claude_jobs import (
     ClaudeJob,
+    PromptExchange,
     get_claude_job,
     list_claude_jobs,
+    prompt_exchange,
     recover_interrupted,
 )
 from localjobtracker.job_applications import JobApplication, list_job_applications
@@ -130,6 +132,19 @@ def create_app(
         if not queue.resume(conn, job_id):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Not paused.")
         return _job_or_404(conn, job_id)
+
+    @app.get(
+        "/claude-jobs/{job_id}/prompts/{position}",
+        response_model=PromptExchange,
+        dependencies=[Depends(require_token)],
+    )
+    def claude_job_exchange(
+        job_id: int, position: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> PromptExchange:
+        exchange = prompt_exchange(conn, job_id, position)
+        if exchange is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return exchange
 
     @app.post(
         "/claude-jobs/{job_id}/cancel",

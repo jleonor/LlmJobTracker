@@ -368,3 +368,27 @@ def test_a_manual_resume_clears_the_reset_time(db_path: Path) -> None:
     finally:
         conn.close()
     assert job is not None and job.resume_at is None
+
+
+def test_a_rejected_answer_is_still_kept_with_the_prompt(db_path: Path, runner: FakeRunner) -> None:
+    from localjobtracker.claude_job_queue import PromptRejected
+    from localjobtracker.claude_jobs import prompt_exchange
+
+    runner.text = "a wrong answer"
+
+    def reject(_conn: sqlite3.Connection, _prompt: object, _result: RunResult) -> None:
+        raise PromptRejected("history item: id must look like H-.")
+
+    queue = ClaudeJobQueue(db_path, runner, on_result=reject)
+    job_id = submit(db_path, queue, "rejected", ["the sent text"])
+    queue.process_next()
+
+    conn = connect(db_path)
+    try:
+        exchange = prompt_exchange(conn, job_id, 0)
+    finally:
+        conn.close()
+    assert exchange is not None
+    assert exchange.prompt_text == "the sent text"
+    assert exchange.result_text == "a wrong answer"
+    assert exchange.error == "history item: id must look like H-."

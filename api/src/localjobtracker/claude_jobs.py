@@ -146,6 +146,35 @@ def prompt_rows(conn: sqlite3.Connection, job_id: int) -> list[PromptRow]:
     return [PromptRow(**dict(row)) for row in rows]
 
 
+class PromptExchange(BaseModel):
+    """What was sent to Claude for one prompt, and what came back (D-77)."""
+
+    position: int
+    prompt_kind: str
+    prompt_text: str
+    result_text: str | None
+    error: str | None
+
+
+def store_answer(conn: sqlite3.Connection, prompt_id: int, text: str) -> None:
+    """Keep Claude's answer as it came back, before any check runs (D-77)."""
+    with conn:
+        conn.execute(
+            "UPDATE claude_job_prompts SET result_text = ? WHERE id = ?", (text, prompt_id)
+        )
+
+
+def prompt_exchange(conn: sqlite3.Connection, job_id: int, position: int) -> PromptExchange | None:
+    row = conn.execute(
+        """
+        SELECT position, prompt_kind, prompt_text, result_text, error
+        FROM claude_job_prompts WHERE claude_job_id = ? AND position = ?
+        """,
+        (job_id, position),
+    ).fetchone()
+    return None if row is None else PromptExchange(**dict(row))
+
+
 def set_prompt_text(conn: sqlite3.Connection, prompt_id: int, text: str) -> None:
     """Store the text a prompt was built into, just before it runs."""
     with conn:

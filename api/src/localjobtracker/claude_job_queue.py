@@ -29,6 +29,7 @@ from localjobtracker.claude_jobs import (
     resume_job,
     set_prompt_status,
     set_prompt_text,
+    store_answer,
     transition,
 )
 from localjobtracker.runner import RateLimitError, Runner, RunResult
@@ -232,6 +233,8 @@ class ClaudeJobQueue:
                     return
                 self._fail_prompt(conn, job_id, prompt.id, f"The run failed: {error}", None, None)
                 return
+            if result.text:
+                store_answer(conn, prompt.id, result.text)
             if self._stop.is_set():
                 return
             if cancel.is_set():
