@@ -5,6 +5,8 @@ description = "Local job application tracker API"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
+    "pypdf>=6.19.0",
+    "python-docx>=1.2.0",
     "uvicorn>=0.32",
 ]
 

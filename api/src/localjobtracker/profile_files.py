@@ -13,6 +13,7 @@ from typing import Final
 
 from pydantic import BaseModel
 
+from localjobtracker.extraction import extract
 from localjobtracker.migrations import PROFILE_FILE_KINDS
 
 PROFILE_FOLDER_NAME: Final = "profile"
@@ -36,6 +37,15 @@ class ProfileFile(BaseModel):
     sha256: str
     size_bytes: int
     uploaded_at: str
+    extraction_status: str | None
+    extraction_message: str | None
+
+
+class ProfileFileText(BaseModel):
+    id: int
+    extraction_status: str | None
+    extraction_message: str | None
+    text: str
 
 
 def profile_folder(data_folder: Path) -> Path:
@@ -84,14 +94,26 @@ def store_profile_file(
         target.write_bytes(content)
 
     uploaded_at = _now()
+    result = extract(target)
     with conn:
         cursor = conn.execute(
             """
-            INSERT INTO profile_files
-                (kind, original_name, stored_path, sha256, size_bytes, uploaded_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO profile_files (
+                kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                extraction_status, extraction_message, extracted_text
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (kind, name, relative.as_posix(), digest, len(content), uploaded_at),
+            (
+                kind,
+                name,
+                relative.as_posix(),
+                digest,
+                len(content),
+                uploaded_at,
+                result.status,
+                result.message,
+                result.text,
+            ),
         )
     file_id = cursor.lastrowid
     if file_id is None:
@@ -103,14 +125,35 @@ def store_profile_file(
         sha256=digest,
         size_bytes=len(content),
         uploaded_at=uploaded_at,
+        extraction_status=result.status,
+        extraction_message=result.message,
     )
 
 
 def list_profile_files(conn: sqlite3.Connection) -> list[ProfileFile]:
     rows = conn.execute(
         """
-        SELECT id, kind, original_name, sha256, size_bytes, uploaded_at
+        SELECT id, kind, original_name, sha256, size_bytes, uploaded_at,
+               extraction_status, extraction_message
         FROM profile_files ORDER BY kind, id
         """
     ).fetchall()
     return [ProfileFile(**dict(row)) for row in rows]
+
+
+def profile_file_text(conn: sqlite3.Connection, file_id: int) -> ProfileFileText | None:
+    row = conn.execute(
+        """
+        SELECT id, extraction_status, extraction_message, extracted_text
+        FROM profile_files WHERE id = ?
+        """,
+        (file_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return ProfileFileText(
+        id=row["id"],
+        extraction_status=row["extraction_status"],
+        extraction_message=row["extraction_message"],
+        text=row["extracted_text"] or "",
+    )

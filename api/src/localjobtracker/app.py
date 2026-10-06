@@ -20,8 +20,10 @@ from localjobtracker.claude_jobs import (
 from localjobtracker.job_applications import JobApplication, list_job_applications
 from localjobtracker.profile_files import (
     ProfileFile,
+    ProfileFileText,
     ProfileUploadError,
     list_profile_files,
+    profile_file_text,
     store_profile_file,
 )
 from localjobtracker.runner import Runner, RunResult
@@ -126,6 +128,19 @@ def create_app(
     )
     def profile_files(conn: Annotated[Connection, Depends(get_db)]) -> list[ProfileFile]:
         return list_profile_files(conn)
+
+    @app.get(
+        "/profile/files/{file_id}/text",
+        response_model=ProfileFileText,
+        dependencies=[Depends(require_token)],
+    )
+    def profile_file_text_route(
+        file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> ProfileFileText:
+        text = profile_file_text(conn, file_id)
+        if text is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return text
 
     @app.post(
         "/profile/files/{kind}",

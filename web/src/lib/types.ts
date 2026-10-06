@@ -34,4 +34,6 @@ export type ProfileFile = {
   sha256: string
   size_bytes: number
   uploaded_at: string
+  extraction_status: string | null
+  extraction_message: string | null
 }

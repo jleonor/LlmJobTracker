@@ -1,0 +1,3 @@
+Questionnaire synthétique.
+Q1 : Quels postes vous intéressent ?
+R : Postes d'analyste.

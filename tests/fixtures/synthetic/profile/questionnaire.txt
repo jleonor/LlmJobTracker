@@ -1,0 +1,3 @@
+Synthetic questionnaire.
+Q1: Which roles interest you?
+A: Analyst roles with reporting.
