@@ -38,7 +38,8 @@ _V4_FILE_KINDS = (
     "own_strategy",
 )
 # The user may also upload their own Fact Sheet (D-70). Migration 5 adds it.
-PROFILE_FILE_KINDS = (
+# Kinds as migration 5 defined them.
+_V5_FILE_KINDS = (
     "master_cv",
     "older_cv",
     "older_letter",
@@ -49,6 +50,8 @@ PROFILE_FILE_KINDS = (
     "own_strategy",
     "own_fact_sheet",
 )
+# The cover letter template is the user's own template for letters (Phase 5 uses it, D-71).
+PROFILE_FILE_KINDS = (*_V5_FILE_KINDS, "cover_letter_template")
 EXTRACTION_STATUSES = ("ok", "no_text", "unsupported", "failed")
 PROFILE_OUTPUT_KINDS = ("full_cv_history", "fact_sheet", "questionnaire_analysis", "strategy")
 FACT_STATUSES = ("unverified", "verified", "rejected")
@@ -340,6 +343,40 @@ MIGRATIONS: tuple[Migration, ...] = (
             "(SELECT id FROM profile_files WHERE kind = 'own_fact_sheet')",
             "DELETE FROM profile_files WHERE kind = 'own_fact_sheet'",
             _profile_files_table("profile_files_old", _V4_FILE_KINDS),
+            """
+            INSERT INTO profile_files_old
+                (id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                 extraction_status, extraction_message, extracted_text)
+            SELECT id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                   extraction_status, extraction_message, extracted_text
+            FROM profile_files
+            """,
+            "DROP TABLE profile_files",
+            "ALTER TABLE profile_files_old RENAME TO profile_files",
+        ),
+    ),
+    Migration(
+        version=6,
+        name="add the cover letter template as an upload kind",
+        rebuild=True,
+        up=(
+            _profile_files_table("profile_files_new", PROFILE_FILE_KINDS),
+            """
+            INSERT INTO profile_files_new
+                (id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                 extraction_status, extraction_message, extracted_text)
+            SELECT id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                   extraction_status, extraction_message, extracted_text
+            FROM profile_files
+            """,
+            "DROP TABLE profile_files",
+            "ALTER TABLE profile_files_new RENAME TO profile_files",
+        ),
+        down=(
+            "DELETE FROM facts WHERE source_file_id IN "
+            "(SELECT id FROM profile_files WHERE kind = 'cover_letter_template')",
+            "DELETE FROM profile_files WHERE kind = 'cover_letter_template'",
+            _profile_files_table("profile_files_old", _V5_FILE_KINDS),
             """
             INSERT INTO profile_files_old
                 (id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,

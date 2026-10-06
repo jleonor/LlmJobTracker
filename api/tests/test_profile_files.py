@@ -127,3 +127,11 @@ def test_upload_without_the_token_is_rejected(db_path: Path) -> None:
     with TestClient(create_app(TOKEN, db_path, FakeRunner())) as bare:
         response = bare.post("/profile/files/older_cv", content=SYNTHETIC_CV)
         assert response.status_code == 401
+
+
+def test_cover_letter_template_is_stored_as_its_own_kind(
+    upload_client: TestClient, db_path: Path
+) -> None:
+    response = upload(upload_client, "cover_letter_template", "letter template.docx", SYNTHETIC_CV)
+    assert response.status_code == 201
+    assert rows(db_path)[0]["kind"] == "cover_letter_template"
