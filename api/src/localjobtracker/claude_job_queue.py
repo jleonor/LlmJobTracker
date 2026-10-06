@@ -188,6 +188,12 @@ class ClaudeJobQueue:
                 except PromptRejected as rejected:
                     self._fail_prompt(conn, job_id, prompt.id, str(rejected), None, None)
                     return
+                except Exception as error:
+                    # Any other failure still ends the job with a message, not in processing.
+                    self._fail_prompt(
+                        conn, job_id, prompt.id, f"Could not build the prompt: {error}", None, None
+                    )
+                    return
                 if rendered.skip:
                     set_prompt_status(
                         conn,
@@ -206,6 +212,11 @@ class ClaudeJobQueue:
                     return
                 set_prompt_status(conn, prompt.id, ("running",), "queued")
                 transition(conn, job_id, ("processing",), "paused", error=_paused_message(limit))
+                return
+            except Exception as error:
+                if self._stop.is_set():
+                    return
+                self._fail_prompt(conn, job_id, prompt.id, f"The run failed: {error}", None, None)
                 return
             if self._stop.is_set():
                 return

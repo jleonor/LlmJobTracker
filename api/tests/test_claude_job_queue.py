@@ -273,3 +273,30 @@ def test_list_is_in_creation_order_and_hides_prompt_text(
         assert job_status(conn, jobs[0]["id"]) == "queued"
     finally:
         conn.close()
+
+
+def test_an_unexpected_runner_error_fails_the_job_with_a_message(db_path: Path) -> None:
+    class BrokenRunner:
+        def run(
+            self,
+            prompt: str,
+            cancel: threading.Event | None = None,
+            json_schema: dict[str, Any] | None = None,
+        ) -> RunResult:
+            raise OSError("The filename or extension is too long")
+
+    queue = ClaudeJobQueue(db_path, BrokenRunner())
+    job_id = submit(db_path, queue, "broken", ["one"])
+
+    queue.process_next()
+
+    status, prompt_statuses = read_job(db_path, job_id)
+    assert status == "failed"
+    assert prompt_statuses == ["failed"]
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None and job.error is not None
+    assert "The run failed" in job.error and "too long" in job.error

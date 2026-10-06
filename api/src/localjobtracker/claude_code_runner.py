@@ -28,13 +28,12 @@ MAX_BUDGET_USD = "0.25"
 ALLOWED_RATE_LIMIT_STATUSES = frozenset({"allowed", "allowed_warning"})
 
 
-def build_args(
-    executable: str, prompt: str, json_schema: dict[str, Any] | None = None
-) -> list[str]:
+def build_args(executable: str, json_schema: dict[str, Any] | None = None) -> list[str]:
+    # The prompt is not an argument. Windows limits a command line to about 32,000 characters,
+    # and a profile prompt can hold every CV. The prompt goes to standard input instead.
     args = [
         executable,
         "-p",
-        prompt,
         "--output-format",
         "stream-json",
         "--verbose",
@@ -149,13 +148,21 @@ class ClaudeCodeRunner:
         self.workdir.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
         process = subprocess.Popen(
-            build_args(executable, prompt, json_schema),
+            build_args(executable, json_schema),
             cwd=self.workdir,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
         )
+        assert process.stdin is not None
+        try:
+            process.stdin.write(prompt)
+            process.stdin.close()
+        except BrokenPipeError:
+            # The CLI stopped reading early. Its output below says why.
+            pass
         deadline = started + self.timeout_s
         while True:
             try:

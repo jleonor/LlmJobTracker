@@ -52,12 +52,13 @@ def stream(*events: Mapping[str, object]) -> str:
 
 
 def test_build_args_keeps_every_run_restricted() -> None:
-    args = build_args("claude", "Reply with OK.")
+    args = build_args("claude")
     for flag in REQUIRED_FLAGS:
         assert flag in args
     assert args[args.index("--tools") + 1] == ""
     assert args[args.index("--max-budget-usd") + 1] == MAX_BUDGET_USD
-    assert args[1:3] == ["-p", "Reply with OK."]
+    assert args[1] == "-p"
+    assert "Reply with OK." not in args  # the prompt goes through stdin
 
 
 def test_parse_success_reads_result_text_and_cost() -> None:
@@ -138,10 +139,23 @@ def test_live_run_replies_ok(tmp_path: Path) -> None:
     assert "OK" in result.text
 
 
+class _FakeStdin:
+    def __init__(self) -> None:
+        self.written: list[str] = []
+        self.closed = False
+
+    def write(self, text: str) -> None:
+        self.written.append(text)
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class _RunningProcess:
     """Stands in for a CLI process that keeps running until it is terminated."""
 
     def __init__(self) -> None:
+        self.stdin = _FakeStdin()
         self.terminated = False
         self.returncode: int | None = None
 
@@ -174,9 +188,9 @@ def test_cancel_terminates_the_cli_process(monkeypatch: pytest.MonkeyPatch, tmp_
 
 def test_a_json_schema_is_passed_to_the_cli() -> None:
     schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
-    args = build_args("claude", "Reply.", schema)
+    args = build_args("claude", schema)
     assert args[args.index("--json-schema") + 1] == json.dumps(schema)
-    assert "--json-schema" not in build_args("claude", "Reply.")
+    assert "--json-schema" not in build_args("claude")
 
 
 def test_structured_output_is_used_as_the_answer() -> None:
@@ -200,3 +214,25 @@ def test_an_api_error_shows_its_text_instead_of_the_subtype() -> None:
         parsed.error
         == "Claude Code run failed (API Error: 529 Overloaded. Try again in a moment.)."
     )
+
+
+def test_the_prompt_is_written_to_standard_input_not_the_command_line(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    process = _RunningProcess()
+    commands: list[list[str]] = []
+
+    def fake_popen(args: list[str], **_kwargs: object) -> _RunningProcess:
+        commands.append(args)
+        process.terminated = True  # ends the run at once; the output is not the point here
+        return process
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "claude")
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    long_prompt = "x" * 40_000
+
+    ClaudeCodeRunner(workdir=tmp_path).run(long_prompt)
+
+    assert process.stdin.written == [long_prompt]
+    assert process.stdin.closed is True
+    assert long_prompt not in commands[0]
