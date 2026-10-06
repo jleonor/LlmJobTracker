@@ -22,7 +22,8 @@ def main() -> None:
         conn.close()
     token = os.environ.get("LJT_TOKEN") or secrets.token_urlsafe(32)
     runner = ClaudeCodeRunner(workdir=data_dir() / "runs")
-    uvicorn.run(create_app(token, database_path(data_dir()), runner), host=HOST, port=PORT)
+    app = create_app(token, database_path(data_dir()), runner, run_worker=True)
+    uvicorn.run(app, host=HOST, port=PORT)
 
 
 if __name__ == "__main__":

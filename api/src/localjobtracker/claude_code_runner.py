@@ -11,6 +11,7 @@ Output is read as stream-json. A plan limit shows up as a `rate_limit_event` (or
 import json
 import shutil
 import subprocess
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +20,8 @@ from typing import Any
 from localjobtracker.runner import RateLimitError, RunResult
 
 DEFAULT_TIMEOUT_S = 180
+# How often a running CLI is checked for a cancel request or a timeout.
+POLL_INTERVAL_S = 0.2
 # The CLI's budget cap is an estimate, not a strict limit (runner-notes.md). Leave a margin.
 MAX_BUDGET_USD = "0.25"
 # rate_limit_info.status values that mean the run may continue. Any other status is a limit.
@@ -124,25 +127,35 @@ class ClaudeCodeRunner:
         self.workdir = workdir
         self.timeout_s = timeout_s
 
-    def run(self, prompt: str) -> RunResult:
+    def run(self, prompt: str, cancel: threading.Event | None = None) -> RunResult:
         executable = shutil.which("claude")
         if executable is None:
             return RunResult(ok=False, error="The claude command was not found on PATH.")
         self.workdir.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
-        try:
-            completed = subprocess.run(
-                build_args(executable, prompt),
-                cwd=self.workdir,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                timeout=self.timeout_s,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            return RunResult(
-                ok=False, error=f"Claude Code did not finish in {self.timeout_s:.0f} s."
-            )
+        process = subprocess.Popen(
+            build_args(executable, prompt),
+            cwd=self.workdir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+        )
+        deadline = started + self.timeout_s
+        while True:
+            try:
+                stdout, _stderr = process.communicate(timeout=POLL_INTERVAL_S)
+                break
+            except subprocess.TimeoutExpired:
+                if cancel is not None and cancel.is_set():
+                    process.terminate()
+                    process.communicate()
+                    return RunResult(ok=False, error="Cancelled.")
+                if time.monotonic() > deadline:
+                    process.kill()
+                    process.communicate()
+                    return RunResult(
+                        ok=False, error=f"Claude Code did not finish in {self.timeout_s:.0f} s."
+                    )
         duration_ms = int((time.monotonic() - started) * 1000)
-        return parse_stream(completed.stdout, completed.returncode, duration_ms)
+        return parse_stream(stdout, process.returncode, duration_ms)

@@ -1,5 +1,6 @@
 """The runner seam. The app talks to a Runner. Only ClaudeCodeRunner knows Claude Code (D-20)."""
 
+import threading
 from datetime import datetime
 from typing import Protocol
 
@@ -27,8 +28,12 @@ class RateLimitError(Exception):
 
 
 class Runner(Protocol):
-    def run(self, prompt: str) -> RunResult:
-        """Run one prompt. Raise RateLimitError when the plan's limit is hit."""
+    def run(self, prompt: str, cancel: threading.Event | None = None) -> RunResult:
+        """Run one prompt. Raise RateLimitError when the plan's limit is hit.
+
+        When `cancel` is set during the run, the runner stops the run and returns a failed
+        RunResult (SIGTERM for the CLI, runner-notes.md).
+        """
         ...
 
 
@@ -44,7 +49,7 @@ class FakeRunner:
         """Make the next `times` calls raise RateLimitError, as a plan limit would."""
         self._rate_limits_left = times
 
-    def run(self, prompt: str) -> RunResult:
+    def run(self, prompt: str, cancel: threading.Event | None = None) -> RunResult:
         self.prompts.append(prompt)
         if self._rate_limits_left > 0:
             self._rate_limits_left -= 1

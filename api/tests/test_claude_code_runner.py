@@ -1,5 +1,7 @@
 import json
 import shutil
+import subprocess
+import threading
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -134,3 +136,37 @@ def test_live_run_replies_ok(tmp_path: Path) -> None:
     result = ClaudeCodeRunner(workdir=tmp_path).run("Reply with the single word OK.")
     assert result.ok is True, result.error
     assert "OK" in result.text
+
+
+class _RunningProcess:
+    """Stands in for a CLI process that keeps running until it is terminated."""
+
+    def __init__(self) -> None:
+        self.terminated = False
+        self.returncode: int | None = None
+
+    def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+        if self.terminated:
+            self.returncode = 143
+            return "", ""
+        raise subprocess.TimeoutExpired(cmd="claude", timeout=timeout or 0)
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def kill(self) -> None:
+        self.terminated = True
+
+
+def test_cancel_terminates_the_cli_process(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    process = _RunningProcess()
+    monkeypatch.setattr(shutil, "which", lambda _name: "claude")
+    monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: process)
+    cancel = threading.Event()
+    cancel.set()
+
+    result = ClaudeCodeRunner(workdir=tmp_path).run("Reply with OK.", cancel=cancel)
+
+    assert process.terminated is True
+    assert result.ok is False
+    assert result.error == "Cancelled."
