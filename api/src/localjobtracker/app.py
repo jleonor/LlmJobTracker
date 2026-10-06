@@ -18,6 +18,14 @@ from localjobtracker.claude_jobs import (
     recover_interrupted,
 )
 from localjobtracker.job_applications import JobApplication, list_job_applications
+from localjobtracker.profile_facts import (
+    Fact,
+    FactError,
+    FactSheet,
+    FactUpdate,
+    fact_sheet,
+    update_fact,
+)
 from localjobtracker.profile_files import (
     ProfileFile,
     ProfileFileText,
@@ -66,7 +74,9 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
     def get_db() -> Iterator[Connection]:
-        conn = connect(db_path)
+        # FastAPI may set this dependency up and close it on different worker threads. The
+        # connection serves one request, so it is safe to let it cross threads.
+        conn = connect(db_path, check_same_thread=False)
         try:
             yield conn
         finally:
@@ -150,6 +160,27 @@ def create_app(
         if text is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         return text
+
+    @app.get(
+        "/profile/facts",
+        response_model=FactSheet,
+        dependencies=[Depends(require_token)],
+    )
+    def profile_facts(conn: Annotated[Connection, Depends(get_db)]) -> FactSheet:
+        return fact_sheet(conn)
+
+    @app.patch(
+        "/profile/facts/{fact_id}",
+        response_model=Fact,
+        dependencies=[Depends(require_token)],
+    )
+    def patch_profile_fact(
+        fact_id: int, change: FactUpdate, conn: Annotated[Connection, Depends(get_db)]
+    ) -> Fact:
+        try:
+            return update_fact(conn, fact_id, change)
+        except FactError as error:
+            raise HTTPException(status_code=error.status, detail=error.message) from error
 
     @app.get(
         "/profile/outputs",

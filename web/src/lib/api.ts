@@ -1,4 +1,12 @@
-import type { JobApplication, ProfileFile, ProfileFileKind, RunResult } from '@/lib/types'
+import type {
+  Fact,
+  FactChange,
+  FactSheet,
+  JobApplication,
+  ProfileFile,
+  ProfileFileKind,
+  RunResult,
+} from '@/lib/types'
 
 export class ApiError extends Error {
   readonly status: number | null
@@ -24,9 +32,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError('The API rejected the launch token. Restart the dev launcher.', 401)
   }
   if (!response.ok) {
-    throw new ApiError(`The API returned HTTP ${response.status}.`, response.status)
+    throw new ApiError(await errorMessage(response), response.status)
   }
   return (await response.json()) as T
+}
+
+// The API gives a reason in `detail` for refusals (for example a bad date). Show it when it is there.
+async function errorMessage(response: Response): Promise<string> {
+  const detail = await response
+    .json()
+    .then((body: { detail?: unknown }) => (typeof body.detail === 'string' ? body.detail : null))
+    .catch(() => null)
+  return detail ?? `The API returned HTTP ${response.status}.`
 }
 
 export function fetchJobApplications(): Promise<JobApplication[]> {
@@ -55,11 +72,19 @@ export async function uploadProfileFile(kind: ProfileFileKind, file: File): Prom
     throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
   }
   if (!response.ok) {
-    const detail = await response
-      .json()
-      .then((body: { detail?: unknown }) => (typeof body.detail === 'string' ? body.detail : null))
-      .catch(() => null)
-    throw new ApiError(detail ?? `The API returned HTTP ${response.status}.`, response.status)
+    throw new ApiError(await errorMessage(response), response.status)
   }
   return (await response.json()) as ProfileFile
+}
+
+export function fetchFactSheet(): Promise<FactSheet> {
+  return request<FactSheet>('/api/profile/facts')
+}
+
+export function updateFact(id: number, change: FactChange): Promise<Fact> {
+  return request<Fact>(`/api/profile/facts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(change),
+  })
 }
