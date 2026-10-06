@@ -137,6 +137,10 @@ export type ClaudeJobPrompt = {
   error: string | null
   cost_usd: number | null
   duration_ms: number | null
+  model: string | null
+  started_at: string | null
+  finished_at: string | null
+  skipped: boolean
 }
 
 export type ClaudeJob = {

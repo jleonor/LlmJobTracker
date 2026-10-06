@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState } from 'react'
 
+import { AnalysisTerminal } from '@/components/app/AnalysisTerminal'
 import { Button } from '@/components/ui/button'
 import { ApiError, fetchProfileOutputs, saveProfileOutput, startProfileAnalysis } from '@/lib/api'
 import type {
@@ -81,6 +82,8 @@ export function ProfileOutputs({ onChanged }: { onChanged: () => void }) {
 
       {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
 
+      <AnalysisTerminal />
+
       {state.kind === 'loading' && <p className="text-sm text-muted-foreground">Loading the outputs...</p>}
       {state.kind === 'error' && (
         <p role="alert" className="text-sm text-destructive">
@@ -114,8 +117,21 @@ function VersionLine({ output }: { output: ProfileOutput }) {
   )
 }
 
+// An output made before the current structure has other fields. It is shown as out of date.
+function OutOfDate({ title }: { title: string }) {
+  return (
+    <div className="flex flex-col gap-1 rounded border border-border bg-background p-3">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <p className="text-sm text-muted-foreground">
+        This was made with an earlier format. Run the analysis again to refresh it.
+      </p>
+    </div>
+  )
+}
+
 function QuestionnaireReport({ output }: { output: ProfileOutput | undefined }) {
   if (!output) return null
+  if (!('patterns' in output.body)) return <OutOfDate title="Questionnaire report" />
   const body = output.body as QuestionnaireBody
   return (
     <div className="flex flex-col gap-3 rounded border border-border bg-background p-3">
@@ -271,6 +287,7 @@ function HistoryForm({ output, onSaved }: { output: ProfileOutput; onSaved: () =
 
 function StrategyEditor({ output, onSaved }: { output: ProfileOutput | undefined; onSaved: () => void }) {
   if (!output) return null
+  if (!('primary_lanes' in output.body)) return <OutOfDate title="Positioning strategy" />
   return <StrategyForm key={output.id} output={output} onSaved={onSaved} />
 }
 
