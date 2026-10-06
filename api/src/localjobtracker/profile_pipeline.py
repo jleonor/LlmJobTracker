@@ -32,6 +32,7 @@ CV_KINDS: Final = ("master_cv", "older_cv")
 EVIDENCE_KINDS: Final = (*CV_KINDS, "older_letter", "own_full_cv_history")
 # The user's own version of an output, if they uploaded one (D-68). It is converted, not copied.
 OWN_KINDS: Final[dict[str, str]] = {
+    "fact_sheet": "own_fact_sheet",
     "full_cv_history": "own_full_cv_history",
     "questionnaire_analysis": "own_questionnaire_analysis",
     "strategy": "own_strategy",
@@ -210,6 +211,14 @@ INSTRUCTIONS: Final[dict[str, str]] = {
 }
 
 IMPORT_INSTRUCTIONS: Final[dict[str, str]] = {
+    "fact_sheet": (
+        "The file below is the person's own Fact Sheet, written by them. Convert it into the "
+        "Fact Sheet format: one fact per claim, keeping its wording and the date it gives. Each "
+        "fact's source is a file, by file_id: the Fact Sheet file itself, or the CV or letter "
+        "the fact comes from if the material shows it. Link a fact to a history item only where "
+        "the item clearly supports it. Do not add a claim the file does not make. Where two facts "
+        "disagree, list them as conflicts."
+    ),
     "full_cv_history": (
         "The file below is the person's own career history, written by them. Convert it into "
         "the history format, keeping its wording and what it says. Each item's source is the "
@@ -485,6 +494,12 @@ def _import_inputs(conn: sqlite3.Connection, kind: str) -> str:
         raise PromptRejected("The uploaded file could not be read.")
     if kind == "full_cv_history":
         return _files_block(usable_files(conn, EVIDENCE_KINDS))
+    if kind == "fact_sheet":
+        history = latest_output(conn, "full_cv_history")
+        parts = [_files_block([own]), _files_block(usable_files(conn, EVIDENCE_KINDS))]
+        if history is not None:
+            parts.insert(1, _output_block("FULL_CV_HISTORY", history))
+        return "\n\n".join(parts)
     if kind == "questionnaire_analysis":
         facts = _output_block("FACT_SHEET", latest_output(conn, "fact_sheet"))
         questionnaire = _files_block(usable_files(conn, QUESTIONNAIRE_KINDS))
@@ -771,6 +786,9 @@ def make_pipeline(
         questionnaire = usable_files(conn, QUESTIONNAIRE_KINDS)
         evidence_ids = {file.id for file in evidence}
         own = own_upload(conn, kind)
+        if kind == "fact_sheet" and own is not None:
+            # An imported Fact Sheet may cite the uploaded file itself as a source.
+            evidence_ids.add(own.id)
         if decide(conn, kind, prompt.claude_job_id) == "import" and own is not None:
             # Record the uploaded file, so the same upload is not converted again (D-69).
             hashes = [own.sha256]

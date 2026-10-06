@@ -26,6 +26,18 @@ _V3_FILE_KINDS = (
 )
 # Master CVs are one kind (English and French alike), and the user's own outputs have kinds of
 # their own (2026-10-06, D-67, D-68). Migration 4 moves the rows over.
+# Kinds as migration 4 defined them.
+_V4_FILE_KINDS = (
+    "master_cv",
+    "older_cv",
+    "older_letter",
+    "questionnaire",
+    "writing_rules",
+    "own_full_cv_history",
+    "own_questionnaire_analysis",
+    "own_strategy",
+)
+# The user may also upload their own Fact Sheet (D-70). Migration 5 adds it.
 PROFILE_FILE_KINDS = (
     "master_cv",
     "older_cv",
@@ -35,6 +47,7 @@ PROFILE_FILE_KINDS = (
     "own_full_cv_history",
     "own_questionnaire_analysis",
     "own_strategy",
+    "own_fact_sheet",
 )
 EXTRACTION_STATUSES = ("ok", "no_text", "unsupported", "failed")
 PROFILE_OUTPUT_KINDS = ("full_cv_history", "fact_sheet", "questionnaire_analysis", "strategy")
@@ -297,6 +310,41 @@ MIGRATIONS: tuple[Migration, ...] = (
                  extraction_status, extraction_message, extracted_text)
             SELECT id, CASE WHEN kind = 'master_cv' THEN 'master_cv_en' ELSE kind END,
                    original_name, stored_path, sha256, size_bytes, uploaded_at,
+                   extraction_status, extraction_message, extracted_text
+            FROM profile_files
+            """,
+            "DROP TABLE profile_files",
+            "ALTER TABLE profile_files_old RENAME TO profile_files",
+        ),
+    ),
+    Migration(
+        version=5,
+        name="add the user's own Fact Sheet as an upload kind",
+        rebuild=True,
+        up=(
+            _profile_files_table("profile_files_new", PROFILE_FILE_KINDS),
+            """
+            INSERT INTO profile_files_new
+                (id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                 extraction_status, extraction_message, extracted_text)
+            SELECT id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                   extraction_status, extraction_message, extracted_text
+            FROM profile_files
+            """,
+            "DROP TABLE profile_files",
+            "ALTER TABLE profile_files_new RENAME TO profile_files",
+        ),
+        down=(
+            # Facts that cite the user's own Fact Sheet go with it.
+            "DELETE FROM facts WHERE source_file_id IN "
+            "(SELECT id FROM profile_files WHERE kind = 'own_fact_sheet')",
+            "DELETE FROM profile_files WHERE kind = 'own_fact_sheet'",
+            _profile_files_table("profile_files_old", _V4_FILE_KINDS),
+            """
+            INSERT INTO profile_files_old
+                (id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                 extraction_status, extraction_message, extracted_text)
+            SELECT id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
                    extraction_status, extraction_message, extracted_text
             FROM profile_files
             """,

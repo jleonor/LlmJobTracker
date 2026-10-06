@@ -178,3 +178,50 @@ def test_a_converted_output_that_breaks_the_checks_fails_the_job(
     assert status == "failed"
     assert error is not None and "a lane needs at least one fact" in error
     assert "strategy" not in latest_versions(db_path)
+
+
+def test_an_uploaded_fact_sheet_is_converted_and_its_facts_are_stored(
+    db_path: Path, cv: int, questionnaire: int
+) -> None:
+    own = store(db_path, "own_fact_sheet", "facts.txt", b"My own facts: analyst at Example Corp.")
+    runner = CannedRunner(good_answers(cv))
+    queue = make_queue(db_path, runner)
+    start(db_path, queue)
+    run_all(queue)
+
+    assert modes(runner)[1] == CONVERT
+    assert "My own facts: analyst at Example Corp." in runner.prompts[1]
+    assert latest_versions(db_path)["fact_sheet"] == 1
+    assert own > 0
+
+
+def test_an_imported_fact_sheet_may_cite_the_uploaded_file(
+    db_path: Path, cv: int, questionnaire: int
+) -> None:
+    own = store(db_path, "own_fact_sheet", "facts.txt", b"My own facts: analyst at Example Corp.")
+    answers = good_answers(cv)
+    for fact in answers["fact_sheet"]["facts"]:
+        fact["source"]["file_id"] = own
+    queue = make_queue(db_path, CannedRunner(answers))
+    job_id = start(db_path, queue)
+
+    run_all(queue)
+
+    assert job_state(db_path, job_id)[0] == "done"
+    assert latest_versions(db_path)["fact_sheet"] == 1
+
+
+def test_an_imported_fact_sheet_citing_an_unknown_file_fails(
+    db_path: Path, cv: int, questionnaire: int
+) -> None:
+    store(db_path, "own_fact_sheet", "facts.txt", b"My own facts.")
+    answers = good_answers(cv)
+    answers["fact_sheet"]["facts"][0]["source"]["file_id"] = 999
+    queue = make_queue(db_path, CannedRunner(answers))
+    job_id = start(db_path, queue)
+
+    run_all(queue)
+
+    status, error, _prompts = job_state(db_path, job_id)
+    assert status == "failed"
+    assert error is not None and "not one of the input files" in error
