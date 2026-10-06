@@ -66,4 +66,14 @@ describe('analysisLines', () => {
     )
     expect(lines.some((line) => line.tone === 'error' && line.text.includes('not JSON'))).toBe(true)
   })
+
+  it('shows how long a prompt has been running', () => {
+    const lines = analysisLines(
+      job('processing', [
+        prompt({ prompt_kind: 'full_cv_history', status: 'running', started_at: '2026-10-06T09:00:00Z' }),
+      ]),
+      Date.parse('2026-10-06T09:03:05Z'),
+    )
+    expect(lines.map((line) => line.text)).toContain('Career history: still running, 3:05 so far')
+  })
 })

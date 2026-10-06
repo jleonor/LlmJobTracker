@@ -25,7 +25,7 @@ function clock(iso: string | null): string | null {
 
 // The lines for the latest profile analysis, built from its prompts (the same records the
 // Claude Jobs screen shows). Nothing is sent by the model here; this only reads the queue.
-export function analysisLines(job: ClaudeJob): Line[] {
+export function analysisLines(job: ClaudeJob, now: number = Date.now()): Line[] {
   const lines: Line[] = [{ time: clock(job.created_at), text: `${job.label} queued`, tone: 'info' }]
   for (const prompt of job.prompts) {
     const name = PROMPT_LABELS[prompt.prompt_kind] ?? prompt.prompt_kind
@@ -36,6 +36,13 @@ export function analysisLines(job: ClaudeJob): Line[] {
     const model = prompt.model ? ` (${prompt.model})` : ''
     if (prompt.started_at) {
       lines.push({ time: clock(prompt.started_at), text: `${name}: started${model}`, tone: 'info' })
+    }
+    if (prompt.status === 'running' && prompt.started_at) {
+      // A prompt can take several minutes. The elapsed time shows that the run is still going.
+      const elapsed = Math.max(0, Math.round((now - new Date(prompt.started_at).getTime()) / 1000))
+      const minutes = Math.floor(elapsed / 60)
+      const seconds = String(elapsed % 60).padStart(2, '0')
+      lines.push({ time: null, text: `${name}: still running, ${minutes}:${seconds} so far`, tone: 'info' })
     }
     if (prompt.status === 'done') {
       const seconds = prompt.duration_ms === null ? '' : ` in ${(prompt.duration_ms / 1000).toFixed(1)} s`
