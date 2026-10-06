@@ -599,3 +599,22 @@ def test_a_conflict_may_name_another_source_in_words(
     run_all(queue)
 
     assert job_state(db_path, job_id)[0] == "done"
+
+
+def test_an_undated_fact_takes_the_date_of_the_history_item_it_cites(
+    db_path: Path, cv_id: int, questionnaire_id: int
+) -> None:
+    answers = good_answers(cv_id)
+    answers["fact_sheet"]["facts"][0]["date"] = ""
+    queue = make_queue(db_path, CannedRunner(answers))
+    job_id = start(db_path, queue)
+
+    run_all(queue)
+
+    assert job_state(db_path, job_id)[0] == "done"
+    conn = connect(db_path)
+    try:
+        dates = [row[0] for row in conn.execute("SELECT date FROM facts ORDER BY fact_key")]
+    finally:
+        conn.close()
+    assert dates[0] == "2020"

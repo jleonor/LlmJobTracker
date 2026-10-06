@@ -987,6 +987,17 @@ def _dates_in(items: Any, keys: tuple[str, ...]) -> None:
                 item[key] = _normalise_date(item[key])
 
 
+def _fill_fact_dates(facts: Any, history_dates: dict[str, str]) -> None:
+    """A fact with no date takes the date of the first dated history item it cites (D-81)."""
+    for fact in facts if isinstance(facts, list) else []:
+        if not isinstance(fact, dict) or fact.get("date") != "":
+            continue
+        for history_id in fact.get("history_ids") or []:
+            if history_dates.get(history_id):
+                fact["date"] = history_dates[history_id]
+                break
+
+
 def normalise_ids(kind: str, body: dict[str, Any]) -> dict[str, Any]:
     """Make the ids of an answer valid and unique, and follow them through its references."""
     if kind == "full_cv_history":
@@ -1029,6 +1040,15 @@ def make_pipeline(
         if kind not in SCHEMAS:
             return  # Not a profile prompt: the queue stores its answer as it is.
         body = normalise_ids(kind, parse_answer(result.text))
+        if kind == "fact_sheet":
+            # A fact that cites a dated history item takes that item's date (D-81).
+            history = latest_output(conn, "full_cv_history")
+            history_dates = (
+                {item["id"]: item.get("date", "") for item in history[1].get("items", [])}
+                if history
+                else {}
+            )
+            _fill_fact_dates(body.get("facts"), history_dates)
         known = _known(conn)
         evidence = usable_files(conn, EVIDENCE_KINDS)
         questionnaire = usable_files(conn, QUESTIONNAIRE_KINDS)
