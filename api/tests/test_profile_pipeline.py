@@ -618,3 +618,30 @@ def test_an_undated_fact_takes_the_date_of_the_history_item_it_cites(
     finally:
         conn.close()
     assert dates[0] == "2020"
+
+
+def test_not_stated_is_no_date_and_a_range_takes_its_start_month(
+    db_path: Path, cv_id: int, questionnaire_id: int
+) -> None:
+    answers = good_answers(cv_id)
+    answers["full_cv_history"]["items"][0]["date"] = "Apr\u2013May 2026"
+    answers["full_cv_history"]["items"][0]["end"] = "present"
+    answers["fact_sheet"]["facts"][0]["date"] = "Not stated"
+    queue = make_queue(db_path, CannedRunner(answers))
+    job_id = start(db_path, queue)
+
+    run_all(queue)
+
+    assert job_state(db_path, job_id)[0] == "done"
+    conn = connect(db_path)
+    try:
+        history = json.loads(
+            conn.execute(
+                "SELECT body_json FROM profile_outputs WHERE kind = 'full_cv_history'"
+            ).fetchone()[0]
+        )
+        dates = [row[0] for row in conn.execute("SELECT date FROM facts ORDER BY fact_key")]
+    finally:
+        conn.close()
+    assert history["items"][0]["date"] == "2026-04"
+    assert dates[0] == "2026-04"  # the fact took its history item's date

@@ -940,6 +940,12 @@ MONTHS: Final[dict[str, int]] = {
 }
 
 
+# What a model writes when the source gives no date. It means "no date", so it becomes "".
+NO_DATE: Final = frozenset(
+    {"not stated", "not known", "unknown", "undated", "none", "n/a", "na", "-", "—", "–"}
+)
+
+
 def _normalise_date(value: Any) -> Any:
     """Turn a date a model wrote in another form into YYYY, YYYY-MM or YYYY-MM-DD (D-78).
 
@@ -952,6 +958,8 @@ def _normalise_date(value: Any) -> Any:
     text = value.strip()
     if DATE_PATTERN.match(text):
         return text
+    if text.lower() in NO_DATE:
+        return ""
     iso = re.search(r"(\d{4})[-/.](\d{1,2})(?:[-/.](\d{1,2}))?", text)
     if iso:
         year, month = iso.group(1), int(iso.group(2))
@@ -969,7 +977,8 @@ def _normalise_date(value: Any) -> Any:
     year = year_match.group(1)
     before = text[: year_match.start()]
     words = re.findall(r"[a-zéûèôà]+", before.lower())
-    for word in reversed(words):
+    # The first month of a range is the start: "Apr–May 2026" is 2026-04.
+    for word in words:
         key = word.replace("é", "e").replace("û", "u").replace("è", "e")
         if key in MONTHS:
             return f"{year}-{MONTHS[key]:02d}"
