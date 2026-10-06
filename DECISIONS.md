@@ -109,6 +109,7 @@ Written from the user's answers on 2026-10-06. The full picture for the phase sp
 | D-69 | 2026-10-06 | Proposed | A run makes only what is missing. An output that is already there is kept, and a run with everything in place is refused. An output is rebuilt in a run only when an output it is built on was made again in that run, or when the user's own version of it is converted against the new outputs. | Claude's choice of how to apply the user's request. The user may change the rule. |
 | D-70 | 2026-10-06 | Accepted | The Fact Sheet can be uploaded as the user's own version, like the other outputs (D-68). An uploaded Fact Sheet is converted with the same checks, and its facts start unverified. | The user's request. |
 | D-71 | 2026-10-06 | Accepted | The user uploads a cover letter template on the Profile page (kind `cover_letter_template`, migration 6). Phase 5 uses it when cover letters are written. The analysis does not need it. | The user's request. It is the user's own template, so it is kept as an upload and never generated. |
+| D-72 | 2026-10-06 | Accepted | An uploaded Fact Sheet is the Fact Sheet. It is converted from its own file alone, and its facts cite only that file. The CVs and the history are not added to it, and it is not rebuilt when they change. This supersedes the part of D-70 that let it cite the CVs. | The user's decision. Facts that are not in the user's own Fact Sheet should not appear in it. |
 
 ## Open
 

@@ -137,7 +137,7 @@ Each validated output is stored as a row in `profile_outputs` with its kind, ver
 
 ## Own versions and what a run does (D-68, D-69)
 
-The user can upload their own version of each output: the career history (`own_full_cv_history`), the Fact Sheet (`own_fact_sheet`), the questionnaire analysis (`own_questionnaire_analysis`) and the positioning strategy (`own_strategy`). These are used in place of a generated output. An uploaded Fact Sheet is converted like the others, and its facts are unverified until the user verifies them (D-09). It may cite the uploaded file itself as a source.
+The user can upload their own version of each output: the career history (`own_full_cv_history`), the Fact Sheet (`own_fact_sheet`), the questionnaire analysis (`own_questionnaire_analysis`) and the positioning strategy (`own_strategy`). These are used in place of a generated output. An uploaded Fact Sheet is the Fact Sheet (D-72). It is converted from its own file alone: the CVs, the history and the other outputs are not inputs to it, and every fact's source is the uploaded file. Its facts are unverified until the user verifies them (D-09). It is not rebuilt when the history changes. The outputs built on it (the questionnaire analysis and the strategy) are rebuilt when it changes.
 
 Each run decides what to do for each output, in order, before the prompt is sent:
 

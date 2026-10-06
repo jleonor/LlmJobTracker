@@ -180,35 +180,60 @@ def test_a_converted_output_that_breaks_the_checks_fails_the_job(
     assert "strategy" not in latest_versions(db_path)
 
 
-def test_an_uploaded_fact_sheet_is_converted_and_its_facts_are_stored(
-    db_path: Path, cv: int, questionnaire: int
-) -> None:
-    own = store(db_path, "own_fact_sheet", "facts.txt", b"My own facts: analyst at Example Corp.")
-    runner = CannedRunner(good_answers(cv))
-    queue = make_queue(db_path, runner)
-    start(db_path, queue)
-    run_all(queue)
-
-    assert modes(runner)[1] == CONVERT
-    assert "My own facts: analyst at Example Corp." in runner.prompts[1]
-    assert latest_versions(db_path)["fact_sheet"] == 1
-    assert own > 0
-
-
-def test_an_imported_fact_sheet_may_cite_the_uploaded_file(
+def test_an_uploaded_fact_sheet_is_converted_from_its_own_file_only(
     db_path: Path, cv: int, questionnaire: int
 ) -> None:
     own = store(db_path, "own_fact_sheet", "facts.txt", b"My own facts: analyst at Example Corp.")
     answers = good_answers(cv)
     for fact in answers["fact_sheet"]["facts"]:
         fact["source"]["file_id"] = own
-    queue = make_queue(db_path, CannedRunner(answers))
+        fact["history_ids"] = []
+    runner = CannedRunner(answers)
+    queue = make_queue(db_path, runner)
+    job_id = start(db_path, queue)
+    run_all(queue)
+
+    assert job_state(db_path, job_id)[0] == "done"
+    assert modes(runner)[1] == CONVERT
+    assert "My own facts: analyst at Example Corp." in runner.prompts[1]
+    assert "Alex Sample" not in runner.prompts[1]  # the CV is not an input to the conversion
+    assert latest_versions(db_path)["fact_sheet"] == 1
+
+
+def test_an_uploaded_fact_sheet_cannot_cite_the_cv(
+    db_path: Path, cv: int, questionnaire: int
+) -> None:
+    store(db_path, "own_fact_sheet", "facts.txt", b"My own facts.")
+    queue = make_queue(db_path, CannedRunner(good_answers(cv)))
     job_id = start(db_path, queue)
 
     run_all(queue)
 
-    assert job_state(db_path, job_id)[0] == "done"
+    status, error, _prompts = job_state(db_path, job_id)
+    assert status == "failed"
+    assert error is not None and "not one of the input files" in error
+
+
+def test_an_uploaded_fact_sheet_is_not_rebuilt_when_the_history_changes(
+    db_path: Path, cv: int, questionnaire: int
+) -> None:
+    own = store(db_path, "own_fact_sheet", "facts.txt", b"My own facts.")
+    answers = good_answers(cv)
+    for fact in answers["fact_sheet"]["facts"]:
+        fact["source"]["file_id"] = own
+        fact["history_ids"] = []
+    runner = CannedRunner(answers)
+    queue = make_queue(db_path, runner)
+    start(db_path, queue)
+    run_all(queue)
+    prompts_before = len(runner.prompts)
+
+    store(db_path, "own_full_cv_history", "history.txt", b"My history.")
+    start(db_path, queue)
+    run_all(queue)
+
     assert latest_versions(db_path)["fact_sheet"] == 1
+    assert modes(runner)[prompts_before:] == [CONVERT]
 
 
 def test_an_imported_fact_sheet_citing_an_unknown_file_fails(

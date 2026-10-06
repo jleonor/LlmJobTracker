@@ -213,11 +213,10 @@ INSTRUCTIONS: Final[dict[str, str]] = {
 IMPORT_INSTRUCTIONS: Final[dict[str, str]] = {
     "fact_sheet": (
         "The file below is the person's own Fact Sheet, written by them. Convert it into the "
-        "Fact Sheet format: one fact per claim, keeping its wording and the date it gives. Each "
-        "fact's source is a file, by file_id: the Fact Sheet file itself, or the CV or letter "
-        "the fact comes from if the material shows it. Link a fact to a history item only where "
-        "the item clearly supports it. Do not add a claim the file does not make. Where two facts "
-        "disagree, list them as conflicts."
+        "Fact Sheet format: one fact per claim, keeping its wording and the date it gives. Every "
+        "fact's source is this file, by its file_id, with the location in it. Use only what the "
+        "file states. Do not add a claim it does not make. Leave history_ids empty. Where two "
+        "facts disagree, list them as conflicts."
     ),
     "full_cv_history": (
         "The file below is the person's own career history, written by them. Convert it into "
@@ -408,8 +407,12 @@ def decide(conn: sqlite3.Connection, kind: str, job_id: int | None) -> str:
     generate: the output is missing and the user has not uploaded one.
     skip: the output is already there and nothing it depends on changed.
     """
-    upstream_changed = any(_made_in_job(conn, up, job_id) for up in UPSTREAM[kind])
     own = own_upload(conn, kind)
+    if kind == "fact_sheet" and own is not None:
+        # The user's Fact Sheet is the Fact Sheet (D-71). It is converted from its own file only,
+        # and it is not rebuilt when the history or the CVs change.
+        return "skip" if _output_from_file(conn, kind, own.sha256) else "import"
+    upstream_changed = any(_made_in_job(conn, up, job_id) for up in UPSTREAM[kind])
     if own is not None:
         if upstream_changed or not _output_from_file(conn, kind, own.sha256):
             return "import"
@@ -495,11 +498,8 @@ def _import_inputs(conn: sqlite3.Connection, kind: str) -> str:
     if kind == "full_cv_history":
         return _files_block(usable_files(conn, EVIDENCE_KINDS))
     if kind == "fact_sheet":
-        history = latest_output(conn, "full_cv_history")
-        parts = [_files_block([own]), _files_block(usable_files(conn, EVIDENCE_KINDS))]
-        if history is not None:
-            parts.insert(1, _output_block("FULL_CV_HISTORY", history))
-        return "\n\n".join(parts)
+        # Only the user's own file: its facts come from it, not from the CVs or the history.
+        return _files_block([own])
     if kind == "questionnaire_analysis":
         facts = _output_block("FACT_SHEET", latest_output(conn, "fact_sheet"))
         questionnaire = _files_block(usable_files(conn, QUESTIONNAIRE_KINDS))
@@ -787,8 +787,8 @@ def make_pipeline(
         evidence_ids = {file.id for file in evidence}
         own = own_upload(conn, kind)
         if kind == "fact_sheet" and own is not None:
-            # An imported Fact Sheet may cite the uploaded file itself as a source.
-            evidence_ids.add(own.id)
+            # An imported Fact Sheet cites only the uploaded file as its source (D-71).
+            evidence_ids = {own.id}
         if decide(conn, kind, prompt.claude_job_id) == "import" and own is not None:
             # Record the uploaded file, so the same upload is not converted again (D-69).
             hashes = [own.sha256]
