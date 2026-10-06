@@ -1,15 +1,16 @@
-import { BriefcaseBusiness, GitBranch, Plus, Settings, UserRound } from 'lucide-react'
+import { BriefcaseBusiness, GitBranch, ListOrdered, Plus, Settings, UserRound } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-export type Screen = 'jobs' | 'profile'
+export type Screen = 'jobs' | 'profile' | 'queue'
 
 // Jobs and Profile have screens. The other entries are placeholders for later phases.
 const NAV: { label: string; icon: typeof UserRound; screen: Screen | null }[] = [
   { label: 'Jobs', icon: BriefcaseBusiness, screen: 'jobs' },
   { label: 'Profile', icon: UserRound, screen: 'profile' },
+  { label: 'Claude Jobs', icon: ListOrdered, screen: 'queue' },
   { label: 'Settings', icon: Settings, screen: null },
   { label: 'Run Trace', icon: GitBranch, screen: null },
 ]
@@ -18,9 +19,10 @@ type Props = {
   children: ReactNode
   current: Screen
   onNavigate: (screen: Screen) => void
+  queueText: string
 }
 
-export function AppShell({ children, current, onNavigate }: Props) {
+export function AppShell({ children, current, onNavigate, queueText }: Props) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <aside className="fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border bg-card">
@@ -56,7 +58,14 @@ export function AppShell({ children, current, onNavigate }: Props) {
       </aside>
 
       <div className="pl-64">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-end border-b border-border bg-card/90 px-6 backdrop-blur">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-end gap-4 border-b border-border bg-card/90 px-6 backdrop-blur">
+          <button
+            type="button"
+            onClick={() => onNavigate('queue')}
+            className="font-mono text-xs text-muted-foreground hover:text-foreground"
+          >
+            {queueText}
+          </button>
           <Button disabled title="Adding jobs comes in Phase 4">
             <Plus className="size-4" aria-hidden="true" />
             Add Job

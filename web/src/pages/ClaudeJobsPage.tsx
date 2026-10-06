@@ -1,0 +1,153 @@
+import { useState } from 'react'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { ApiError, cancelClaudeJob, resumeClaudeJob } from '@/lib/api'
+import type { ClaudeJob, ClaudeJobPrompt } from '@/lib/types'
+import type { QueueState } from '@/lib/useClaudeJobs'
+
+const TONE: Record<string, string> = {
+  queued: 'border-[#234875] bg-[#001c3a] text-[#a6c8fd]',
+  processing: 'border-[#4a3f7a] bg-[#1d1733] text-[#c9bcff]',
+  paused: 'border-[#5c4300] bg-[#2a1800] text-[#ffca85]',
+  done: 'border-[#005333] bg-[#00210f] text-[#84e7b0]',
+  failed: 'border-[#93000a] bg-[#2a0a0a] text-[#ffb4ab]',
+  cancelled: 'border-muted-foreground/30 text-muted-foreground line-through',
+}
+
+// Prompt kinds, in the words the user sees on the Profile page.
+const PROMPT_LABELS: Record<string, string> = {
+  full_cv_history: 'Career history',
+  fact_sheet: 'Fact Sheet',
+  questionnaire_analysis: 'Questionnaire report',
+  strategy: 'Strategy and lanes',
+}
+
+const CAN_CANCEL = ['queued', 'paused', 'processing']
+
+// The Claude Jobs queue: one job runs at a time, in creation order (D-50, D-62, D-63).
+export function ClaudeJobsPage({ queue }: { queue: QueueState }) {
+  return (
+    <section aria-labelledby="queue-heading" className="flex flex-col gap-4">
+      <div className="flex items-baseline justify-between">
+        <h1 id="queue-heading" className="text-xl font-semibold tracking-tight">
+          Claude Jobs
+        </h1>
+        <span className="font-mono text-xs text-muted-foreground">
+          {queue.jobs.length} {queue.jobs.length === 1 ? 'job' : 'jobs'} · updates every few seconds
+        </span>
+      </div>
+
+      {queue.error && (
+        <p role="alert" className="text-sm text-destructive">
+          {queue.error}
+        </p>
+      )}
+
+      {queue.jobs.length === 0 && !queue.error && (
+        <p className="rounded border border-border p-6 text-center text-sm text-muted-foreground">
+          No Claude Jobs yet. They appear here when you start the profile analysis.
+        </p>
+      )}
+
+      {queue.jobs.map((job, index) => (
+        <JobCard key={job.id} job={job} position={index + 1} onChanged={queue.reload} />
+      ))}
+    </section>
+  )
+}
+
+type CardProps = { job: ClaudeJob; position: number; onChanged: () => void }
+
+function JobCard({ job, position, onChanged }: CardProps) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function act(action: (id: number) => Promise<ClaudeJob>) {
+    setBusy(true)
+    setError(null)
+    try {
+      await action(job.id)
+      onChanged()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The action did not complete.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <article
+      aria-label={`Claude Job ${job.id}`}
+      className="flex flex-col gap-3 rounded border border-border bg-card p-4"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-sm font-semibold">
+            <span className="mr-2 font-mono text-xs text-muted-foreground">#{position}</span>
+            {job.label}
+          </h2>
+          <p className="font-mono text-xs text-muted-foreground">
+            created {job.created_at.replace('T', ' ').slice(0, 16)} UTC
+          </p>
+        </div>
+        <Badge
+          variant="outline"
+          className={`shrink-0 rounded-sm font-mono text-[11px] font-normal ${TONE[job.status] ?? ''}`}
+        >
+          {job.status}
+        </Badge>
+      </div>
+
+      {job.error && (
+        <p className={job.status === 'failed' ? 'text-sm text-destructive' : 'text-sm text-[#ffca85]'}>
+          {job.error}
+        </p>
+      )}
+
+      <ol className="flex flex-col gap-1">
+        {job.prompts.map((prompt) => (
+          <PromptLine key={prompt.position} prompt={prompt} />
+        ))}
+      </ol>
+
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+
+      <div className="flex gap-2">
+        {job.status === 'paused' && (
+          <Button disabled={busy} onClick={() => void act(resumeClaudeJob)}>
+            Resume
+          </Button>
+        )}
+        {CAN_CANCEL.includes(job.status) && (
+          <Button variant="outline" disabled={busy} onClick={() => void act(cancelClaudeJob)}>
+            Cancel
+          </Button>
+        )}
+      </div>
+    </article>
+  )
+}
+
+function PromptLine({ prompt }: { prompt: ClaudeJobPrompt }) {
+  const cost = prompt.cost_usd === null ? null : `$${prompt.cost_usd.toFixed(4)}`
+  return (
+    <li className="flex items-center justify-between gap-4 text-sm">
+      <span>
+        {PROMPT_LABELS[prompt.prompt_kind] ?? prompt.prompt_kind}
+        {prompt.error && prompt.status === 'failed' && (
+          <span className="ml-2 text-xs text-destructive">{prompt.error}</span>
+        )}
+      </span>
+      <span className="shrink-0 font-mono text-xs text-muted-foreground">
+        {prompt.status}
+        {cost && ` · ${cost}`}
+        {prompt.duration_ms !== null && ` · ${(prompt.duration_ms / 1000).toFixed(1)} s`}
+      </span>
+    </li>
+  )
+}

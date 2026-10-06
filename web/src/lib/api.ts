@@ -107,3 +107,15 @@ export function saveProfileOutput(kind: string, body: Record<string, unknown>): 
 export function startProfileAnalysis(): Promise<ClaudeJob> {
   return request<ClaudeJob>('/api/profile/analysis', { method: 'POST' })
 }
+
+export function fetchClaudeJobs(): Promise<ClaudeJob[]> {
+  return request<ClaudeJob[]>('/api/claude-jobs')
+}
+
+export function resumeClaudeJob(id: number): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/claude-jobs/${id}/resume`, { method: 'POST' })
+}
+
+export function cancelClaudeJob(id: number): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/claude-jobs/${id}/cancel`, { method: 'POST' })
+}
