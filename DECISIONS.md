@@ -115,6 +115,7 @@ Written from the user's answers on 2026-10-06. The full picture for the phase sp
 | D-75 | 2026-10-06 | Accepted | Runs have no per-prompt dollar cap. The timeout is 15 minutes. The API key is removed from the environment of the CLI, so runs use the claude.ai login and its plan limits, as Claude Code does. A job paused at a plan limit resumes by itself two minutes after the reset time the CLI reports. Resume stays as a manual option. | The user chose these. A cap estimates API cost and stopped a valid run. The timeout is the real stop for a run that goes on too long. |
 | D-76 | 2026-10-06 | Accepted | A malformed or repeated id in a model answer is renumbered in order by code, and references to it follow. The answer is not rejected for its ids. | A run should not fail because of an id format. The checks still reject wrong sources, dates and links. |
 | D-77 | 2026-10-06 | Accepted | Claude's answer is kept as soon as it arrives, before any check, and the sent text and the answer can be read for each prompt on the Profile page. | The user needs to see what goes in and what comes back when a check fails. |
+| D-78 | 2026-10-06 | Accepted | A date in another form, such as a range, a month name or a slash form, is read by code as YYYY, YYYY-MM or YYYY-MM-DD. A date with no year is still refused. The prompt states the form. | Like D-76, a format difference should not fail a run. Facts without a year still fail. |
 
 ## Open
 
