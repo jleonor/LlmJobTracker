@@ -12,6 +12,21 @@ STATUSES = ("Not Started", "Applied", "Screening", "Interview", "Offer", "Reject
 WORK_MODES = ("Onsite", "Hybrid", "Remote", "Unknown")
 CONTRACT_TYPES = ("Full-Time", "Part-Time", "Contract/Short Term", "Other", "Unknown")
 
+# Phase 2 values (D-62, D-64, D-66; Agent/specs/profile-steps.md).
+CLAUDE_JOB_STATUSES = ("queued", "processing", "paused", "cancelled", "done", "failed")
+PROMPT_STATUSES = ("queued", "running", "done", "failed", "cancelled")
+PROFILE_FILE_KINDS = (
+    "master_cv_en",
+    "master_cv_fr",
+    "older_cv",
+    "older_letter",
+    "questionnaire",
+    "writing_rules",
+)
+EXTRACTION_STATUSES = ("ok", "no_text", "unsupported", "failed")
+PROFILE_OUTPUT_KINDS = ("full_cv_history", "fact_sheet", "questionnaire_analysis", "strategy")
+FACT_STATUSES = ("unverified", "verified", "rejected")
+
 
 def _in_list(values: tuple[str, ...]) -> str:
     return ", ".join(f"'{value}'" for value in values)
@@ -67,6 +82,84 @@ CREATE TABLE status_history (
 )
 """
 
+_NOW = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"
+
+_V3_CLAUDE_JOBS = f"""
+CREATE TABLE claude_jobs (
+    id INTEGER PRIMARY KEY,
+    label TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    job_application_id INTEGER REFERENCES job_applications(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ({_in_list(CLAUDE_JOB_STATUSES)})),
+    error TEXT,
+    created_at TEXT NOT NULL DEFAULT ({_NOW}),
+    updated_at TEXT NOT NULL DEFAULT ({_NOW})
+)
+"""
+
+_V3_CLAUDE_JOB_PROMPTS = f"""
+CREATE TABLE claude_job_prompts (
+    id INTEGER PRIMARY KEY,
+    claude_job_id INTEGER NOT NULL REFERENCES claude_jobs(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    prompt_kind TEXT NOT NULL,
+    prompt_text TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ({_in_list(PROMPT_STATUSES)})),
+    result_text TEXT,
+    error TEXT,
+    cost_usd REAL,
+    duration_ms INTEGER,
+    started_at TEXT,
+    finished_at TEXT,
+    UNIQUE (claude_job_id, position)
+)
+"""
+
+_V3_PROFILE_FILES = f"""
+CREATE TABLE profile_files (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ({_in_list(PROFILE_FILE_KINDS)})),
+    original_name TEXT NOT NULL,
+    stored_path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    uploaded_at TEXT NOT NULL DEFAULT ({_NOW}),
+    extraction_status TEXT CHECK (
+        extraction_status IS NULL OR extraction_status IN ({_in_list(EXTRACTION_STATUSES)})
+    ),
+    extraction_message TEXT,
+    extracted_text TEXT
+)
+"""
+
+_V3_PROFILE_OUTPUTS = f"""
+CREATE TABLE profile_outputs (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ({_in_list(PROFILE_OUTPUT_KINDS)})),
+    version INTEGER NOT NULL CHECK (version >= 1),
+    claude_job_id INTEGER REFERENCES claude_jobs(id) ON DELETE SET NULL,
+    body_json TEXT NOT NULL,
+    input_sha256s TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT ({_NOW}),
+    UNIQUE (kind, version)
+)
+"""
+
+_V3_FACTS = f"""
+CREATE TABLE facts (
+    id INTEGER PRIMARY KEY,
+    profile_output_id INTEGER NOT NULL REFERENCES profile_outputs(id) ON DELETE CASCADE,
+    fact_key TEXT NOT NULL,
+    text TEXT NOT NULL,
+    date TEXT NOT NULL CHECK (date <> ''),
+    source_file_id INTEGER NOT NULL REFERENCES profile_files(id),
+    source_location TEXT NOT NULL CHECK (source_location <> ''),
+    status TEXT NOT NULL DEFAULT 'unverified' CHECK (status IN ({_in_list(FACT_STATUSES)})),
+    updated_at TEXT NOT NULL DEFAULT ({_NOW}),
+    UNIQUE (profile_output_id, fact_key)
+)
+"""
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(
         version=1,
@@ -114,6 +207,24 @@ MIGRATIONS: tuple[Migration, ...] = (
             """,
             "DROP TABLE status_history",
             "DROP TABLE job_applications",
+        ),
+    ),
+    Migration(
+        version=3,
+        name="add Claude Jobs, profile files, profile outputs and facts",
+        up=(
+            _V3_CLAUDE_JOBS,
+            _V3_CLAUDE_JOB_PROMPTS,
+            _V3_PROFILE_FILES,
+            _V3_PROFILE_OUTPUTS,
+            _V3_FACTS,
+        ),
+        down=(
+            "DROP TABLE facts",
+            "DROP TABLE profile_outputs",
+            "DROP TABLE profile_files",
+            "DROP TABLE claude_job_prompts",
+            "DROP TABLE claude_jobs",
         ),
     ),
 )

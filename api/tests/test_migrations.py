@@ -22,10 +22,12 @@ def table_names(conn: sqlite3.Connection) -> set[str]:
     return {row[0] for row in rows}
 
 
-def test_migrate_creates_job_applications_and_history(conn: sqlite3.Connection) -> None:
+def test_migrate_creates_all_tables(conn: sqlite3.Connection) -> None:
     assert migrate(conn) == ALL_VERSIONS
     names = table_names(conn)
     assert {"job_applications", "status_history"} <= names
+    assert {"claude_jobs", "claude_job_prompts", "profile_files"} <= names
+    assert {"profile_outputs", "facts"} <= names
     assert "jobs" not in names
     assert applied_versions(conn) == ALL_VERSIONS
 
@@ -35,25 +37,34 @@ def test_migrate_twice_applies_nothing_new(conn: sqlite3.Connection) -> None:
     assert migrate(conn) == []
 
 
-def test_rollback_one_step_restores_the_jobs_table(conn: sqlite3.Connection) -> None:
+def test_rollback_one_step_removes_only_the_profile_tables(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    assert rollback(conn, steps=1) == [2]
+    assert rollback(conn, steps=1) == [3]
+    names = table_names(conn)
+    assert "job_applications" in names
+    assert not {"claude_jobs", "claude_job_prompts", "profile_files", "facts"} & names
+    assert applied_versions(conn) == [1, 2]
+
+
+def test_rollback_two_steps_restores_the_jobs_table(conn: sqlite3.Connection) -> None:
+    migrate(conn)
+    assert rollback(conn, steps=2) == [3, 2]
     names = table_names(conn)
     assert "jobs" in names
     assert "job_applications" not in names
     assert applied_versions(conn) == [1]
 
 
-def test_rollback_both_steps_empties_the_schema(conn: sqlite3.Connection) -> None:
+def test_rollback_all_steps_empties_the_schema(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    assert rollback(conn, steps=2) == [2, 1]
+    assert rollback(conn, steps=3) == [3, 2, 1]
     assert "jobs" not in table_names(conn)
     assert applied_versions(conn) == []
 
 
 def test_migrate_again_after_rollback(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    rollback(conn, steps=2)
+    rollback(conn, steps=3)
     assert migrate(conn) == ALL_VERSIONS
     assert "job_applications" in table_names(conn)
 
@@ -69,7 +80,7 @@ def test_existing_jobs_survive_the_upgrade_with_a_history_row(conn: sqlite3.Conn
     )
     conn.commit()
 
-    assert migrate(conn) == [2]
+    assert migrate(conn) == [2, 3]
 
     row = conn.execute(
         "SELECT company, status, location, work_mode FROM job_applications"
@@ -132,3 +143,48 @@ def test_data_dir_override_wins(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "ignored"))
     monkeypatch.setenv("LJT_DATA_DIR", str(tmp_path / "override"))
     assert data_dir() == tmp_path / "override"
+
+
+def test_claude_job_status_must_be_a_known_value(conn: sqlite3.Connection) -> None:
+    migrate(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO claude_jobs (label, kind, status) VALUES ('x', 'profile', 'lost')"
+        )
+
+
+def test_profile_file_kind_must_be_a_known_value(conn: sqlite3.Connection) -> None:
+    migrate(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO profile_files (kind, original_name, stored_path, sha256, size_bytes) "
+            "VALUES ('cv_other', 'a.pdf', 'p/a.pdf', 'abc', 1)"
+        )
+
+
+def test_fact_needs_a_source_file_and_a_date(conn: sqlite3.Connection) -> None:
+    migrate(conn)
+    conn.execute(
+        "INSERT INTO profile_outputs (kind, version, body_json, input_sha256s) "
+        "VALUES ('fact_sheet', 1, '{}', '')"
+    )
+    conn.execute(
+        "INSERT INTO profile_files (kind, original_name, stored_path, sha256, size_bytes) "
+        "VALUES ('master_cv_en', 'cv.pdf', 'profile/cv.pdf', 'abc', 10)"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO facts (profile_output_id, fact_key, text, date, source_file_id, "
+            "source_location) VALUES (1, 'F-001', 'x', '', 1, 'p. 1')"
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO facts (profile_output_id, fact_key, text, date, source_file_id, "
+            "source_location) VALUES (1, 'F-001', 'x', '2024', 99, 'p. 1')"
+        )
+    conn.execute(
+        "INSERT INTO facts (profile_output_id, fact_key, text, date, source_file_id, "
+        "source_location) VALUES (1, 'F-001', 'x', '2024', 1, 'p. 1')"
+    )
+    row = conn.execute("SELECT status FROM facts WHERE fact_key = 'F-001'").fetchone()
+    assert row[0] == "unverified"
