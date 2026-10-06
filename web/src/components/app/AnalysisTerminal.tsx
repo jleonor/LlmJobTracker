@@ -1,5 +1,8 @@
+import { useState } from 'react'
+
+import { ApiError, fetchPromptExchange } from '@/lib/api'
 import { useClaudeJobs } from '@/lib/useClaudeJobs'
-import type { ClaudeJob } from '@/lib/types'
+import type { ClaudeJob, PromptExchange } from '@/lib/types'
 
 const PROMPT_LABELS: Record<string, string> = {
   full_cv_history: 'Career history',
@@ -88,6 +91,81 @@ export function AnalysisTerminal() {
             </p>
           ))}
       </div>
+      {latest && <Exchanges jobId={latest.id} prompts={latest.prompts} />}
     </section>
+  )
+}
+
+// What was sent to Claude and what came back, for each prompt that has finished (D-77).
+// Opening one reads it from the API. Nothing is sent to Claude by opening it.
+function Exchanges({ jobId, prompts }: { jobId: number; prompts: ClaudeJob['prompts'] }) {
+  const [open, setOpen] = useState<number | null>(null)
+  const [exchange, setExchange] = useState<PromptExchange | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // A skipped prompt sent nothing, so it has no exchange to show.
+  const finished = prompts.filter(
+    (prompt) => !prompt.skipped && (prompt.status === 'done' || prompt.status === 'failed'),
+  )
+
+  if (finished.length === 0) return null
+
+  function toggle(position: number) {
+    if (open === position) {
+      setOpen(null)
+      return
+    }
+    setOpen(position)
+    setExchange(null)
+    setLoadError(null)
+    fetchPromptExchange(jobId, position)
+      .then(setExchange)
+      .catch((failure: unknown) => {
+        setLoadError(failure instanceof ApiError ? failure.message : 'Could not read the exchange.')
+      })
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-zinc-800 pt-2 font-mono text-xs">
+      {finished.map((prompt) => (
+        <div key={prompt.position} className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => toggle(prompt.position)}
+            className="self-start text-left text-zinc-300 underline-offset-2 hover:underline"
+          >
+            {open === prompt.position ? 'Hide' : 'Show'} what was sent and returned:{' '}
+            {PROMPT_LABELS[prompt.prompt_kind] ?? prompt.prompt_kind}
+          </button>
+          {open === prompt.position && (
+            <div className="flex flex-col gap-2">
+              {loadError && <p className="text-red-400">{loadError}</p>}
+              {!loadError && !exchange && <p className="text-zinc-500">Reading...</p>}
+              {exchange && (
+                <>
+                  <ExchangeBlock
+                    title={`Sent to Claude (${exchange.prompt_text.length.toLocaleString()} characters)`}
+                    text={exchange.prompt_text}
+                  />
+                  <ExchangeBlock
+                    title="Claude answered"
+                    text={exchange.result_text ?? '(no answer was kept)'}
+                  />
+                  {exchange.error && <p className="text-red-400">Check failed: {exchange.error}</p>}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ExchangeBlock({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-zinc-400">{title}</p>
+      <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded bg-black p-2 text-zinc-200">{text}</pre>
+    </div>
   )
 }

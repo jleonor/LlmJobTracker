@@ -7,6 +7,7 @@ import type {
   ProfileFile,
   ProfileFileKind,
   ProfileOutput,
+  PromptExchange,
   RunResult,
 } from '@/lib/types'
 
@@ -118,4 +119,8 @@ export function resumeClaudeJob(id: number): Promise<ClaudeJob> {
 
 export function cancelClaudeJob(id: number): Promise<ClaudeJob> {
   return request<ClaudeJob>(`/api/claude-jobs/${id}/cancel`, { method: 'POST' })
+}
+
+export function fetchPromptExchange(jobId: number, position: number): Promise<PromptExchange> {
+  return request<PromptExchange>(`/api/claude-jobs/${jobId}/prompts/${position}`)
 }

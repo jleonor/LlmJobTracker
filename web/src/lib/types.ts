@@ -155,3 +155,13 @@ export type ClaudeJob = {
   resume_at: string | null
   prompts: ClaudeJobPrompt[]
 }
+
+// What was sent to Claude for one prompt, and what came back (D-77). Read on demand, since the
+// prompt can be very large.
+export type PromptExchange = {
+  position: number
+  prompt_kind: string
+  prompt_text: string
+  result_text: string | null
+  error: string | null
+}
