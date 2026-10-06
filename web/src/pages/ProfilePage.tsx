@@ -40,6 +40,10 @@ const SECTIONS: { kind: ProfileFileKind; title: string; hint: string }[] = [
   },
 ]
 
+// Your files Claude cannot make, and the optional versions Claude can make (D-68, D-70).
+const REQUIRED_SECTIONS = SECTIONS.filter((section) => !section.kind.startsWith('own_'))
+const OPTIONAL_SECTIONS = SECTIONS.filter((section) => section.kind.startsWith('own_'))
+
 const ACCEPT = '.pdf,.docx,.txt,.md'
 
 type LoadState =
@@ -91,10 +95,6 @@ export function ProfilePage() {
         </p>
       </div>
 
-      <ProfileOutputs onChanged={() => setRevision((current) => current + 1)} />
-
-      <FactSheetReview key={revision} />
-
       {state.kind === 'loading' && <p className="text-sm text-muted-foreground">Loading your files...</p>}
 
       {state.kind === 'error' && (
@@ -103,17 +103,42 @@ export function ProfilePage() {
         </div>
       )}
 
-      {state.kind === 'ready' &&
-        SECTIONS.map((section) => (
-          <UploadSection
-            key={section.kind}
-            kind={section.kind}
-            title={section.title}
-            hint={section.hint}
-            files={state.files.filter((file) => file.kind === section.kind)}
-            onUploaded={reload}
-          />
-        ))}
+      {state.kind === 'ready' && (
+        <>
+          <h2 className="text-sm font-semibold">Your files</h2>
+          {REQUIRED_SECTIONS.map((section) => (
+            <UploadSection
+              key={section.kind}
+              kind={section.kind}
+              title={section.title}
+              hint={section.hint}
+              files={state.files.filter((file) => file.kind === section.kind)}
+              onUploaded={reload}
+            />
+          ))}
+
+          <div className="flex flex-col gap-1 border-t border-border pt-4">
+            <h2 className="text-sm font-semibold">Optional: your own versions</h2>
+            <p className="text-xs text-muted-foreground">
+              Leave these out and the analysis makes them. Upload one to use yours instead.
+            </p>
+          </div>
+          {OPTIONAL_SECTIONS.map((section) => (
+            <UploadSection
+              key={section.kind}
+              kind={section.kind}
+              title={section.title}
+              hint={section.hint}
+              files={state.files.filter((file) => file.kind === section.kind)}
+              onUploaded={reload}
+            />
+          ))}
+        </>
+      )}
+
+      <ProfileOutputs onChanged={() => setRevision((current) => current + 1)} />
+
+      <FactSheetReview key={revision} />
     </section>
   )
 }
