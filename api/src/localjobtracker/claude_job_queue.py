@@ -13,6 +13,7 @@ import sqlite3
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,9 @@ from localjobtracker.claude_jobs import (
     create_claude_job,
     job_status,
     next_queued_job_id,
+    pause_job,
     prompt_rows,
+    resume_due_jobs,
     resume_job,
     set_prompt_status,
     set_prompt_text,
@@ -58,14 +61,24 @@ class RenderedPrompt:
 Renderer = Callable[[sqlite3.Connection, PromptRow], RenderedPrompt]
 
 
+# A job resumes a little after the reset the CLI reports, so the limit is clear by then.
+RESUME_MARGIN = timedelta(minutes=2)
+
+
 def _paused_message(limit: RateLimitError) -> str:
     if limit.resets_at is None:
         return "Paused at a plan limit. Resume when you want the job to continue."
     reset = limit.resets_at.strftime("%Y-%m-%d %H:%M UTC")
     return (
-        f"Paused at a plan limit. The CLI reports that the limit resets at {reset}. "
-        "Resume when you want the job to continue."
+        f"Paused at a plan limit. It resumes by itself after the limit resets at {reset}, "
+        "or click Resume."
     )
+
+
+def _resume_time(limit: RateLimitError) -> str | None:
+    if limit.resets_at is None:
+        return None
+    return (limit.resets_at + RESUME_MARGIN).astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class ClaudeJobQueue:
@@ -157,6 +170,7 @@ class ClaudeJobQueue:
         """
         conn = connect(self._db_path)
         try:
+            resume_due_jobs(conn)
             job_id = next_queued_job_id(conn)
             if job_id is None:
                 return False
@@ -211,7 +225,7 @@ class ClaudeJobQueue:
                 if self._stop.is_set():
                     return
                 set_prompt_status(conn, prompt.id, ("running",), "queued")
-                transition(conn, job_id, ("processing",), "paused", error=_paused_message(limit))
+                pause_job(conn, job_id, _paused_message(limit), _resume_time(limit))
                 return
             except Exception as error:
                 if self._stop.is_set():

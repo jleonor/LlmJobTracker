@@ -1,6 +1,7 @@
 import sqlite3
 import threading
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -318,3 +319,52 @@ def test_a_finished_prompt_records_its_model_and_times(db_path: Path, runner: Fa
     assert first.model == "fake-model"
     assert first.started_at is not None and first.finished_at is not None
     assert first.skipped is False
+
+
+def test_a_limit_with_a_reset_time_resumes_the_job_by_itself(db_path: Path) -> None:
+    runner = FakeRunner(text="done")
+    runner.rate_limit_next(times=1, resets_at=datetime.now(UTC) - timedelta(minutes=5))
+    queue = ClaudeJobQueue(db_path, runner)
+    job_id = submit(db_path, queue, "auto", ["one"])
+
+    queue.process_next()  # paused at the limit, with a reset time already past
+    assert read_job(db_path, job_id)[0] == "paused"
+    queue.process_next()  # the worker resumes it, and it runs
+
+    assert read_job(db_path, job_id) == ("done", ["done"])
+
+
+def test_a_limit_with_a_future_reset_waits_and_records_the_time(db_path: Path) -> None:
+    runner = FakeRunner(text="done")
+    reset = datetime.now(UTC) + timedelta(hours=2)
+    runner.rate_limit_next(times=1, resets_at=reset)
+    queue = ClaudeJobQueue(db_path, runner)
+    job_id = submit(db_path, queue, "waiting", ["one"])
+
+    queue.process_next()
+    queue.process_next()
+
+    assert read_job(db_path, job_id)[0] == "paused"
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None and job.resume_at is not None
+    assert job.resume_at > datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def test_a_manual_resume_clears_the_reset_time(db_path: Path) -> None:
+    runner = FakeRunner(text="done")
+    runner.rate_limit_next(times=1, resets_at=datetime.now(UTC) + timedelta(hours=1))
+    queue = ClaudeJobQueue(db_path, runner)
+    job_id = submit(db_path, queue, "manual", ["one"])
+    queue.process_next()
+
+    conn = connect(db_path)
+    try:
+        assert queue.resume(conn, job_id) is True
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None and job.resume_at is None

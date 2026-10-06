@@ -395,6 +395,12 @@ MIGRATIONS: tuple[Migration, ...] = (
         up=("ALTER TABLE claude_job_prompts ADD COLUMN model TEXT",),
         down=("ALTER TABLE claude_job_prompts DROP COLUMN model",),
     ),
+    Migration(
+        version=8,
+        name="record when a paused job resumes by itself",
+        up=("ALTER TABLE claude_jobs ADD COLUMN resume_at TEXT",),
+        down=("ALTER TABLE claude_jobs DROP COLUMN resume_at",),
+    ),
 )
 
 _LEDGER = """

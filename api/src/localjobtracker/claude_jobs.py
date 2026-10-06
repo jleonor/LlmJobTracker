@@ -35,6 +35,7 @@ class ClaudeJob(BaseModel):
     error: str | None
     created_at: str
     updated_at: str
+    resume_at: str | None
     prompts: list[ClaudeJobPrompt]
 
 
@@ -113,6 +114,7 @@ def _job_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> ClaudeJob:
         error=row["error"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        resume_at=row["resume_at"],
         prompts=_prompts_for(conn, row["id"]),
     )
 
@@ -207,9 +209,38 @@ def recover_interrupted(conn: sqlite3.Connection) -> int:
     return cursor.rowcount
 
 
+def pause_job(conn: sqlite3.Connection, job_id: int, error: str, resume_at: str | None) -> bool:
+    """Pause a running job at a plan limit. `resume_at` is when it resumes by itself (D-75)."""
+    with conn:
+        cursor = conn.execute(
+            """
+            UPDATE claude_jobs SET status = 'paused', error = ?, resume_at = ?, updated_at = ?
+            WHERE id = ? AND status = 'processing'
+            """,
+            (error, resume_at, _now(), job_id),
+        )
+    return cursor.rowcount == 1
+
+
 def resume_job(conn: sqlite3.Connection, job_id: int) -> bool:
-    """Resume a job that the queue paused at a plan limit (D-63)."""
-    return transition(conn, job_id, ("paused",), "queued", error=None)
+    """Resume a paused job, by the user or at its reset time (D-63, D-75)."""
+    resumed = transition(conn, job_id, ("paused",), "queued", error=None)
+    if resumed:
+        with conn:
+            conn.execute("UPDATE claude_jobs SET resume_at = NULL WHERE id = ?", (job_id,))
+    return resumed
+
+
+def resume_due_jobs(conn: sqlite3.Connection) -> list[int]:
+    """Resume every paused job whose reset time has passed. Returns the ids resumed."""
+    rows = conn.execute(
+        """
+        SELECT id FROM claude_jobs
+        WHERE status = 'paused' AND resume_at IS NOT NULL AND resume_at <= ?
+        """,
+        (_now(),),
+    ).fetchall()
+    return [int(row["id"]) for row in rows if resume_job(conn, int(row["id"]))]
 
 
 def cancel_job(conn: sqlite3.Connection, job_id: int) -> bool:

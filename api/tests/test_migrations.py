@@ -39,14 +39,14 @@ def test_migrate_twice_applies_nothing_new(conn: sqlite3.Connection) -> None:
 
 def test_rollback_one_step_removes_only_the_latest_migration(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    assert rollback(conn, steps=1) == [7]
+    assert rollback(conn, steps=1) == [8]
     assert {"claude_jobs", "profile_files", "facts"} <= table_names(conn)
-    assert applied_versions(conn) == [1, 2, 3, 4, 5, 6]
+    assert applied_versions(conn) == [1, 2, 3, 4, 5, 6, 7]
 
 
 def test_rollback_three_steps_restores_the_jobs_table(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    assert rollback(conn, steps=6) == [7, 6, 5, 4, 3, 2]
+    assert rollback(conn, steps=7) == [8, 7, 6, 5, 4, 3, 2]
     names = table_names(conn)
     assert "jobs" in names
     assert "job_applications" not in names
@@ -55,14 +55,14 @@ def test_rollback_three_steps_restores_the_jobs_table(conn: sqlite3.Connection) 
 
 def test_rollback_all_steps_empties_the_schema(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    assert rollback(conn, steps=7) == [7, 6, 5, 4, 3, 2, 1]
+    assert rollback(conn, steps=8) == [8, 7, 6, 5, 4, 3, 2, 1]
     assert "jobs" not in table_names(conn)
     assert applied_versions(conn) == []
 
 
 def test_migrate_again_after_rollback(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    rollback(conn, steps=7)
+    rollback(conn, steps=8)
     assert migrate(conn) == ALL_VERSIONS
     assert "job_applications" in table_names(conn)
 
@@ -78,7 +78,7 @@ def test_existing_jobs_survive_the_upgrade_with_a_history_row(conn: sqlite3.Conn
     )
     conn.commit()
 
-    assert migrate(conn) == [2, 3, 4, 5, 6, 7]
+    assert migrate(conn) == [2, 3, 4, 5, 6, 7, 8]
 
     row = conn.execute(
         "SELECT company, status, location, work_mode FROM job_applications"
@@ -190,7 +190,7 @@ def test_fact_needs_a_source_file_and_a_date(conn: sqlite3.Connection) -> None:
 
 def test_the_master_cv_split_is_merged_and_facts_survive(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    rollback(conn, steps=4)  # back to version 3, the English/French kinds
+    rollback(conn, steps=5)  # back to version 3, the English/French kinds
     conn.execute(
         "INSERT INTO profile_files (kind, original_name, stored_path, sha256, size_bytes) "
         "VALUES ('master_cv_fr', 'cv fr.pdf', 'profile/fr.pdf', 'f1', 10)"
@@ -207,7 +207,7 @@ def test_the_master_cv_split_is_merged_and_facts_survive(conn: sqlite3.Connectio
     )
     conn.commit()
 
-    assert migrate(conn) == [4, 5, 6, 7]
+    assert migrate(conn) == [4, 5, 6, 7, 8]
     assert conn.execute("SELECT kind FROM profile_files").fetchone()[0] == "master_cv"
     assert (
         conn.execute("SELECT COUNT(*) FROM facts WHERE source_file_id = ?", (file_id,)).fetchone()[
@@ -217,7 +217,7 @@ def test_the_master_cv_split_is_merged_and_facts_survive(conn: sqlite3.Connectio
     )
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 
-    rollback(conn, steps=4)
+    rollback(conn, steps=5)
     assert conn.execute("SELECT kind FROM profile_files").fetchone()[0] == "master_cv_en"
     assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 1
 
