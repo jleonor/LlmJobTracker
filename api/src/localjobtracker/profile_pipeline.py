@@ -206,6 +206,7 @@ SCHEMAS: Final[dict[str, dict[str, Any]]] = {
 INSTRUCTIONS: Final[dict[str, str]] = {
     "full_cv_history": (
         "Build one history of this person's career from the CV, letter and history files below. "
+        "Dates use only YYYY, YYYY-MM or YYYY-MM-DD. "
         "Make one item per role, education entry, skill or achievement. For each role fill the "
         "employer, the title, the start date in date, and in end a date, 'present', or empty "
         "when the source gives no end. Keep the wording close to the source. Use an empty "
@@ -894,12 +895,105 @@ def _follow(value: Any, rename: dict[str, str]) -> Any:
     return value
 
 
+MONTHS: Final[dict[str, int]] = {
+    "jan": 1,
+    "janv": 1,
+    "january": 1,
+    "janvier": 1,
+    "feb": 2,
+    "fev": 2,
+    "fevr": 2,
+    "february": 2,
+    "fevrier": 2,
+    "mar": 3,
+    "mars": 3,
+    "march": 3,
+    "apr": 4,
+    "avr": 4,
+    "april": 4,
+    "avril": 4,
+    "may": 5,
+    "mai": 5,
+    "jun": 6,
+    "june": 6,
+    "juin": 6,
+    "jul": 7,
+    "july": 7,
+    "juil": 7,
+    "juillet": 7,
+    "aug": 8,
+    "august": 8,
+    "aout": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "septembre": 9,
+    "oct": 10,
+    "october": 10,
+    "octobre": 10,
+    "nov": 11,
+    "november": 11,
+    "novembre": 11,
+    "dec": 12,
+    "december": 12,
+    "decembre": 12,
+}
+
+
+def _normalise_date(value: Any) -> Any:
+    """Turn a date a model wrote in another form into YYYY, YYYY-MM or YYYY-MM-DD (D-78).
+
+    It takes the first year in the text, and the month that comes with it when there is one.
+    "Jan 2020 - Mar 2022" becomes 2020-01, and "09/2020" becomes 2020-09. Anything without a
+    year is left as it is, so the check still refuses it.
+    """
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if DATE_PATTERN.match(text):
+        return text
+    iso = re.search(r"(\d{4})[-/.](\d{1,2})(?:[-/.](\d{1,2}))?", text)
+    if iso:
+        year, month = iso.group(1), int(iso.group(2))
+        if 1 <= month <= 12:
+            day = iso.group(3)
+            if day and 1 <= int(day) <= 31:
+                return f"{year}-{month:02d}-{int(day):02d}"
+            return f"{year}-{month:02d}"
+    month_first = re.search(r"\b(\d{1,2})[-/.](\d{4})\b", text)
+    if month_first and 1 <= int(month_first.group(1)) <= 12:
+        return f"{month_first.group(2)}-{int(month_first.group(1)):02d}"
+    year_match = re.search(r"\b(\d{4})\b", text)
+    if year_match is None:
+        return value
+    year = year_match.group(1)
+    before = text[: year_match.start()]
+    words = re.findall(r"[a-zéûèôà]+", before.lower())
+    for word in reversed(words):
+        key = word.replace("é", "e").replace("û", "u").replace("è", "e")
+        if key in MONTHS:
+            return f"{year}-{MONTHS[key]:02d}"
+    return year
+
+
+def _dates_in(items: Any, keys: tuple[str, ...]) -> None:
+    for item in items if isinstance(items, list) else []:
+        if isinstance(item, dict):
+            for key in keys:
+                if key not in item:
+                    continue
+                if key == "end" and item[key] in ("present", ""):
+                    continue
+                item[key] = _normalise_date(item[key])
+
+
 def normalise_ids(kind: str, body: dict[str, Any]) -> dict[str, Any]:
     """Make the ids of an answer valid and unique, and follow them through its references."""
     if kind == "full_cv_history":
         rename: dict[str, str] = {}
         items = body.get("items")
         _renumber(items, "id", "H-", 3, rename)
+        _dates_in(items, ("date", "end"))
         for item in items if isinstance(items, list) else []:
             for conflict in item.get("conflicts", []) if isinstance(item, dict) else []:
                 if isinstance(conflict, dict):
@@ -908,6 +1002,7 @@ def normalise_ids(kind: str, body: dict[str, Any]) -> dict[str, Any]:
         rename = {}
         facts = body.get("facts")
         _renumber(facts, "id", "F-", 3, rename)
+        _dates_in(facts, ("date",))
         conflicts = body.get("conflicts")
         _renumber(conflicts, "id", "C-", 2, {})
         for conflict in conflicts if isinstance(conflicts, list) else []:

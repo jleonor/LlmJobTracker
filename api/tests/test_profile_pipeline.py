@@ -541,3 +541,31 @@ def test_malformed_ids_are_renumbered_and_their_references_follow(
     assert [fact["id"] for fact in fact_sheet["facts"]] == ["F-001", "F-002"]
     assert fact_sheet["conflicts"][0]["fact_ids"] == ["F-001", "F-002"]
     assert fact_sheet["conflicts"][0]["id"] == "C-01"
+
+
+def test_dates_in_other_forms_are_read_as_a_year_and_month(
+    db_path: Path, cv_id: int, questionnaire_id: int
+) -> None:
+    answers = good_answers(cv_id)
+    answers["full_cv_history"]["items"][0]["date"] = "Jan 2020 - Mar 2022"
+    answers["full_cv_history"]["items"][0]["end"] = "Mar 2022"
+    answers["full_cv_history"]["items"][1]["date"] = "09/2020"
+    answers["fact_sheet"]["facts"][0]["date"] = "2020 to 2022"
+    queue = make_queue(db_path, CannedRunner(answers))
+    job_id = start(db_path, queue)
+
+    run_all(queue)
+
+    assert job_state(db_path, job_id)[0] == "done"
+    conn = connect(db_path)
+    try:
+        history = json.loads(
+            conn.execute(
+                "SELECT body_json FROM profile_outputs WHERE kind = 'full_cv_history'"
+            ).fetchone()[0]
+        )
+    finally:
+        conn.close()
+    assert history["items"][0]["date"] == "2020-01"
+    assert history["items"][0]["end"] == "2022-03"
+    assert history["items"][1]["date"] == "2020-09"
