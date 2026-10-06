@@ -4,11 +4,11 @@ import subprocess
 import threading
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from localjobtracker.claude_code_runner import (
-    MAX_BUDGET_USD,
     MODEL,
     ClaudeCodeRunner,
     build_args,
@@ -25,7 +25,6 @@ REQUIRED_FLAGS = [
     "--verbose",
     "--permission-prompts",
     "none",
-    "--max-budget-usd",
 ]
 
 RESULT_OK = {
@@ -57,7 +56,6 @@ def test_build_args_keeps_every_run_restricted() -> None:
     for flag in REQUIRED_FLAGS:
         assert flag in args
     assert args[args.index("--tools") + 1] == ""
-    assert args[args.index("--max-budget-usd") + 1] == MAX_BUDGET_USD
     assert args[1] == "-p"
     assert "Reply with OK." not in args  # the prompt goes through stdin
 
@@ -248,3 +246,30 @@ def test_the_model_is_read_from_the_start_event() -> None:
 def test_the_runner_asks_for_the_profile_model() -> None:
     args = build_args("claude")
     assert args[args.index("--model") + 1] == MODEL == "claude-sonnet-5"
+
+
+def test_no_budget_cap_is_passed_to_the_cli() -> None:
+    assert "--max-budget-usd" not in build_args("claude")
+
+
+def test_a_run_may_take_up_to_fifteen_minutes() -> None:
+    assert ClaudeCodeRunner(workdir=Path(".")).timeout_s == 15 * 60
+
+
+def test_the_api_key_is_removed_from_the_environment_of_the_cli(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-not-real")
+    process = _RunningProcess()
+    seen: dict[str, dict[str, str]] = {}
+
+    def fake_popen(_args: list[str], **kwargs: Any) -> _RunningProcess:
+        seen["env"] = kwargs["env"]
+        process.terminated = True
+        return process
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "claude")
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    ClaudeCodeRunner(workdir=tmp_path).run("Reply OK.")
+
+    assert "ANTHROPIC_API_KEY" not in seen["env"]

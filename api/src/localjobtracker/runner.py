@@ -53,10 +53,12 @@ class FakeRunner:
         self.prompts: list[str] = []
         self.schemas: list[dict[str, Any] | None] = []
         self._rate_limits_left = 0
+        self._resets_at: datetime | None = None
 
-    def rate_limit_next(self, times: int = 1) -> None:
+    def rate_limit_next(self, times: int = 1, resets_at: datetime | None = None) -> None:
         """Make the next `times` calls raise RateLimitError, as a plan limit would."""
         self._rate_limits_left = times
+        self._resets_at = resets_at
 
     def run(
         self,
@@ -68,5 +70,5 @@ class FakeRunner:
         self.schemas.append(json_schema)
         if self._rate_limits_left > 0:
             self._rate_limits_left -= 1
-            raise RateLimitError("Simulated plan limit (fake runner).")
+            raise RateLimitError("Simulated plan limit (fake runner).", self._resets_at)
         return RunResult(ok=True, text=self.text, duration_ms=0, cost_usd=0.0, model="fake-model")

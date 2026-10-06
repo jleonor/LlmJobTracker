@@ -9,6 +9,7 @@ Output is read as stream-json. A plan limit shows up as a `rate_limit_event` (or
 """
 
 import json
+import os
 import shutil
 import subprocess
 import threading
@@ -19,11 +20,11 @@ from typing import Any
 
 from localjobtracker.runner import RateLimitError, RunResult
 
-DEFAULT_TIMEOUT_S = 180
+# A profile prompt can read every CV, so a run may take many minutes. The timeout is the
+# only stop for a run that goes on too long (D-75).
+DEFAULT_TIMEOUT_S = 15 * 60
 # How often a running CLI is checked for a cancel request or a timeout.
 POLL_INTERVAL_S = 0.2
-# The CLI's budget cap is an estimate, not a strict limit (runner-notes.md). Leave a margin.
-MAX_BUDGET_USD = "0.25"
 # The model every profile prompt runs on (D-74). The id is given in full, because the
 # CLI's "sonnet" alias points at a newer model.
 MODEL = "claude-sonnet-5"
@@ -49,8 +50,6 @@ def build_args(executable: str, json_schema: dict[str, Any] | None = None) -> li
         "--permission-prompts",
         "none",
         "--no-session-persistence",
-        "--max-budget-usd",
-        MAX_BUDGET_USD,
     ]
     if json_schema is not None:
         args += ["--json-schema", json.dumps(json_schema)]
@@ -148,6 +147,13 @@ def parse_stream(stdout: str, exit_code: int, duration_ms: int) -> RunResult:
     )
 
 
+def _cli_environment() -> dict[str, str]:
+    """The environment for the CLI, without an API key. With no key set, the CLI uses the
+    claude.ai login and its plan limits, as Claude Code does (D-75). A key would switch
+    the run to per-token API billing, so it is removed."""
+    return {name: value for name, value in os.environ.items() if name != "ANTHROPIC_API_KEY"}
+
+
 class ClaudeCodeRunner:
     def __init__(self, workdir: Path, timeout_s: float = DEFAULT_TIMEOUT_S) -> None:
         self.workdir = workdir
@@ -167,6 +173,7 @@ class ClaudeCodeRunner:
         process = subprocess.Popen(
             build_args(executable, json_schema),
             cwd=self.workdir,
+            env=_cli_environment(),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
