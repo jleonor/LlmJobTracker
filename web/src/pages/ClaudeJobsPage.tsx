@@ -105,6 +105,12 @@ function JobCard({ job, position, onChanged }: CardProps) {
         </p>
       )}
 
+      {job.status === 'paused' && job.resume_at && (
+        <p className="text-sm text-muted-foreground">
+          Resumes by itself at {new Date(job.resume_at).toLocaleString()}.
+        </p>
+      )}
+
       <ol className="flex flex-col gap-1">
         {job.prompts.map((prompt) => (
           <PromptLine key={prompt.position} prompt={prompt} />

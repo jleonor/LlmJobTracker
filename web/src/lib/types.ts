@@ -152,5 +152,6 @@ export type ClaudeJob = {
   error: string | null
   created_at: string
   updated_at: string
+  resume_at: string | null
   prompts: ClaudeJobPrompt[]
 }
