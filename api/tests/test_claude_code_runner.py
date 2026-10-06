@@ -1,5 +1,6 @@
 import json
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -8,19 +9,44 @@ from localjobtracker.claude_code_runner import (
     MAX_BUDGET_USD,
     ClaudeCodeRunner,
     build_args,
-    parse_output,
+    parse_stream,
 )
+from localjobtracker.runner import FakeRunner, RateLimitError
 
 REQUIRED_FLAGS = [
     "--restricted",
     "--strict-mcp-config",
     "--no-session-persistence",
     "--output-format",
-    "json",
+    "stream-json",
+    "--verbose",
     "--permission-prompts",
     "none",
     "--max-budget-usd",
 ]
+
+RESULT_OK = {
+    "type": "result",
+    "subtype": "success",
+    "is_error": False,
+    "result": "OK",
+    "total_cost_usd": 0.0106,
+    "api_error_status": None,
+}
+
+# Shape of a real rate_limit_event from Claude Code 2.1.289 (a run that was allowed).
+ALLOWED_EVENT = {
+    "type": "rate_limit_event",
+    "rate_limit_info": {
+        "status": "allowed",
+        "resetsAt": 1791286200,
+        "rateLimitType": "five_hour",
+    },
+}
+
+
+def stream(*events: Mapping[str, object]) -> str:
+    return "\n".join(json.dumps(event) for event in events)
 
 
 def test_build_args_keeps_every_run_restricted() -> None:
@@ -33,16 +59,7 @@ def test_build_args_keeps_every_run_restricted() -> None:
 
 
 def test_parse_success_reads_result_text_and_cost() -> None:
-    stdout = json.dumps(
-        {
-            "type": "result",
-            "subtype": "success",
-            "is_error": False,
-            "result": "OK",
-            "total_cost_usd": 0.0106,
-        }
-    )
-    parsed = parse_output(stdout, exit_code=0, duration_ms=12)
+    parsed = parse_stream(stream(ALLOWED_EVENT, RESULT_OK), exit_code=0, duration_ms=12)
     assert parsed.ok is True
     assert parsed.text == "OK"
     assert parsed.cost_usd == pytest.approx(0.0106)
@@ -50,29 +67,58 @@ def test_parse_success_reads_result_text_and_cost() -> None:
 
 
 def test_parse_error_flag_fails_even_with_exit_zero() -> None:
-    stdout = json.dumps(
-        {
-            "type": "result",
-            "subtype": "error_max_budget",
-            "is_error": True,
-            "result": "",
-            "total_cost_usd": 0.3,
-        }
-    )
-    parsed = parse_output(stdout, exit_code=0, duration_ms=5)
+    failed = {**RESULT_OK, "subtype": "error_max_budget", "is_error": True, "result": ""}
+    parsed = parse_stream(stream(failed), exit_code=0, duration_ms=5)
     assert parsed.ok is False
     assert parsed.error == "Claude Code run failed (error_max_budget)."
 
 
 def test_parse_non_zero_exit_fails() -> None:
-    parsed = parse_output("{}", exit_code=1, duration_ms=5)
+    parsed = parse_stream(stream(RESULT_OK), exit_code=1, duration_ms=5)
     assert parsed.ok is False
 
 
-def test_parse_non_json_output_fails() -> None:
-    parsed = parse_output("not json at all", exit_code=0, duration_ms=5)
+def test_parse_output_without_a_result_fails() -> None:
+    parsed = parse_stream("not json at all", exit_code=0, duration_ms=5)
     assert parsed.ok is False
-    assert "did not return JSON" in (parsed.error or "")
+    assert "returned no result" in (parsed.error or "")
+
+
+def test_allowed_status_is_not_a_limit() -> None:
+    warning = {**ALLOWED_EVENT, "rate_limit_info": {"status": "allowed_warning"}}
+    assert parse_stream(stream(warning, RESULT_OK), exit_code=0, duration_ms=1).ok is True
+
+
+def test_rejected_status_raises_rate_limit_with_reset_time() -> None:
+    rejected = {
+        "type": "rate_limit_event",
+        "rate_limit_info": {"status": "rejected", "resetsAt": 1791286200},
+    }
+    with pytest.raises(RateLimitError) as raised:
+        parse_stream(stream(rejected), exit_code=0, duration_ms=1)
+    assert raised.value.resets_at is not None
+    assert raised.value.resets_at.timestamp() == 1791286200
+
+
+def test_rate_limit_retry_event_raises_without_reset_time() -> None:
+    retry = {"type": "system", "subtype": "api_retry", "error_category": "rate_limit"}
+    with pytest.raises(RateLimitError) as raised:
+        parse_stream(stream(retry, RESULT_OK), exit_code=0, duration_ms=1)
+    assert raised.value.resets_at is None
+
+
+def test_429_in_the_result_raises_rate_limit() -> None:
+    limited = {**RESULT_OK, "is_error": True, "subtype": "error", "api_error_status": 429}
+    with pytest.raises(RateLimitError):
+        parse_stream(stream(limited), exit_code=1, duration_ms=1)
+
+
+def test_fake_runner_raises_rate_limit_then_recovers() -> None:
+    runner = FakeRunner(text="done")
+    runner.rate_limit_next(times=1)
+    with pytest.raises(RateLimitError):
+        runner.run("first")
+    assert runner.run("second").text == "done"
 
 
 def test_missing_executable_is_reported(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

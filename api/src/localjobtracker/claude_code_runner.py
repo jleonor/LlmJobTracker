@@ -3,20 +3,26 @@
 Flags follow planning/runner-notes.md, checked against Claude Code 2.1.289. Every run is
 restricted: no tools, no MCP servers, no settings files from the working folder, and no
 prompts that could wait for an answer. A dollar cap limits each run.
+
+Output is read as stream-json. A plan limit shows up as a `rate_limit_event` (or an
+`api_retry` with category `rate_limit`) and is raised as RateLimitError (D-63).
 """
 
 import json
 import shutil
 import subprocess
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from localjobtracker.runner import RunResult
+from localjobtracker.runner import RateLimitError, RunResult
 
 DEFAULT_TIMEOUT_S = 180
 # The CLI's budget cap is an estimate, not a strict limit (runner-notes.md). Leave a margin.
 MAX_BUDGET_USD = "0.25"
+# rate_limit_info.status values that mean the run may continue. Any other status is a limit.
+ALLOWED_RATE_LIMIT_STATUSES = frozenset({"allowed", "allowed_warning"})
 
 
 def build_args(executable: str, prompt: str) -> list[str]:
@@ -25,7 +31,8 @@ def build_args(executable: str, prompt: str) -> list[str]:
         "-p",
         prompt,
         "--output-format",
-        "json",
+        "stream-json",
+        "--verbose",
         "--restricted",
         "--strict-mcp-config",
         "--tools",
@@ -38,21 +45,62 @@ def build_args(executable: str, prompt: str) -> list[str]:
     ]
 
 
-def parse_output(stdout: str, exit_code: int, duration_ms: int) -> RunResult:
-    """Read the final `result` message. A failure inside a run can print on stdout with exit 0."""
-    try:
-        message: Any = json.loads(stdout)
-    except json.JSONDecodeError:
+def _events(stdout: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        try:
+            event: Any = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events
+
+
+def _rate_limit(events: list[dict[str, Any]]) -> RateLimitError | None:
+    """Return the limit error if the stream reports one. Field names follow runner-notes.md."""
+    for event in events:
+        if event.get("type") == "rate_limit_event":
+            info: Any = event.get("rate_limit_info")
+            if isinstance(info, dict) and info.get("status") not in ALLOWED_RATE_LIMIT_STATUSES:
+                return RateLimitError(
+                    "The Claude plan limit was reached.", _reset_time(info.get("resetsAt"))
+                )
+        if event.get("subtype") == "api_retry" and event.get("error_category") == "rate_limit":
+            return RateLimitError("The Claude plan limit was reached.")
+    results = [event for event in events if event.get("type") == "result"]
+    if results and results[-1].get("api_error_status") == 429:
+        return RateLimitError("The Claude plan limit was reached.")
+    return None
+
+
+def _reset_time(value: object) -> datetime | None:
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return datetime.fromtimestamp(value, UTC)
+    return None
+
+
+def parse_stream(stdout: str, exit_code: int, duration_ms: int) -> RunResult:
+    """Read a stream-json run. Raises RateLimitError on a plan limit.
+
+    The final `result` message carries the text. A failure inside a run can print on stdout
+    with exit 0, so the result's own flags are checked too.
+    """
+    events = _events(stdout)
+    limit = _rate_limit(events)
+    if limit is not None:
+        raise limit
+
+    results = [event for event in events if event.get("type") == "result"]
+    if not results:
         return RunResult(
             ok=False,
-            error=f"Claude Code did not return JSON (exit {exit_code}).",
+            error=f"Claude Code returned no result (exit {exit_code}).",
             duration_ms=duration_ms,
         )
-    if not isinstance(message, dict):
-        return RunResult(
-            ok=False, error="Unexpected output from Claude Code.", duration_ms=duration_ms
-        )
-
+    message = results[-1]
     cost = message.get("total_cost_usd")
     cost_usd = float(cost) if isinstance(cost, int | float) else None
     if exit_code != 0 or message.get("is_error"):
@@ -97,4 +145,4 @@ class ClaudeCodeRunner:
                 ok=False, error=f"Claude Code did not finish in {self.timeout_s:.0f} s."
             )
         duration_ms = int((time.monotonic() - started) * 1000)
-        return parse_output(completed.stdout, completed.returncode, duration_ms)
+        return parse_stream(completed.stdout, completed.returncode, duration_ms)
