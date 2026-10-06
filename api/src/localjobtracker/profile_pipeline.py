@@ -674,7 +674,9 @@ def check_full_cv_history(body: dict[str, Any], file_ids: set[int]) -> None:
         _text(item, "text", where)
         _text_or_empty(item, "employer", where)
         _text_or_empty(item, "title", where)
-        _date(item, where)
+        # A history item can have no date (a skill, for example). The fact sheet still needs one.
+        if item.get("date") != "":
+            _date(item, where)
         end = _text_or_empty(item, "end", where)
         if end not in ("", "present") and not DATE_PATTERN.match(end):
             raise PromptRejected(f"{where}: end must be empty, 'present' or a date.")

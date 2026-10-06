@@ -569,3 +569,17 @@ def test_dates_in_other_forms_are_read_as_a_year_and_month(
     assert history["items"][0]["date"] == "2020-01"
     assert history["items"][0]["end"] == "2022-03"
     assert history["items"][1]["date"] == "2020-09"
+
+
+def test_a_history_item_without_a_date_is_accepted(
+    db_path: Path, cv_id: int, questionnaire_id: int
+) -> None:
+    answers = good_answers(cv_id)
+    answers["full_cv_history"]["items"][1]["date"] = ""
+    answers["full_cv_history"]["items"][1]["end"] = ""
+    queue = make_queue(db_path, CannedRunner(answers))
+    job_id = start(db_path, queue)
+
+    run_all(queue)
+
+    assert job_state(db_path, job_id)[0] == "done"
