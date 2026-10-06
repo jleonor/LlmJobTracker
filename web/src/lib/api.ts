@@ -124,3 +124,21 @@ export function cancelClaudeJob(id: number): Promise<ClaudeJob> {
 export function fetchPromptExchange(jobId: number, position: number): Promise<PromptExchange> {
   return request<PromptExchange>(`/api/claude-jobs/${jobId}/prompts/${position}`)
 }
+
+// Opens the uploaded copy in the program the system uses for it. The API answers 204 with no body.
+export async function openProfileFile(id: number): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`/api/profile/files/${id}/open`, { method: 'POST' })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+}
+
+// Removes an upload and its copy. Facts that cite it are removed too (D-82).
+export function deleteProfileFile(id: number): Promise<{ removed_facts: number }> {
+  return request<{ removed_facts: number }>(`/api/profile/files/${id}`, { method: 'DELETE' })
+}

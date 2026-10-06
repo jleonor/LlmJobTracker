@@ -3,7 +3,13 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { FactSheetReview } from '@/components/app/FactSheetReview'
 import { ProfileOutputs } from '@/components/app/ProfileOutputs'
-import { ApiError, fetchProfileFiles, uploadProfileFile } from '@/lib/api'
+import {
+  ApiError,
+  deleteProfileFile,
+  fetchProfileFiles,
+  openProfileFile,
+  uploadProfileFile,
+} from '@/lib/api'
 import { useClaudeJobs } from '@/lib/useClaudeJobs'
 import type { ProfileFile, ProfileFileKind } from '@/lib/types'
 
@@ -224,12 +230,7 @@ function UploadSection({ kind, title, hint, files, onUploaded, children }: Secti
       ) : (
         <ul className="flex flex-col divide-y divide-border rounded border border-border">
           {files.map((file) => (
-            <li key={file.id} className="flex items-center justify-between gap-4 px-3 py-2 text-sm">
-              <span className="truncate">{file.original_name}</span>
-              <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                {formatSize(file.size_bytes)} · {file.uploaded_at.slice(0, 10)}
-              </span>
-            </li>
+            <FileRow key={file.id} file={file} onChanged={onUploaded} />
           ))}
         </ul>
       )}
@@ -244,5 +245,69 @@ function UploadSection({ kind, title, hint, files, onUploaded, children }: Secti
 
       {children}
     </section>
+  )
+}
+
+// One uploaded file: its size and date, Open (the default app for it), and × to remove it (D-82).
+function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function open() {
+    setBusy(true)
+    setError(null)
+    try {
+      await openProfileFile(file.id)
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The file could not be opened.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    const ok = window.confirm(
+      `Remove "${file.original_name}"? Its copy in the app is deleted, and any facts that cite it are removed from the Fact Sheet.`,
+    )
+    if (!ok) return
+    setBusy(true)
+    setError(null)
+    try {
+      await deleteProfileFile(file.id)
+      onChanged()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The file could not be removed.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <li className="flex flex-col gap-1 px-3 py-2 text-sm">
+      <div className="flex items-center justify-between gap-4">
+        <span className="truncate">{file.original_name}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="font-mono text-xs text-muted-foreground">
+            {formatSize(file.size_bytes)} · {file.uploaded_at.slice(0, 10)}
+          </span>
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => void open()}>
+            Open
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            aria-label={`Remove ${file.original_name}`}
+            onClick={() => void remove()}
+          >
+            ×
+          </Button>
+        </div>
+      </div>
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </li>
   )
 }
