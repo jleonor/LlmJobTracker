@@ -7,6 +7,8 @@ import pytest
 from localjobtracker.migrations import MIGRATIONS, applied_versions, migrate, rollback
 from localjobtracker.storage import connect, data_dir, database_path
 
+ALL_VERSIONS = [m.version for m in MIGRATIONS]
+
 
 @pytest.fixture
 def conn(tmp_path: Path) -> Iterator[sqlite3.Connection]:
@@ -20,10 +22,12 @@ def table_names(conn: sqlite3.Connection) -> set[str]:
     return {row[0] for row in rows}
 
 
-def test_migrate_creates_jobs_table(conn: sqlite3.Connection) -> None:
-    assert migrate(conn) == [m.version for m in MIGRATIONS]
-    assert "jobs" in table_names(conn)
-    assert applied_versions(conn) == [m.version for m in MIGRATIONS]
+def test_migrate_creates_job_applications_and_history(conn: sqlite3.Connection) -> None:
+    assert migrate(conn) == ALL_VERSIONS
+    names = table_names(conn)
+    assert {"job_applications", "status_history"} <= names
+    assert "jobs" not in names
+    assert applied_versions(conn) == ALL_VERSIONS
 
 
 def test_migrate_twice_applies_nothing_new(conn: sqlite3.Connection) -> None:
@@ -31,25 +35,89 @@ def test_migrate_twice_applies_nothing_new(conn: sqlite3.Connection) -> None:
     assert migrate(conn) == []
 
 
-def test_rollback_removes_the_newest_migration(conn: sqlite3.Connection) -> None:
+def test_rollback_one_step_restores_the_jobs_table(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    reverted = rollback(conn, steps=1)
-    assert reverted == [MIGRATIONS[-1].version]
+    assert rollback(conn, steps=1) == [2]
+    names = table_names(conn)
+    assert "jobs" in names
+    assert "job_applications" not in names
+    assert applied_versions(conn) == [1]
+
+
+def test_rollback_both_steps_empties_the_schema(conn: sqlite3.Connection) -> None:
+    migrate(conn)
+    assert rollback(conn, steps=2) == [2, 1]
     assert "jobs" not in table_names(conn)
     assert applied_versions(conn) == []
 
 
 def test_migrate_again_after_rollback(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    rollback(conn, steps=1)
-    assert migrate(conn) == [m.version for m in MIGRATIONS]
-    assert "jobs" in table_names(conn)
+    rollback(conn, steps=2)
+    assert migrate(conn) == ALL_VERSIONS
+    assert "job_applications" in table_names(conn)
 
 
-def test_jobs_rows_respect_not_null(conn: sqlite3.Connection) -> None:
+def test_existing_jobs_survive_the_upgrade_with_a_history_row(conn: sqlite3.Connection) -> None:
+    # Build a database as it was after version 1 only, with one job in it.
+    conn.execute(MIGRATIONS[0].up[0])
+    applied_versions(conn)  # creates the ledger table
+    conn.execute("INSERT INTO schema_migrations (version, name) VALUES (1, 'create jobs')")
+    conn.execute(
+        "INSERT INTO jobs (company, role_title, status, created_at) "
+        "VALUES ('Old Co', 'Analyst', 'Applied', '2026-09-01T09:00:00Z')"
+    )
+    conn.commit()
+
+    assert migrate(conn) == [2]
+
+    row = conn.execute(
+        "SELECT company, status, location, work_mode FROM job_applications"
+    ).fetchone()
+    assert tuple(row) == ("Old Co", "Applied", None, "Unknown")
+    history = conn.execute("SELECT status, changed_at FROM status_history").fetchall()
+    assert [tuple(h) for h in history] == [("Applied", "2026-09-01T09:00:00Z")]
+
+
+def test_status_must_be_a_known_value(conn: sqlite3.Connection) -> None:
     migrate(conn)
     with pytest.raises(sqlite3.IntegrityError):
-        conn.execute("INSERT INTO jobs (company, role_title) VALUES (NULL, 'Analyst')")
+        conn.execute(
+            "INSERT INTO job_applications (company, role_title, status) "
+            "VALUES ('Co', 'Analyst', 'Maybe later')"
+        )
+
+
+def test_work_mode_and_contract_type_must_be_known_values(conn: sqlite3.Connection) -> None:
+    migrate(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO job_applications (company, role_title, work_mode) "
+            "VALUES ('Co', 'Analyst', 'Flexible')"
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO job_applications (company, role_title, contract_type) "
+            "VALUES ('Co', 'Analyst', 'Freelance')"
+        )
+
+
+def test_match_score_must_be_between_0_and_100(conn: sqlite3.Connection) -> None:
+    migrate(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO job_applications (company, role_title, match_score) "
+            "VALUES ('Co', 'A', 101)"
+        )
+
+
+def test_history_rows_require_an_existing_application(conn: sqlite3.Connection) -> None:
+    migrate(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO status_history (job_application_id, status, changed_at) "
+            "VALUES (999, 'Applied', '2026-10-06T09:00:00Z')"
+        )
 
 
 def test_data_dir_defaults_to_local_app_data(

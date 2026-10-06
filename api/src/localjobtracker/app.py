@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 
-from localjobtracker.jobs import Job, list_jobs
+from localjobtracker.job_applications import JobApplication, list_job_applications
 from localjobtracker.runner import Runner, RunResult
 from localjobtracker.storage import connect
 
@@ -38,9 +38,15 @@ def create_app(launch_token: str, db_path: Path, runner: Runner) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/jobs", response_model=list[Job], dependencies=[Depends(require_token)])
-    def jobs(conn: Annotated[Connection, Depends(get_db)]) -> list[Job]:
-        return list_jobs(conn)
+    @app.get(
+        "/job-applications",
+        response_model=list[JobApplication],
+        dependencies=[Depends(require_token)],
+    )
+    def job_applications(
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> list[JobApplication]:
+        return list_job_applications(conn)
 
     @app.post("/runs/check", response_model=RunResult, dependencies=[Depends(require_token)])
     def run_check() -> RunResult:
