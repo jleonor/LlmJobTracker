@@ -32,7 +32,7 @@ A local, single-user desktop app. It takes job listings and produces what an app
 
 1. The reference folder `C:\Users\jonat\OneDrive\Desktop\Job Applications 2026` is **read-only**. Never modify, move, delete or copy its content into the repo. Quote from it only when a step needs it, and never at length.
 2. **No personal data in the repo**: not in code, tests, logs, comments or planning files. Tests use synthetic fixtures under `tests/fixtures/synthetic/`.
-3. **Commits only when the user asks, and only locally. Never push.**
+3. **Commits only when the user asks, and only locally. Never push.** Each phase has its own branch, created from `main` at the start. When the phase is done, it is merged into local `main` with `git merge --ff-only` (D-61).
 4. A "done when" item is marked passed only with evidence: command output or a screenshot. Quality of generated documents is judged by the user, never by Claude.
 5. UI work is verified in a real browser (and in Electron once it exists): golden path and edge cases, with screenshots.
 6. The runner seam stays clean. Only the `ClaudeCodeRunner` module may know about Claude Code.

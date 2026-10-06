@@ -10,6 +10,7 @@ This plan says what gets built, in what order, and how we know a phase is done. 
 - Steps are small. After each step, the command output or screenshot is shown.
 - A phase is done when every "Done when" item is checked with evidence and you confirm in chat.
 - Tick items as they pass. Record any new decision in `DECISIONS.md`.
+- Git, per phase (D-61): create the phase's branch from `main` when the phase starts, for example `phase-2-profile`. Build on that branch and commit locally. When the phase is done, fast-forward `main` to it with `git merge --ff-only`, and keep the branch. Nothing is pushed until the whole project is done.
 
 ## Phase overview
 
