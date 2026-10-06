@@ -28,6 +28,7 @@ export type ProfileFileKind =
   | 'own_full_cv_history'
   | 'own_questionnaire_analysis'
   | 'own_strategy'
+  | 'own_fact_sheet'
 
 export type ProfileFile = {
   id: number

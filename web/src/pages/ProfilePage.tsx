@@ -24,6 +24,11 @@ const SECTIONS: { kind: ProfileFileKind; title: string; hint: string }[] = [
     hint: 'Optional. If you have one, upload it. The analysis converts yours instead of writing a new one.',
   },
   {
+    kind: 'own_fact_sheet',
+    title: 'Your Fact Sheet',
+    hint: 'Optional. Your facts with their sources. The analysis converts yours, and you still verify each fact below.',
+  },
+  {
     kind: 'own_strategy',
     title: 'Your positioning strategy',
     hint: 'Optional. If you have one, upload it. The analysis converts yours instead of writing a new one.',

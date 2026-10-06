@@ -107,6 +107,7 @@ Written from the user's answers on 2026-10-06. The full picture for the phase sp
 | D-67 | 2026-10-06 | Accepted | Master CVs are one kind, for English and French alike. The separate English and French kinds are removed (migration 4). The language is not stored. Choosing a master CV for a listing is decided in Phase 4 (O-14). This supersedes the English and French split in D-06. | The user's decision. Both languages are master CVs. |
 | D-68 | 2026-10-06 | Accepted | The user can upload their own career history, questionnaire analysis and positioning strategy. The analysis converts an upload into the structured form (with the same checks as a generated answer) and uses it in place of a generated output. The Fact Sheet has no own version. | The user's decision. Keeps the facts traceable to sources while using the user's own work. |
 | D-69 | 2026-10-06 | Proposed | A run makes only what is missing. An output that is already there is kept, and a run with everything in place is refused. An output is rebuilt in a run only when an output it is built on was made again in that run, or when the user's own version of it is converted against the new outputs. | Claude's choice of how to apply the user's request. The user may change the rule. |
+| D-70 | 2026-10-06 | Accepted | The Fact Sheet can be uploaded as the user's own version, like the other outputs (D-68). An uploaded Fact Sheet is converted with the same checks, and its facts start unverified. | The user's request. |
 
 ## Open
 
