@@ -14,6 +14,11 @@ const SECTIONS: { kind: ProfileFileKind; title: string; hint: string }[] = [
   { kind: 'questionnaire', title: 'Questionnaire', hint: 'Your answers, used for the analysis.' },
   { kind: 'writing_rules', title: 'Your writing rules', hint: 'Overrides the default rules in Agent/rules/.' },
   {
+    kind: 'cover_letter_template',
+    title: 'Cover letter template',
+    hint: 'Your template for cover letters. Used when the letters are written. The analysis does not need it.',
+  },
+  {
     kind: 'own_full_cv_history',
     title: 'Your career history',
     hint: 'Optional. If you have one, upload it. The analysis converts yours instead of writing a new one.',

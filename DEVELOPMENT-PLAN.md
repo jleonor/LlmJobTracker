@@ -77,7 +77,7 @@ Done when
 **Goal:** your background becomes a reviewed Fact Sheet that later documents may use.
 
 Scope
-- Upload screen for: master CVs (one kind for English and French, D-67), older CVs, older cover letters, the questionnaire, and optionally the user's own career history, questionnaire analysis and positioning strategy (D-68). Files are copied into app data. Originals are never touched.
+- Upload screen for: master CVs (one kind for English and French, D-67), older CVs, older cover letters, the questionnaire, the cover letter template (D-71), and optionally the user's own career history, questionnaire analysis and positioning strategy (D-68). Files are copied into app data. Originals are never touched.
 - Claude produces four outputs from these files, in this order: `FULL_CV_HISTORY` (D-40, D-64), a non-positioned CV Fact Sheet, a questionnaire analysis, and a strategy overview. Each fact has a source file, a location in it, and a date.
 - Conflicts between files: the master CVs win, and the conflict is shown to you.
 - Review screen: edit facts, mark each one verified or rejected. Only verified facts are usable later.

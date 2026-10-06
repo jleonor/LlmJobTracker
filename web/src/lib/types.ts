@@ -29,6 +29,7 @@ export type ProfileFileKind =
   | 'own_questionnaire_analysis'
   | 'own_strategy'
   | 'own_fact_sheet'
+  | 'cover_letter_template'
 
 export type ProfileFile = {
   id: number
