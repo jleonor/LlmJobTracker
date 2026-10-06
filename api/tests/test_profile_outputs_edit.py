@@ -89,7 +89,7 @@ def test_a_history_edit_must_pass_the_same_checks(db_path: Path, analysed: int) 
 
 def test_a_renamed_lane_is_stored_and_keeps_its_facts(db_path: Path, analysed: int) -> None:
     body = copy.deepcopy(latest_body(db_path, "strategy"))
-    body["lanes"][0]["name"] = "Analytics and reporting"
+    body["primary_lanes"][0]["role"] = "Analytics and reporting"
     conn = connect(db_path)
     try:
         saved = save_user_version(conn, "strategy", body)
@@ -97,13 +97,13 @@ def test_a_renamed_lane_is_stored_and_keeps_its_facts(db_path: Path, analysed: i
         conn.close()
 
     assert saved.version == 2
-    assert saved.body["lanes"][0]["name"] == "Analytics and reporting"
-    assert saved.body["lanes"][0]["fact_ids"] == ["F-001"]
+    assert saved.body["primary_lanes"][0]["role"] == "Analytics and reporting"
+    assert saved.body["primary_lanes"][0]["fact_ids"] == ["F-001"]
 
 
 def test_a_lane_cannot_cite_a_fact_that_does_not_exist(db_path: Path, analysed: int) -> None:
     body = copy.deepcopy(latest_body(db_path, "strategy"))
-    body["lanes"][0]["fact_ids"] = ["F-999"]
+    body["primary_lanes"][0]["fact_ids"] = ["F-999"]
     conn = connect(db_path)
     try:
         with pytest.raises(PromptRejected, match="unknown id F-999"):
@@ -125,13 +125,13 @@ def test_the_put_route_saves_an_edit_and_refuses_a_bad_one(db_path: Path, analys
     with TestClient(create_app(TOKEN, db_path, CannedRunner({}))) as client:
         client.headers[TOKEN_HEADER] = TOKEN
         body = latest_body(db_path, "strategy")
-        body["overview"] = "A clearer overview."
+        body["differentiator"] = "A clearer differentiator."
 
         saved = client.put("/profile/outputs/strategy", json=body)
         assert saved.status_code == 200
         assert saved.json()["version"] == 2
 
-        body["lanes"][0]["fact_ids"] = []
+        body["primary_lanes"][0]["fact_ids"] = []
         refused = client.put("/profile/outputs/strategy", json=body)
         assert refused.status_code == 400
         assert "lane needs at least one fact" in refused.json()["detail"]

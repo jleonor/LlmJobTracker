@@ -62,121 +62,139 @@ SOURCE_SCHEMA: Final[dict[str, Any]] = {
     "required": ["file_id", "location"],
 }
 
-FULL_CV_HISTORY_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
+FACT_CATEGORIES: Final = (
+    "role",
+    "responsibility",
+    "achievement",
+    "skill",
+    "tool",
+    "education",
+    "language",
+    "certification",
+    "other",
+)
+
+
+def _str() -> dict[str, Any]:
+    return {"type": "string"}
+
+
+def _str_list() -> dict[str, Any]:
+    return {"type": "array", "items": {"type": "string"}}
+
+
+def _obj(properties: dict[str, Any]) -> dict[str, Any]:
+    """An object whose fields are all required, so the answer always has every field."""
+    return {"type": "object", "properties": properties, "required": list(properties)}
+
+
+CONFLICT_SCHEMA: Final[dict[str, Any]] = _obj({"with": _str(), "note": _str()})
+
+FULL_CV_HISTORY_SCHEMA: Final[dict[str, Any]] = _obj(
+    {
         "items": {
             "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
+            "items": _obj(
+                {
+                    "id": _str(),
                     "kind": {"type": "string", "enum": list(HISTORY_KINDS)},
-                    "text": {"type": "string"},
-                    "date": {"type": "string"},
+                    "text": _str(),
+                    "employer": _str(),
+                    "title": _str(),
+                    "date": _str(),
+                    "end": _str(),
                     "source": SOURCE_SCHEMA,
-                    "conflicts": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "with": {"type": "string"},
-                                "note": {"type": "string"},
-                            },
-                            "required": ["with", "note"],
-                        },
-                    },
-                },
-                "required": ["id", "kind", "text", "date", "source", "conflicts"],
-            },
+                    "conflicts": {"type": "array", "items": CONFLICT_SCHEMA},
+                }
+            ),
         }
-    },
-    "required": ["items"],
-}
+    }
+)
 
-FACT_SHEET_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
+FACT_SHEET_SCHEMA: Final[dict[str, Any]] = _obj(
+    {
         "facts": {
             "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "text": {"type": "string"},
-                    "date": {"type": "string"},
+            "items": _obj(
+                {
+                    "id": _str(),
+                    "category": {"type": "string", "enum": list(FACT_CATEGORIES)},
+                    "text": _str(),
+                    "date": _str(),
                     "source": SOURCE_SCHEMA,
-                    "history_ids": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["id", "text", "date", "source", "history_ids"],
-            },
+                    "history_ids": _str_list(),
+                }
+            ),
         },
         "conflicts": {
             "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "fact_ids": {"type": "array", "items": {"type": "string"}},
-                    "note": {"type": "string"},
-                },
-                "required": ["id", "fact_ids", "note"],
-            },
+            "items": _obj({"id": _str(), "fact_ids": _str_list(), "note": _str()}),
         },
-    },
-    "required": ["facts", "conflicts"],
-}
+    }
+)
 
-QUESTIONNAIRE_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "themes": {
+# The questionnaire report has the sections of the report the user already writes (D-73).
+QUESTIONNAIRE_SCHEMA: Final[dict[str, Any]] = _obj(
+    {
+        "how_the_material_reads": _str(),
+        "career_narrative": _str(),
+        "patterns": {
             "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "text": {"type": "string"},
-                    "questionnaire_ref": {"type": "string"},
-                    "fact_ids": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["id", "text", "questionnaire_ref", "fact_ids"],
-            },
+            "items": _obj(
+                {
+                    "id": _str(),
+                    "title": _str(),
+                    "text": _str(),
+                    "questionnaire_ref": _str(),
+                    "fact_ids": _str_list(),
+                }
+            ),
         },
-        "gaps": {
+        "independent_work": {
             "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {"text": {"type": "string"}},
-                "required": ["text"],
-            },
+            "items": _obj({"title": _str(), "text": _str(), "fact_ids": _str_list()}),
         },
-    },
-    "required": ["themes", "gaps"],
-}
+        "cv_support": {
+            "type": "array",
+            "items": _obj({"text": _str(), "fact_ids": _str_list()}),
+        },
+        "nuance": {
+            "type": "array",
+            "items": _obj({"text": _str(), "questionnaire_ref": _str()}),
+        },
+        "cv_implications": _str_list(),
+        "open_items": _str_list(),
+    }
+)
 
-STRATEGY_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "overview": {"type": "string"},
-        "lanes": {
+# The strategy has the sections of the positioning strategy the user already writes (D-73).
+# A fit is a rating from 0.5 to 5 in steps of 0.5, as the user's own strategy rates them.
+LANE_SCHEMA: Final[dict[str, Any]] = _obj(
+    {
+        "id": _str(),
+        "role": _str(),
+        "fit": {"type": "number", "minimum": 0.5, "maximum": 5, "multipleOf": 0.5},
+        "why": _str(),
+        "fact_ids": _str_list(),
+        "questionnaire_ids": _str_list(),
+    }
+)
+
+STRATEGY_SCHEMA: Final[dict[str, Any]] = _obj(
+    {
+        "differentiator": _str(),
+        "primary_lanes": {"type": "array", "items": LANE_SCHEMA},
+        "secondary_lanes": {"type": "array", "items": LANE_SCHEMA},
+        "avoid": {
             "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "name": {"type": "string"},
-                    "description": {"type": "string"},
-                    "fact_ids": {"type": "array", "items": {"type": "string"}},
-                    "questionnaire_ids": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["id", "name", "description", "fact_ids", "questionnaire_ids"],
-            },
+            "items": _obj({"role": _str(), "why": _str()}),
         },
-        "open_points": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": ["overview", "lanes", "open_points"],
-}
+        "geography": _str(),
+        "comp_anchor": _str(),
+        "effort_allocation": _str(),
+        "open_questions": _str_list(),
+    }
+)
 
 SCHEMAS: Final[dict[str, dict[str, Any]]] = {
     "full_cv_history": FULL_CV_HISTORY_SCHEMA,
@@ -187,55 +205,73 @@ SCHEMAS: Final[dict[str, dict[str, Any]]] = {
 
 INSTRUCTIONS: Final[dict[str, str]] = {
     "full_cv_history": (
-        "Build one history of this person's career from the CV and cover letter files below. "
-        "One item per role, education entry, skill or achievement. Keep the wording close to "
-        "the source. Where two items disagree, list each in the other's conflicts with a note. "
-        "Do not choose between them."
+        "Build one history of this person's career from the CV, letter and history files below. "
+        "Make one item per role, education entry, skill or achievement. For each role fill the "
+        "employer, the title, the start date in date, and in end a date, 'present', or empty "
+        "when the source gives no end. Keep the wording close to the source. Use an empty "
+        "string for any field the source does not state. Where two items disagree, list each "
+        "in the other's conflicts with a note. Do not choose between them."
     ),
     "fact_sheet": (
-        "Build the Fact Sheet from the FULL_CV_HISTORY below. One fact per claim, each with the "
-        "file_id and location it comes from, its date, and the history ids it rests on. List "
-        "disagreements between facts in conflicts. Do not add any claim the history does not "
-        "support."
+        "Build the Fact Sheet from the FULL_CV_HISTORY below. One fact per claim. Give each fact "
+        "a category: role, responsibility, achievement, skill, tool, education, language, "
+        "certification or other. Each fact has the file_id and location it comes from, its "
+        "date, and the history ids it rests on. List disagreements between facts in conflicts. "
+        "Do not add any claim the history does not support."
     ),
     "questionnaire_analysis": (
-        "Analyse the questionnaire below against the Fact Sheet. Each theme quotes the question "
-        "it comes from and cites the fact ids that support it. List what the questionnaire "
-        "leaves open as gaps."
+        "Analyse the questionnaire below against the Fact Sheet and write the report in these "
+        "sections. how_the_material_reads: how the answers read as a whole. career_narrative: "
+        "the reasons behind the career choices, in the person's own terms. patterns: recurring "
+        "themes across the answers, each with a title, its questionnaire_ref and the fact ids "
+        "that support it. independent_work: projects or products the person made outside a job, "
+        "with the facts that describe them. cv_support: points from the Fact Sheet that support "
+        "the patterns, reframed for the CV. nuance: what the answers say that a first reading "
+        "would miss, each with its questionnaire_ref. cv_implications: what this means for the "
+        "CV. open_items: what the answers leave open. Use only what the questionnaire and the "
+        "Fact Sheet state."
     ),
     "strategy": (
-        "Write a short strategy overview from the questionnaire analysis and the Fact Sheet. "
-        "Group the search into lanes (positioning groups). Each lane cites the fact ids and "
-        "questionnaire ids it rests on. Do not write positioning for a specific job."
+        "Write the positioning strategy from the questionnaire analysis and the Fact Sheet, in "
+        "these sections. differentiator: one paragraph on what sets the person apart. "
+        "primary_lanes: the roles to apply for first. secondary_lanes: the roles to apply for "
+        "selectively. For each lane give the role, a fit from 0.5 to 5 in steps of 0.5, why it "
+        "fits, and the fact ids and questionnaire ids it rests on. avoid: roles not to target as "
+        "primary, each with why. geography. comp_anchor: the pay level the material supports, or "
+        "empty if it is not stated. effort_allocation: how to split the effort across the lanes. "
+        "open_questions: what is still open. Do not write positioning for a specific job."
     ),
 }
 
 IMPORT_INSTRUCTIONS: Final[dict[str, str]] = {
     "fact_sheet": (
         "The file below is the person's own Fact Sheet, written by them. Convert it into the "
-        "Fact Sheet format: one fact per claim, keeping its wording and the date it gives. Every "
-        "fact's source is this file, by its file_id, with the location in it. Use only what the "
-        "file states. Do not add a claim it does not make. Leave history_ids empty. Where two "
-        "facts disagree, list them as conflicts."
+        "Fact Sheet format: one fact per claim, keeping its wording and the date it gives. Give "
+        "each fact a category from the list. Every fact's source is this file, by its file_id, "
+        "with the location in it. Use only what the file states. Do not add a claim it does not "
+        "make. Leave history_ids empty. Where two facts disagree, list them as conflicts."
     ),
     "full_cv_history": (
-        "The file below is the person's own career history, written by them. Convert it into "
-        "the history format, keeping its wording and what it says. Each item's source is the "
-        "file it comes from, by file_id. If the history file is the source, use its file_id. "
-        "Do not add anything the material does not say. Where two items disagree, list them as "
-        "conflicts."
+        "The file below is the person's own career history, written by them. Convert it into the "
+        "history format, keeping its wording and what it says. For each role fill the employer, "
+        "the title, the start date in date, and end, using an empty string for anything the file "
+        "does not state. Each item's source is the file it comes from, by file_id. If the history "
+        "file is the source, use its file_id. Do not add anything the material does not say. "
+        "Where two items disagree, list them as conflicts."
     ),
     "questionnaire_analysis": (
-        "The file below is the person's own questionnaire analysis. Convert it into the analysis "
-        "format, keeping its points as they are. Each theme cites the Fact Sheet fact ids that "
-        "support it. A point the Fact Sheet does not support keeps an empty fact list. Put what "
-        "the file leaves open in gaps."
+        "The file below is the person's own questionnaire analysis. Convert it into the sections "
+        "of the format, section by section, keeping its wording and what it says. Each pattern "
+        "has a questionnaire_ref taken from the file. Link a point to Fact Sheet fact ids only "
+        "where the Fact Sheet supports it, and otherwise leave fact_ids empty. A section the file "
+        "does not cover stays empty, and what is missing goes into open_items."
     ),
     "strategy": (
-        "The file below is the person's own positioning strategy. Convert it into the strategy "
-        "format, keeping its overview and lanes. Each lane must cite at least one Fact Sheet fact "
-        "id that supports it, and the questionnaire ids it draws on. If a lane has no supporting "
-        "fact, put it under open_points instead of inventing a link."
+        "The file below is the person's own positioning strategy. Convert it into the sections of "
+        "the format, keeping its wording and what it says. Each lane needs at least one Fact "
+        "Sheet fact id that supports it, and the questionnaire ids it draws on. If a lane has no "
+        "supporting fact, leave it out and put it under open_questions instead of inventing a "
+        "link. A section the file does not cover stays empty."
     ),
 }
 
@@ -612,6 +648,20 @@ def _date(item: dict[str, Any], where: str) -> None:
         raise PromptRejected(f"{where}: date must be YYYY, YYYY-MM or YYYY-MM-DD.")
 
 
+def _text_or_empty(item: dict[str, Any], key: str, where: str) -> str:
+    value = item.get(key)
+    if not isinstance(value, str):
+        raise PromptRejected(f"{where}: '{key}' must be text.")
+    return value
+
+
+def _strings(body: dict[str, Any], key: str) -> list[str]:
+    values = _list(body, key, allow_empty=True)
+    if not all(isinstance(value, str) for value in values):
+        raise PromptRejected(f"'{key}' must be a list of text.")
+    return list(values)
+
+
 def check_full_cv_history(body: dict[str, Any], file_ids: set[int]) -> None:
     by_id: dict[str, dict[str, Any]] = {}
     for raw in _list(body, "items"):
@@ -621,7 +671,12 @@ def check_full_cv_history(body: dict[str, Any], file_ids: set[int]) -> None:
         if item.get("kind") not in HISTORY_KINDS:
             raise PromptRejected(f"{where}: kind is not allowed.")
         _text(item, "text", where)
+        _text_or_empty(item, "employer", where)
+        _text_or_empty(item, "title", where)
         _date(item, where)
+        end = _text_or_empty(item, "end", where)
+        if end not in ("", "present") and not DATE_PATTERN.match(end):
+            raise PromptRejected(f"{where}: end must be empty, 'present' or a date.")
         _source(item, where, file_ids)
         if item_id in by_id:
             raise PromptRejected("history: ids must be unique.")
@@ -648,6 +703,8 @@ def check_fact_sheet(body: dict[str, Any], file_ids: set[int], history_ids: set[
         fact_id = _id(fact, "F-", r"F-\d{3}", "fact")
         where = f"fact {fact_id}"
         ids.append(fact_id)
+        if fact.get("category") not in FACT_CATEGORIES:
+            raise PromptRejected(f"{where}: category is not allowed.")
         _text(fact, "text", where)
         _date(fact, where)
         _source(fact, where, file_ids)
@@ -665,40 +722,72 @@ def check_fact_sheet(body: dict[str, Any], file_ids: set[int], history_ids: set[
 
 
 def check_questionnaire(body: dict[str, Any], fact_ids: set[str]) -> None:
-    themes = _list(body, "themes")
+    _text(body, "how_the_material_reads", "questionnaire")
+    _text(body, "career_narrative", "questionnaire")
+    patterns = _list(body, "patterns")
     ids: list[str] = []
-    for raw in themes:
-        theme = _dict(raw, "theme")
-        theme_id = _id(theme, "Q-", r"Q-\d{3}", "theme")
-        where = f"theme {theme_id}"
-        ids.append(theme_id)
-        _text(theme, "text", where)
-        _text(theme, "questionnaire_ref", where)
-        _ids_in(theme.get("fact_ids"), fact_ids, where)
-    _unique(ids, "themes")
-    for raw in _list(body, "gaps", allow_empty=True):
-        _text(_dict(raw, "gap"), "text", "gap")
+    for raw in patterns:
+        pattern = _dict(raw, "pattern")
+        pattern_id = _id(pattern, "Q-", r"Q-\d{3}", "pattern")
+        where = f"pattern {pattern_id}"
+        ids.append(pattern_id)
+        _text(pattern, "title", where)
+        _text(pattern, "text", where)
+        _text(pattern, "questionnaire_ref", where)
+        _ids_in(pattern.get("fact_ids"), fact_ids, where)
+    _unique(ids, "patterns")
+    for raw in _list(body, "independent_work", allow_empty=True):
+        item = _dict(raw, "independent work")
+        _text(item, "title", "independent work")
+        _text(item, "text", "independent work")
+        _ids_in(item.get("fact_ids"), fact_ids, "independent work")
+    for raw in _list(body, "cv_support", allow_empty=True):
+        item = _dict(raw, "CV support")
+        _text(item, "text", "CV support")
+        _ids_in(item.get("fact_ids"), fact_ids, "CV support")
+    for raw in _list(body, "nuance", allow_empty=True):
+        item = _dict(raw, "nuance")
+        _text(item, "text", "nuance")
+        _text(item, "questionnaire_ref", "nuance")
+    _strings(body, "cv_implications")
+    _strings(body, "open_items")
+
+
+def _check_lane(lane: dict[str, Any], fact_ids: set[str], question_ids: set[str]) -> str:
+    lane_id = _id(lane, "L-", r"L-\d{2}", "lane")
+    where = f"lane {lane_id}"
+    _text(lane, "role", where)
+    fit = lane.get("fit")
+    if isinstance(fit, bool) or not isinstance(fit, int | float) or not 0.5 <= fit <= 5:
+        raise PromptRejected(f"{where}: fit must be between 0.5 and 5.")
+    if (fit * 2) % 1 != 0:
+        raise PromptRejected(f"{where}: fit must be in steps of 0.5.")
+    _text(lane, "why", where)
+    if not _ids_in(lane.get("fact_ids"), fact_ids, where):
+        raise PromptRejected(f"{where}: a lane needs at least one fact.")
+    _ids_in(lane.get("questionnaire_ids"), question_ids, where)
+    return lane_id
 
 
 def check_strategy(body: dict[str, Any], fact_ids: set[str], question_ids: set[str]) -> None:
-    _text(body, "overview", "strategy")
-    lanes = _list(body, "lanes")
+    _text(body, "differentiator", "strategy")
     lane_ids: list[str] = []
-    names: list[str] = []
-    for raw in lanes:
-        lane = _dict(raw, "lane")
-        lane_id = _id(lane, "L-", r"L-\d{2}", "lane")
-        where = f"lane {lane_id}"
-        lane_ids.append(lane_id)
-        names.append(_text(lane, "name", where).strip().lower())
-        _text(lane, "description", where)
-        if not _ids_in(lane.get("fact_ids"), fact_ids, where):
-            raise PromptRejected(f"{where}: a lane needs at least one fact.")
-        _ids_in(lane.get("questionnaire_ids"), question_ids, where)
+    roles: list[str] = []
+    for group, allow_empty in (("primary_lanes", False), ("secondary_lanes", True)):
+        for raw in _list(body, group, allow_empty=allow_empty):
+            lane = _dict(raw, "lane")
+            lane_ids.append(_check_lane(lane, fact_ids, question_ids))
+            roles.append(str(lane["role"]).strip().lower())
     _unique(lane_ids, "lanes")
-    if len(set(names)) != len(names):
-        raise PromptRejected("lanes: lane names must be unique.")
-    _list(body, "open_points", allow_empty=True)
+    if len(set(roles)) != len(roles):
+        raise PromptRejected("lanes: roles must be unique.")
+    for raw in _list(body, "avoid", allow_empty=True):
+        item = _dict(raw, "avoid")
+        _text(item, "role", "avoid")
+        _text(item, "why", "avoid")
+    for key in ("geography", "comp_anchor", "effort_allocation"):
+        _text_or_empty(body, key, "strategy")
+    _strings(body, "open_questions")
 
 
 def _dict(value: object, where: str) -> dict[str, Any]:
@@ -764,7 +853,9 @@ def _known(conn: sqlite3.Connection) -> dict[str, set[Any]]:
     return {
         "history": {item["id"] for item in history[1]["items"]} if history else set(),
         "facts": {fact["id"] for fact in facts[1]["facts"]} if facts else set(),
-        "themes": {theme["id"] for theme in questionnaire[1]["themes"]} if questionnaire else set(),
+        "themes": {theme["id"] for theme in questionnaire[1]["patterns"]}
+        if questionnaire
+        else set(),
     }
 
 

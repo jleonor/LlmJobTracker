@@ -85,7 +85,10 @@ def good_answers(cv: int) -> dict[str, Any]:
                     "id": "H-001",
                     "kind": "role",
                     "text": "Analyst, Example Corp",
+                    "employer": "Example Corp",
+                    "title": "Analyst",
                     "date": "2020",
+                    "end": "2022",
                     "source": {"file_id": cv, "location": "Line 2"},
                     "conflicts": [{"with": "H-002", "note": "End year differs."}],
                 },
@@ -93,7 +96,10 @@ def good_answers(cv: int) -> dict[str, Any]:
                     "id": "H-002",
                     "kind": "role",
                     "text": "Analyst, Example Corp, to 2022",
+                    "employer": "Example Corp",
+                    "title": "Analyst",
                     "date": "2020",
+                    "end": "2022",
                     "source": {"file_id": cv, "location": "Line 2"},
                     "conflicts": [{"with": "H-001", "note": "End year differs."}],
                 },
@@ -103,6 +109,7 @@ def good_answers(cv: int) -> dict[str, Any]:
             "facts": [
                 {
                     "id": "F-001",
+                    "category": "role",
                     "text": "Worked as an analyst at Example Corp.",
                     "date": "2020",
                     "source": {"file_id": cv, "location": "Line 2"},
@@ -110,6 +117,7 @@ def good_answers(cv: int) -> dict[str, Any]:
                 },
                 {
                     "id": "F-002",
+                    "category": "role",
                     "text": "Analyst role ended in 2022.",
                     "date": "2022",
                     "source": {"file_id": cv, "location": "Line 2"},
@@ -119,28 +127,41 @@ def good_answers(cv: int) -> dict[str, Any]:
             "conflicts": [{"id": "C-01", "fact_ids": ["F-001", "F-002"], "note": "End year."}],
         },
         "questionnaire_analysis": {
-            "themes": [
+            "how_the_material_reads": "A clear analyst story with a focus on reporting.",
+            "career_narrative": "Moves towards reporting and data quality.",
+            "patterns": [
                 {
                     "id": "Q-001",
+                    "title": "Analyst roles",
                     "text": "Wants analyst roles.",
                     "questionnaire_ref": "Q1",
                     "fact_ids": ["F-001"],
                 }
             ],
-            "gaps": [{"text": "Salary range is not given."}],
+            "independent_work": [],
+            "cv_support": [{"text": "Reporting work is in the CV.", "fact_ids": ["F-001"]}],
+            "nuance": [],
+            "cv_implications": ["Lead with the reporting work."],
+            "open_items": ["Salary range is not given."],
         },
         "strategy": {
-            "overview": "Analyst work with reporting.",
-            "lanes": [
+            "differentiator": "Analyst work with reporting.",
+            "primary_lanes": [
                 {
                     "id": "L-01",
-                    "name": "Reporting analyst",
-                    "description": "Reporting and data quality roles.",
+                    "role": "Reporting analyst",
+                    "fit": 4.5,
+                    "why": "Matches the reporting work.",
                     "fact_ids": ["F-001"],
                     "questionnaire_ids": ["Q-001"],
                 }
             ],
-            "open_points": [],
+            "secondary_lanes": [],
+            "avoid": [],
+            "geography": "",
+            "comp_anchor": "",
+            "effort_allocation": "Mostly the primary lane.",
+            "open_questions": [],
         },
     }
 
@@ -293,6 +314,12 @@ BAD_ANSWERS: list[tuple[str, str, Any, str]] = [
     ),
     (
         "full_cv_history",
+        "end date",
+        lambda a: a["items"][0].update(end="later"),
+        "end must be empty",
+    ),
+    (
+        "full_cv_history",
         "one-sided conflict",
         lambda a: a["items"][1].update(conflicts=[]),
         "must be listed on both items",
@@ -310,16 +337,28 @@ BAD_ANSWERS: list[tuple[str, str, Any, str]] = [
         "source location is empty",
     ),
     (
+        "fact_sheet",
+        "unknown category",
+        lambda a: a["facts"][0].update(category="gossip"),
+        "category is not allowed",
+    ),
+    (
         "questionnaire_analysis",
         "unknown fact",
-        lambda a: a["themes"][0].update(fact_ids=["F-777"]),
+        lambda a: a["patterns"][0].update(fact_ids=["F-777"]),
         "unknown id F-777",
     ),
     (
         "strategy",
         "lane without facts",
-        lambda a: a["lanes"][0].update(fact_ids=[]),
+        lambda a: a["primary_lanes"][0].update(fact_ids=[]),
         "a lane needs at least one fact",
+    ),
+    (
+        "strategy",
+        "fit off the 0.5 steps",
+        lambda a: a["primary_lanes"][0].update(fit=4.3),
+        "steps of 0.5",
     ),
 ]
 

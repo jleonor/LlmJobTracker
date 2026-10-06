@@ -168,7 +168,7 @@ def test_a_converted_output_that_breaks_the_checks_fails_the_job(
 ) -> None:
     store(db_path, "own_strategy", "strategy.txt", b"My own strategy.")
     answers = good_answers(cv)
-    answers["strategy"]["lanes"][0]["fact_ids"] = []
+    answers["strategy"]["primary_lanes"][0]["fact_ids"] = []
     queue = make_queue(db_path, CannedRunner(answers))
     job_id = start(db_path, queue)
 
