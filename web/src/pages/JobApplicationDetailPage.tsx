@@ -234,10 +234,10 @@ function MatchScoreRing({ score }: { score: number }) {
 function ApplicationHistory({ application }: { application: JobApplicationDetail }) {
   return (
     <Section title="Application history">
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
         <StatusTimeline history={application.status_history} currentStatus={application.status} />
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-1 flex-col gap-4">
           <Field label="Notes">
             {application.notes ?? <span className="text-muted-foreground">No notes.</span>}
           </Field>
@@ -299,16 +299,14 @@ function StatusTimeline({
 
         return (
           <li key={status} className="flex gap-3">
+            <span className="w-20 shrink-0 text-right font-mono text-xs whitespace-nowrap text-muted-foreground">
+              {achievedAt?.slice(0, 10)}
+            </span>
             <div className="flex flex-col items-center">
               <span className={cn('size-[11px] shrink-0 rounded-full border-2', dotTone)} aria-hidden="true" />
               {!isLast && <span className={cn('w-0.5 flex-1', lineTone)} aria-hidden="true" />}
             </div>
-            <div className={cn('flex flex-1 items-baseline justify-between gap-4', !isLast && 'pb-4')}>
-              <span className={cn('text-sm', textTone)}>{status}</span>
-              <span className="font-mono text-xs text-muted-foreground">
-                {achievedAt ? achievedAt.slice(0, 10) : 'Not reached'}
-              </span>
-            </div>
+            <span className={cn('text-sm whitespace-nowrap', textTone, !isLast && 'pb-4')}>{status}</span>
           </li>
         )
       })}
