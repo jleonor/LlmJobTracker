@@ -6,7 +6,6 @@ import type { ClaudeJob, PromptExchange } from '@/lib/types'
 
 const PROMPT_LABELS: Record<string, string> = {
   full_cv_history: 'Career history',
-  fact_sheet: 'Fact Sheet',
   questionnaire_analysis: 'Questionnaire report',
   strategy: 'Strategy',
 }

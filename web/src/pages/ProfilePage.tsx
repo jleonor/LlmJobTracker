@@ -1,7 +1,6 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { FactSheetReview } from '@/components/app/FactSheetReview'
 import { ProfileOutputs } from '@/components/app/ProfileOutputs'
 import {
   ApiError,
@@ -16,8 +15,8 @@ import type { ProfileFile, ProfileFileKind } from '@/lib/types'
 // The upload sections, in the order of the Profile page (D-58). Labels are the user's words.
 const SECTIONS: { kind: ProfileFileKind; title: string; hint: string }[] = [
   { kind: 'master_cv', title: 'Master CVs', hint: 'English and French. Layout and wording templates.' },
-  { kind: 'older_cv', title: 'Older CVs', hint: 'Evidence for the Fact Sheet. Older ones may be out of date.' },
-  { kind: 'older_letter', title: 'Older cover letters', hint: 'Evidence for the Fact Sheet.' },
+  { kind: 'older_cv', title: 'Older CVs', hint: 'Evidence for the career history. Older ones may be out of date.' },
+  { kind: 'older_letter', title: 'Older cover letters', hint: 'Evidence for the career history.' },
   { kind: 'questionnaire', title: 'Questionnaire', hint: 'Your answers, used for the analysis.' },
   { kind: 'writing_rules', title: 'Your writing rules', hint: 'Overrides the default rules in Agent/rules/.' },
   {
@@ -28,22 +27,17 @@ const SECTIONS: { kind: ProfileFileKind; title: string; hint: string }[] = [
   {
     kind: 'own_full_cv_history',
     title: 'Your career history',
-    hint: 'Optional. If you have one, upload it. The analysis converts yours instead of writing a new one.',
+    hint: 'Optional. If you have one, upload it. The analysis uses yours instead of writing a new one.',
   },
   {
     kind: 'own_questionnaire_analysis',
     title: 'Your questionnaire analysis',
-    hint: 'Optional. If you have one, upload it. The analysis converts yours instead of writing a new one.',
-  },
-  {
-    kind: 'own_fact_sheet',
-    title: 'Fact Sheet',
-    hint: 'Optional. Upload yours, or leave it out and the analysis makes one. Verify each fact below before it is used.',
+    hint: 'Optional. If you have one, upload it. The analysis uses yours instead of writing a new one.',
   },
   {
     kind: 'own_strategy',
     title: 'Your positioning strategy',
-    hint: 'Optional. If you have one, upload it. The analysis converts yours instead of writing a new one.',
+    hint: 'Optional. If you have one, upload it. The analysis uses yours instead of writing a new one.',
   },
 ]
 
@@ -66,9 +60,7 @@ function formatSize(bytes: number): string {
 
 export function ProfilePage() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
-  // Bumped when the outputs are read again, so the Fact Sheet review reloads with them.
-  const [revision, setRevision] = useState(0)
-  // When the latest analysis finishes, the outputs and the Fact Sheet are read again.
+  // When the latest analysis finishes, the outputs are read again.
   const queue = useClaudeJobs()
   const analysis = [...queue.jobs].reverse().find((job) => job.kind === 'profile_analysis')
   const finishedAnalysis =
@@ -143,19 +135,12 @@ export function ProfilePage() {
               hint={section.hint}
               files={state.files.filter((file) => file.kind === section.kind)}
               onUploaded={reload}
-            >
-              {section.kind === 'own_fact_sheet' && (
-                <FactSheetReview key={`${revision}-${finishedAnalysis ?? 'none'}`} />
-              )}
-            </UploadSection>
+            />
           ))}
         </>
       )}
 
-      <ProfileOutputs
-        onChanged={() => setRevision((current) => current + 1)}
-        refreshKey={finishedAnalysis}
-      />
+      <ProfileOutputs onChanged={reload} refreshKey={finishedAnalysis} />
     </section>
   )
 }
@@ -166,10 +151,9 @@ type SectionProps = {
   hint: string
   files: ProfileFile[]
   onUploaded: () => void
-  children?: ReactNode
 }
 
-function UploadSection({ kind, title, hint, files, onUploaded, children }: SectionProps) {
+function UploadSection({ kind, title, hint, files, onUploaded }: SectionProps) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
@@ -242,8 +226,6 @@ function UploadSection({ kind, title, hint, files, onUploaded, children }: Secti
           ))}
         </ul>
       )}
-
-      {children}
     </section>
   )
 }
@@ -266,9 +248,7 @@ function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void
   }
 
   async function remove() {
-    const ok = window.confirm(
-      `Remove "${file.original_name}"? Its copy in the app is deleted, and any facts that cite it are removed from the Fact Sheet.`,
-    )
+    const ok = window.confirm(`Remove "${file.original_name}"? Its copy in the app is deleted.`)
     if (!ok) return
     setBusy(true)
     setError(null)
@@ -284,7 +264,12 @@ function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void
   return (
     <li className="flex flex-col gap-1 px-3 py-2 text-sm">
       <div className="flex items-center justify-between gap-4">
-        <span className="truncate">{file.original_name}</span>
+        <span className="truncate">
+          {file.original_name}
+          {file.generated && (
+            <span className="ml-2 text-xs text-muted-foreground">(generated)</span>
+          )}
+        </span>
         <div className="flex shrink-0 items-center gap-2">
           <span className="font-mono text-xs text-muted-foreground">
             {formatSize(file.size_bytes)} · {file.uploaded_at.slice(0, 10)}

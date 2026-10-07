@@ -28,7 +28,6 @@ export type ProfileFileKind =
   | 'own_full_cv_history'
   | 'own_questionnaire_analysis'
   | 'own_strategy'
-  | 'own_fact_sheet'
   | 'cover_letter_template'
 
 export type ProfileFile = {
@@ -40,92 +39,16 @@ export type ProfileFile = {
   uploaded_at: string
   extraction_status: string | null
   extraction_message: string | null
+  generated: boolean
 }
 
-// The Fact Sheet review (Phase 2 step 8). Field names match the API.
-export type FactStatus = 'unverified' | 'verified' | 'rejected'
-
-export type Fact = {
-  id: number
-  fact_key: string
-  text: string
-  date: string
-  source_file_id: number
-  source_name: string
-  source_location: string
-  status: FactStatus
-}
-
-export type FactConflict = {
-  id: string
-  fact_ids: string[]
-  note: string
-}
-
-export type FactSheet = {
-  output_id: number | null
-  version: number | null
-  facts: Fact[]
-  conflicts: FactConflict[]
-}
-
-export type FactChange = {
-  text?: string
-  date?: string
-  source_location?: string
-  status?: FactStatus
-}
-
-// The profile outputs (Profile page, step 9). The bodies follow Agent/specs/profile-steps.md.
-export type HistoryItem = {
-  id: string
-  kind: string
-  text: string
-  date: string
-  source: { file_id: number; location: string }
-  conflicts: { with: string; note: string }[]
-}
-
-export type FullCvHistoryBody = { items: HistoryItem[] }
-
-export type QuestionnaireBody = {
-  how_the_material_reads: string
-  career_narrative: string
-  patterns: { id: string; title: string; text: string; questionnaire_ref: string; fact_ids: string[] }[]
-  independent_work: { title: string; text: string; fact_ids: string[] }[]
-  cv_support: { text: string; fact_ids: string[] }[]
-  nuance: { text: string; questionnaire_ref: string }[]
-  cv_implications: string[]
-  open_items: string[]
-}
-
-// A lane of the strategy. A fit is a rating from 0.5 to 5 in steps of 0.5 (D-73).
-export type Lane = {
-  id: string
-  role: string
-  fit: number
-  why: string
-  fact_ids: string[]
-  questionnaire_ids: string[]
-}
-
-export type StrategyBody = {
-  differentiator: string
-  primary_lanes: Lane[]
-  secondary_lanes: Lane[]
-  avoid: { role: string; why: string }[]
-  geography: string
-  comp_anchor: string
-  effort_allocation: string
-  open_questions: string[]
-}
-
+// The three profile documents (Phase 2, D-85, D-86). Each is Markdown prose.
 export type ProfileOutput = {
   id: number
-  kind: 'full_cv_history' | 'fact_sheet' | 'questionnaire_analysis' | 'strategy'
+  kind: 'full_cv_history' | 'questionnaire_analysis' | 'strategy'
   version: number
   claude_job_id: number | null
-  body: Record<string, unknown>
+  document: string
   created_at: string
 }
 

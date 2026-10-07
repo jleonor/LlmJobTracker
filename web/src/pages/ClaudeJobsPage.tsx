@@ -18,9 +18,8 @@ const TONE: Record<string, string> = {
 // Prompt kinds, in the words the user sees on the Profile page.
 const PROMPT_LABELS: Record<string, string> = {
   full_cv_history: 'Career history',
-  fact_sheet: 'Fact Sheet',
   questionnaire_analysis: 'Questionnaire report',
-  strategy: 'Strategy and lanes',
+  strategy: 'Strategy',
 }
 
 const CAN_CANCEL = ['queued', 'paused', 'processing']

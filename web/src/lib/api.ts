@@ -1,8 +1,5 @@
 import type {
   ClaudeJob,
-  Fact,
-  FactChange,
-  FactSheet,
   JobApplication,
   ProfileFile,
   ProfileFileKind,
@@ -80,28 +77,16 @@ export async function uploadProfileFile(kind: ProfileFileKind, file: File): Prom
   return (await response.json()) as ProfileFile
 }
 
-export function fetchFactSheet(): Promise<FactSheet> {
-  return request<FactSheet>('/api/profile/facts')
-}
-
-export function updateFact(id: number, change: FactChange): Promise<Fact> {
-  return request<Fact>(`/api/profile/facts/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(change),
-  })
-}
-
 export function fetchProfileOutputs(): Promise<ProfileOutput[]> {
   return request<ProfileOutput[]>('/api/profile/outputs')
 }
 
-// Saves an edited output as a new version. The API checks it the same way as Claude's answer.
-export function saveProfileOutput(kind: string, body: Record<string, unknown>): Promise<ProfileOutput> {
+// Saves an edited document as a new version. The only check is that it is not empty.
+export function saveProfileOutput(kind: string, text: string): Promise<ProfileOutput> {
   return request<ProfileOutput>(`/api/profile/outputs/${kind}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ text }),
   })
 }
 
@@ -138,7 +123,15 @@ export async function openProfileFile(id: number): Promise<void> {
   }
 }
 
-// Removes an upload and its copy. Facts that cite it are removed too (D-82).
-export function deleteProfileFile(id: number): Promise<{ removed_facts: number }> {
-  return request<{ removed_facts: number }>(`/api/profile/files/${id}`, { method: 'DELETE' })
+// Removes an upload and its copy (D-82).
+export async function deleteProfileFile(id: number): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`/api/profile/files/${id}`, { method: 'DELETE' })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
 }

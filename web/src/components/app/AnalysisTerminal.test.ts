@@ -7,7 +7,7 @@ import { analysisLines } from './AnalysisTerminal'
 function prompt(overrides: Partial<ClaudeJobPrompt>): ClaudeJobPrompt {
   return {
     position: 0,
-    prompt_kind: 'fact_sheet',
+    prompt_kind: 'questionnaire_analysis',
     status: 'queued',
     error: null,
     cost_usd: null,
