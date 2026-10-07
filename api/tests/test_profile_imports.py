@@ -2,6 +2,7 @@ import hashlib
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from test_profile_pipeline import (
     FIXTURES,
     CannedRunner,
@@ -14,10 +15,14 @@ from test_profile_pipeline import (
     store,
 )
 
+from localjobtracker.app import TOKEN_HEADER, create_app
+from localjobtracker.claude_job_queue import ClaudeJobQueue
 from localjobtracker.claude_jobs import get_claude_job
 from localjobtracker.profile_files import delete_profile_file
 from localjobtracker.profile_pipeline import ProfileNotReady
 from localjobtracker.storage import connect
+
+TOKEN = "test-token"
 
 
 def latest_versions(db_path: Path) -> dict[str, int]:
@@ -213,3 +218,36 @@ def test_deleting_an_imported_own_file_makes_the_next_run_generate_a_fresh_one(
         conn.close()
     assert source == "generated"
     assert document == good_answers(cv)["strategy"].strip()
+
+
+def test_deleting_a_generated_file_makes_the_next_run_generate_a_fresh_one(
+    db_path: Path, cv: int, questionnaire: int
+) -> None:
+    # No own upload this time: the strategy document is Claude's own generated answer, mirrored
+    # as a readable file (D-84). Deleting that file is the thing being tested, not an upload.
+    runner = CannedRunner(good_answers(cv))
+    app = create_app(TOKEN, db_path, runner)
+    queue: ClaudeJobQueue = app.state.queue
+    with TestClient(app) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        start(db_path, queue)
+        run_all(queue)
+        assert latest_versions(db_path)["strategy"] == 1
+
+        files = client.get("/profile/files").json()
+        generated = next(f for f in files if f["kind"] == "own_strategy")
+        assert generated["generated"] is True
+
+        removed = client.delete(f"/profile/files/{generated['id']}")
+        assert removed.status_code == 200
+
+        # Deleting the file alone must not leave the stored document behind, "still there" for
+        # decide() to find (D-95): the next run has to generate a fresh one, same as D-93.
+        job_id = start(db_path, queue)
+        run_all(queue)
+
+    assert job_state(db_path, job_id)[0] == "done"
+    # version 1 again, not 2: clear_output removes the row entirely, not just superseding it.
+    assert latest_versions(db_path)["strategy"] == 1
+    results = prompt_results(db_path, job_id)
+    assert results[2] not in ("Skipped: already in place.", "Skipped: using your own file.")

@@ -195,18 +195,37 @@ def open_in_default_app(path: Path) -> None:
         subprocess.run(["xdg-open", str(path)], check=False)
 
 
-def delete_profile_file(conn: sqlite3.Connection, data_folder: Path, file_id: int) -> None:
+def delete_profile_file(conn: sqlite3.Connection, data_folder: Path, file_id: int) -> ProfileFile:
     """Remove an upload and its copy (D-82).
 
-    Later outputs keep the snapshot they were made from. They are rebuilt on the next run that
-    changes what they depend on.
+    Returns what was removed, so a caller can tell a generated file (D-84) from a real upload and
+    react accordingly (D-95): removing a generated file does not by itself clear the document it
+    mirrors, which lives in a separate table.
     """
-    row = conn.execute("SELECT stored_path FROM profile_files WHERE id = ?", (file_id,)).fetchone()
+    row = conn.execute(
+        """
+        SELECT kind, original_name, sha256, size_bytes, uploaded_at, extraction_status,
+               extraction_message, generated, stored_path
+        FROM profile_files WHERE id = ?
+        """,
+        (file_id,),
+    ).fetchone()
     if row is None:
         raise ProfileUploadError(404, "No such file.")
     with conn:
         conn.execute("DELETE FROM profile_files WHERE id = ?", (file_id,))
     (data_folder / str(row["stored_path"])).unlink(missing_ok=True)
+    return ProfileFile(
+        id=file_id,
+        kind=row["kind"],
+        original_name=row["original_name"],
+        sha256=row["sha256"],
+        size_bytes=row["size_bytes"],
+        uploaded_at=row["uploaded_at"],
+        extraction_status=row["extraction_status"],
+        extraction_message=row["extraction_message"],
+        generated=bool(row["generated"]),
+    )
 
 
 def _clear_kind(conn: sqlite3.Connection, data_folder: Path, kind: str) -> None:

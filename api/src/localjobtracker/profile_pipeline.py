@@ -36,6 +36,8 @@ OWN_KINDS: Final[dict[str, str]] = {
     "questionnaire_analysis": "own_questionnaire_analysis",
     "strategy": "own_strategy",
 }
+# The reverse of OWN_KINDS: which document a generated file's own_* kind stands in for.
+PROMPT_KIND_FOR_OWN: Final[dict[str, str]] = {v: k for k, v in OWN_KINDS.items()}
 # The outputs each output is built on. When one of them is made again in a job, this one is too.
 UPSTREAM: Final[dict[str, tuple[str, ...]]] = {
     "full_cv_history": (),
@@ -382,6 +384,18 @@ def _clean_document(text: str) -> str:
 
 
 # Storing answers.
+
+
+def clear_output(conn: sqlite3.Connection, kind: str) -> None:
+    """Delete every stored version of a document (D-95).
+
+    Used when the generated file that mirrored it (D-84) is removed, so the document itself is
+    gone too, not just its readable copy. The next analysis then finds nothing there and makes
+    a fresh one, the same as if it had never been made (and, through UPSTREAM, this carries
+    through to whatever was built on it).
+    """
+    with conn:
+        conn.execute("DELETE FROM profile_outputs WHERE kind = ?", (kind,))
 
 
 def _store_output(

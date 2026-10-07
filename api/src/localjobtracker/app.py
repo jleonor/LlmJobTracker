@@ -33,9 +33,11 @@ from localjobtracker.profile_files import (
     store_profile_file,
 )
 from localjobtracker.profile_pipeline import (
+    PROMPT_KIND_FOR_OWN,
     ProfileBusy,
     ProfileNotReady,
     ProfileOutput,
+    clear_output,
     list_latest_outputs,
     make_pipeline,
     submit_profile_analysis,
@@ -191,9 +193,15 @@ def create_app(
     )
     def remove_profile_file(file_id: int, conn: Annotated[Connection, Depends(get_db)]) -> None:
         try:
-            delete_profile_file(conn, db_path.parent, file_id)
+            deleted = delete_profile_file(conn, db_path.parent, file_id)
         except ProfileUploadError as error:
             raise HTTPException(status_code=error.status, detail=error.message) from error
+        if deleted.generated:
+            # The file was the readable copy of a generated document (D-84). Removing it should
+            # remove the document too, not just leave it quietly in place (D-95).
+            kind = PROMPT_KIND_FOR_OWN.get(deleted.kind)
+            if kind is not None:
+                clear_output(conn, kind)
 
     @app.get(
         "/profile/files/{file_id}/text",
