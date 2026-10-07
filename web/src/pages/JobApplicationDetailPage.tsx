@@ -234,26 +234,31 @@ function MatchScoreRing({ score }: { score: number }) {
 function ApplicationHistory({ application }: { application: JobApplicationDetail }) {
   return (
     <Section title="Application history">
-      <StatusTimeline history={application.status_history} currentStatus={application.status} />
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <StatusTimeline history={application.status_history} currentStatus={application.status} />
 
-      <Field label="Notes">
-        {application.notes ?? <span className="text-muted-foreground">No notes.</span>}
-      </Field>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Next action">{application.next_action ?? EMPTY}</Field>
-        <Field label="Due date">
-          {application.due_date ? (
-            <span className="font-mono text-xs">{application.due_date}</span>
-          ) : (
-            EMPTY
-          )}
-        </Field>
+        <div className="flex flex-col gap-4">
+          <Field label="Notes">
+            {application.notes ?? <span className="text-muted-foreground">No notes.</span>}
+          </Field>
+          <Field label="Next action">{application.next_action ?? EMPTY}</Field>
+          <Field label="Due date">
+            {application.due_date ? (
+              <span className="font-mono text-xs">{application.due_date}</span>
+            ) : (
+              EMPTY
+            )}
+          </Field>
+        </div>
       </div>
     </Section>
   )
 }
 
+// A connected stepper, not a badge list: the line and the dots are coloured for progress made
+// (D-44) up to the current main stage, then red for whatever is left once the application ends
+// in Rejected or Withdrawn, including the end-state node itself. Still grey when there is no end
+// state yet, since the remaining stages are merely unreached, not ruled out.
 function StatusTimeline({
   history,
   currentStatus,
@@ -264,26 +269,46 @@ function StatusTimeline({
   const dateByStatus = new Map(history.map((entry) => [entry.status, entry.changed_at]))
   const ended = (END_STATUSES as readonly string[]).includes(currentStatus)
   const steps: readonly string[] = ended ? [...MAIN_STATUSES, currentStatus] : MAIN_STATUSES
+  const lastProgressIndex = MAIN_STATUSES.reduce(
+    (furthest, status, index) => (dateByStatus.has(status) ? index : furthest),
+    -1,
+  )
+  const isProgress = (index: number) => index <= 4 && index <= lastProgressIndex
 
   return (
-    <ol className="flex flex-col gap-2">
-      {steps.map((status) => {
+    <ol className="flex flex-col">
+      {steps.map((status, index) => {
         const achievedAt = dateByStatus.get(status)
+        const isLast = index === steps.length - 1
+        const isEndNode = ended && isLast
+        const dotTone = isEndNode
+          ? 'border-destructive bg-destructive'
+          : isProgress(index)
+            ? 'border-primary bg-primary'
+            : ended
+              ? 'border-destructive bg-background'
+              : 'border-border bg-background'
+        const lineTone = isProgress(index + 1) ? 'bg-primary' : ended ? 'bg-destructive' : 'bg-border'
+        const textTone = isEndNode
+          ? 'font-medium text-destructive'
+          : isProgress(index)
+            ? 'font-medium text-foreground'
+            : ended
+              ? 'text-destructive/70'
+              : 'text-muted-foreground'
+
         return (
-          <li key={status} className="flex items-center justify-between gap-4">
-            {achievedAt ? (
-              <StatusBadge status={status} />
-            ) : (
-              <Badge
-                variant="outline"
-                className={cn('rounded-sm font-mono text-[11px] font-normal', 'text-muted-foreground/60')}
-              >
-                {status}
-              </Badge>
-            )}
-            <span className="font-mono text-xs text-muted-foreground">
-              {achievedAt ? achievedAt.slice(0, 10) : 'Not reached'}
-            </span>
+          <li key={status} className="flex gap-3">
+            <div className="flex flex-col items-center">
+              <span className={cn('size-[11px] shrink-0 rounded-full border-2', dotTone)} aria-hidden="true" />
+              {!isLast && <span className={cn('w-0.5 flex-1', lineTone)} aria-hidden="true" />}
+            </div>
+            <div className={cn('flex flex-1 items-baseline justify-between gap-4', !isLast && 'pb-4')}>
+              <span className={cn('text-sm', textTone)}>{status}</span>
+              <span className="font-mono text-xs text-muted-foreground">
+                {achievedAt ? achievedAt.slice(0, 10) : 'Not reached'}
+              </span>
+            </div>
           </li>
         )
       })}
