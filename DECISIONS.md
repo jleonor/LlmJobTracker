@@ -130,6 +130,7 @@ Written from the user's answers on 2026-10-06. The full picture for the phase sp
 | D-89 | 2026-10-07 | Accepted | A generated document's file is named for people, not code: "Full CV history.md", "Questionnaire analysis.md", "Positioning strategy.md", not the snake_case prompt kind. | The user's request, once the file became something they actually open. |
 | D-90 | 2026-10-07 | Accepted | Three UI labels are renamed: the "Jobs" tab to "Job Applications" (matching the page's own heading, D-59), the "Claude Jobs" tab to "LLM history", and the Profile page's "Optional: your own versions" section to "LLM Generated Profile". The underlying terms stay as D-59 defined them (table `claude_jobs`, route `/claude-jobs`, model `ClaudeJob`); only the screen and section titles change. The page files are renamed to match: `JobsPage.tsx` to `JobApplicationsPage.tsx`, `ClaudeJobsPage.tsx` to `LlmHistoryPage.tsx`. | The user's request. |
 | D-91 | 2026-10-07 | Accepted | Each upload section's file list is collapsible, collapsed by default, with a "Show/Hide N files" toggle. | The user's request; several sections (older CVs, older cover letters) can hold dozens of files. |
+| D-92 | 2026-10-07 | Accepted | Writing rules and the cover letter template are single-file upload kinds, like the questionnaire (D-88) and the three "own_*" kinds (D-84). A new upload replaces the previous one. | The user's request: one set of rules, one template, not several accumulating. |
 
 ## Open
 

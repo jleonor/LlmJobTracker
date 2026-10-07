@@ -85,6 +85,22 @@ def test_a_second_questionnaire_upload_replaces_the_first(upload_client: TestCli
     assert [item["original_name"] for item in listed] == ["new.txt"]
 
 
+def test_a_second_writing_rules_upload_replaces_the_first(upload_client: TestClient) -> None:
+    upload(upload_client, "writing_rules", "old.md", b"# Old rules")
+    upload(upload_client, "writing_rules", "new.md", b"# New rules")
+    listed = upload_client.get("/profile/files").json()
+    assert [item["original_name"] for item in listed] == ["new.md"]
+
+
+def test_a_second_cover_letter_template_upload_replaces_the_first(
+    upload_client: TestClient,
+) -> None:
+    upload(upload_client, "cover_letter_template", "old.docx", SYNTHETIC_CV)
+    upload(upload_client, "cover_letter_template", "new.docx", SYNTHETIC_CV + b"x")
+    listed = upload_client.get("/profile/files").json()
+    assert [item["original_name"] for item in listed] == ["new.docx"]
+
+
 def test_the_same_file_in_another_kind_is_allowed(upload_client: TestClient) -> None:
     first = upload(upload_client, "older_cv", "cv.txt", b"shared text")
     second = upload(upload_client, "older_letter", "letter.txt", b"shared text")
