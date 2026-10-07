@@ -14,31 +14,62 @@ import { useClaudeJobs } from '@/lib/useClaudeJobs'
 import type { ProfileFile, ProfileFileKind } from '@/lib/types'
 
 // The upload sections, in the order of the Profile page (D-58). Labels are the user's words.
-const SECTIONS: { kind: ProfileFileKind; title: string; hint: string }[] = [
-  { kind: 'master_cv', title: 'Master CVs', hint: 'English and French. Layout and wording templates.' },
-  { kind: 'older_cv', title: 'Older CVs', hint: 'Evidence for the career history. Older ones may be out of date.' },
-  { kind: 'older_letter', title: 'Older cover letters', hint: 'Evidence for the career history.' },
-  { kind: 'questionnaire', title: 'Questionnaire', hint: 'Your answers, used for the analysis.' },
-  { kind: 'writing_rules', title: 'Your writing rules', hint: 'Overrides the default rules in Agent/rules/.' },
+// collapsible is for sections that can hold many files (D-91); the single-file kinds (D-88,
+// D-92, D-84) never need a Show/Hide toggle for the one file they can ever have.
+const SECTIONS: { kind: ProfileFileKind; title: string; hint: string; collapsible: boolean }[] = [
+  {
+    kind: 'master_cv',
+    title: 'Master CVs',
+    hint: 'English and French. Layout and wording templates.',
+    collapsible: true,
+  },
+  {
+    kind: 'older_cv',
+    title: 'Older CVs',
+    hint: 'Evidence for the career history. Older ones may be out of date.',
+    collapsible: true,
+  },
+  {
+    kind: 'older_letter',
+    title: 'Older cover letters',
+    hint: 'Evidence for the career history.',
+    collapsible: true,
+  },
+  {
+    kind: 'questionnaire',
+    title: 'Questionnaire',
+    hint: 'Your answers, used for the analysis.',
+    collapsible: false,
+  },
+  {
+    kind: 'writing_rules',
+    title: 'Your writing rules',
+    hint: 'Overrides the default rules in Agent/rules/.',
+    collapsible: false,
+  },
   {
     kind: 'cover_letter_template',
     title: 'Cover letter template',
     hint: 'Your template for cover letters. Used when the letters are written. The analysis does not need it.',
+    collapsible: false,
   },
   {
     kind: 'own_full_cv_history',
     title: 'Your career history',
     hint: 'Optional. If you have one, upload it. The analysis uses yours instead of writing a new one.',
+    collapsible: false,
   },
   {
     kind: 'own_questionnaire_analysis',
     title: 'Your questionnaire analysis',
     hint: 'Optional. If you have one, upload it. The analysis uses yours instead of writing a new one.',
+    collapsible: false,
   },
   {
     kind: 'own_strategy',
     title: 'Your positioning strategy',
     hint: 'Optional. If you have one, upload it. The analysis uses yours instead of writing a new one.',
+    collapsible: false,
   },
 ]
 
@@ -125,6 +156,7 @@ export function ProfilePage({
               kind={section.kind}
               title={section.title}
               hint={section.hint}
+              collapsible={section.collapsible}
               files={state.files.filter((file) => file.kind === section.kind)}
               onUploaded={reload}
             />
@@ -142,6 +174,7 @@ export function ProfilePage({
               kind={section.kind}
               title={section.title}
               hint={section.hint}
+              collapsible={section.collapsible}
               files={state.files.filter((file) => file.kind === section.kind)}
               onUploaded={reload}
             />
@@ -207,15 +240,16 @@ type SectionProps = {
   kind: ProfileFileKind
   title: string
   hint: string
+  collapsible: boolean
   files: ProfileFile[]
   onUploaded: () => void
 }
 
-function UploadSection({ kind, title, hint, files, onUploaded }: SectionProps) {
+function UploadSection({ kind, title, hint, collapsible, files, onUploaded }: SectionProps) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
-  const [collapsed, setCollapsed] = useState(true)
+  const [collapsed, setCollapsed] = useState(collapsible)
 
   async function handleChosen(chosen: FileList | null) {
     if (!chosen || chosen.length === 0) return
@@ -272,13 +306,15 @@ function UploadSection({ kind, title, hint, files, onUploaded }: SectionProps) {
         <p className="text-xs text-muted-foreground">No files yet.</p>
       ) : (
         <>
-          <button
-            type="button"
-            onClick={() => setCollapsed((current) => !current)}
-            className="self-start text-left text-xs text-muted-foreground underline-offset-2 hover:underline"
-          >
-            {collapsed ? 'Show' : 'Hide'} {files.length} {files.length === 1 ? 'file' : 'files'}
-          </button>
+          {collapsible && (
+            <button
+              type="button"
+              onClick={() => setCollapsed((current) => !current)}
+              className="self-start text-left text-xs text-muted-foreground underline-offset-2 hover:underline"
+            >
+              {collapsed ? 'Show' : 'Hide'} {files.length} {files.length === 1 ? 'file' : 'files'}
+            </button>
+          )}
           {!collapsed && (
             <ul className="flex flex-col divide-y divide-border rounded border border-border">
               {files.map((file) => (
