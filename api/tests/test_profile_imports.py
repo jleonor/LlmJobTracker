@@ -1,5 +1,4 @@
 import hashlib
-import re
 from pathlib import Path
 
 import pytest
@@ -17,18 +16,6 @@ from test_profile_pipeline import (
 
 from localjobtracker.profile_pipeline import ProfileNotReady
 from localjobtracker.storage import connect
-
-BUILD = "build from the material"
-CONVERT = "convert the person's own version"
-
-
-def modes(runner: CannedRunner) -> list[str]:
-    found = []
-    for prompt in runner.prompts:
-        match = re.search(r"^MODE: (.*)$", prompt, re.MULTILINE)
-        assert match is not None
-        found.append(match.group(1))
-    return found
 
 
 def latest_versions(db_path: Path) -> dict[str, int]:
@@ -60,7 +47,7 @@ def questionnaire(db_path: Path) -> int:
     return store(db_path, "questionnaire", "q.txt", (FIXTURES / "questionnaire.txt").read_bytes())
 
 
-def test_missing_outputs_are_made_and_the_uploaded_ones_are_converted(
+def test_missing_outputs_are_made_and_the_uploaded_ones_are_used_as_is(
     db_path: Path, cv: int, questionnaire: int
 ) -> None:
     analysis = b"My own questionnaire analysis."
@@ -75,20 +62,24 @@ def test_missing_outputs_are_made_and_the_uploaded_ones_are_converted(
     assert job_state(db_path, job_id)[0] == "done"
     assert latest_versions(db_path) == {
         "full_cv_history": 1,
-        "fact_sheet": 1,
         "questionnaire_analysis": 1,
         "strategy": 1,
     }
-    assert modes(runner) == [BUILD, BUILD, CONVERT, CONVERT]
-    assert "My own questionnaire analysis." in runner.prompts[2]
-    assert "My own strategy: analyst lanes." in runner.prompts[3]
+    # Only the career history is missing, so only it sends a Claude prompt; the two uploads are
+    # copied in as-is, with no reformatting call (D-86).
+    assert len(runner.prompts) == 1
+    results = prompt_results(db_path, job_id)
+    assert results[1] == "Skipped: using your own file."
+    assert results[2] == "Skipped: using your own file."
     conn = connect(db_path)
     try:
-        recorded = conn.execute(
-            "SELECT input_sha256s FROM profile_outputs WHERE kind = 'questionnaire_analysis'"
-        ).fetchone()[0]
+        document, recorded = conn.execute(
+            "SELECT document, input_sha256s FROM profile_outputs "
+            "WHERE kind = 'questionnaire_analysis'"
+        ).fetchone()
     finally:
         conn.close()
+    assert document == "My own questionnaire analysis."
     assert hashlib.sha256(analysis).hexdigest() in recorded
 
 
@@ -104,7 +95,7 @@ def test_a_run_with_everything_in_place_is_refused(
         start(db_path, queue)
 
 
-def test_uploading_one_missing_output_converts_only_that_one(
+def test_uploading_one_missing_output_uses_only_that_one(
     db_path: Path, cv: int, questionnaire: int
 ) -> None:
     runner = CannedRunner(good_answers(cv))
@@ -123,10 +114,10 @@ def test_uploading_one_missing_output_converts_only_that_one(
     assert {kind: after[kind] for kind in after if kind != "strategy"} == {
         kind: before[kind] for kind in before if kind != "strategy"
     }
-    assert modes(runner)[prompts_before:] == [CONVERT]
+    assert len(runner.prompts) == prompts_before  # the file is copied in, with no Claude call
     results = prompt_results(db_path, job_id)
-    assert results[:3] == ["Skipped: already in place."] * 3
-    assert results[3] is not None and "Skipped" not in results[3]
+    assert results[:2] == ["Skipped: already in place."] * 2
+    assert results[2] == "Skipped: using your own file."
 
 
 def test_a_new_career_history_rebuilds_what_depends_on_it(
@@ -144,12 +135,20 @@ def test_a_new_career_history_rebuilds_what_depends_on_it(
 
     assert latest_versions(db_path) == {
         "full_cv_history": 2,
-        "fact_sheet": 2,
         "questionnaire_analysis": 2,
         "strategy": 2,
     }
-    assert modes(runner)[prompts_before:] == [CONVERT, BUILD, BUILD, BUILD]
-    assert "My history." in runner.prompts[prompts_before]
+    # The history is copied in with no Claude call; the two that depend on it are regenerated.
+    assert len(runner.prompts) - prompts_before == 2
+    conn = connect(db_path)
+    try:
+        document = conn.execute(
+            "SELECT document FROM profile_outputs WHERE kind = 'full_cv_history' "
+            "ORDER BY version DESC LIMIT 1"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert document == "My history."
 
 
 def test_a_history_upload_works_without_any_cv(db_path: Path, questionnaire: int) -> None:
@@ -161,92 +160,3 @@ def test_a_history_upload_works_without_any_cv(db_path: Path, questionnaire: int
 
     assert job_state(db_path, job_id)[0] == "done"
     assert latest_versions(db_path)["full_cv_history"] == 1
-
-
-def test_a_converted_output_that_breaks_the_checks_fails_the_job(
-    db_path: Path, cv: int, questionnaire: int
-) -> None:
-    store(db_path, "own_strategy", "strategy.txt", b"My own strategy.")
-    answers = good_answers(cv)
-    answers["strategy"]["primary_lanes"][0]["fact_ids"] = []
-    queue = make_queue(db_path, CannedRunner(answers))
-    job_id = start(db_path, queue)
-
-    run_all(queue)
-
-    status, error, _prompts = job_state(db_path, job_id)
-    assert status == "failed"
-    assert error is not None and "a lane needs at least one fact" in error
-    assert "strategy" not in latest_versions(db_path)
-
-
-def test_an_uploaded_fact_sheet_is_converted_from_its_own_file_only(
-    db_path: Path, cv: int, questionnaire: int
-) -> None:
-    own = store(db_path, "own_fact_sheet", "facts.txt", b"My own facts: analyst at Example Corp.")
-    answers = good_answers(cv)
-    for fact in answers["fact_sheet"]["facts"]:
-        fact["source"]["file_id"] = own
-        fact["history_ids"] = []
-    runner = CannedRunner(answers)
-    queue = make_queue(db_path, runner)
-    job_id = start(db_path, queue)
-    run_all(queue)
-
-    assert job_state(db_path, job_id)[0] == "done"
-    assert modes(runner)[1] == CONVERT
-    assert "My own facts: analyst at Example Corp." in runner.prompts[1]
-    assert "Alex Sample" not in runner.prompts[1]  # the CV is not an input to the conversion
-    assert latest_versions(db_path)["fact_sheet"] == 1
-
-
-def test_an_uploaded_fact_sheet_cannot_cite_the_cv(
-    db_path: Path, cv: int, questionnaire: int
-) -> None:
-    store(db_path, "own_fact_sheet", "facts.txt", b"My own facts.")
-    queue = make_queue(db_path, CannedRunner(good_answers(cv)))
-    job_id = start(db_path, queue)
-
-    run_all(queue)
-
-    status, error, _prompts = job_state(db_path, job_id)
-    assert status == "failed"
-    assert error is not None and "not one of the input files" in error
-
-
-def test_an_uploaded_fact_sheet_is_not_rebuilt_when_the_history_changes(
-    db_path: Path, cv: int, questionnaire: int
-) -> None:
-    own = store(db_path, "own_fact_sheet", "facts.txt", b"My own facts.")
-    answers = good_answers(cv)
-    for fact in answers["fact_sheet"]["facts"]:
-        fact["source"]["file_id"] = own
-        fact["history_ids"] = []
-    runner = CannedRunner(answers)
-    queue = make_queue(db_path, runner)
-    start(db_path, queue)
-    run_all(queue)
-    prompts_before = len(runner.prompts)
-
-    store(db_path, "own_full_cv_history", "history.txt", b"My history.")
-    start(db_path, queue)
-    run_all(queue)
-
-    assert latest_versions(db_path)["fact_sheet"] == 1
-    assert modes(runner)[prompts_before:] == [CONVERT]
-
-
-def test_an_imported_fact_sheet_citing_an_unknown_file_fails(
-    db_path: Path, cv: int, questionnaire: int
-) -> None:
-    store(db_path, "own_fact_sheet", "facts.txt", b"My own facts.")
-    answers = good_answers(cv)
-    answers["fact_sheet"]["facts"][0]["source"]["file_id"] = 999
-    queue = make_queue(db_path, CannedRunner(answers))
-    job_id = start(db_path, queue)
-
-    run_all(queue)
-
-    status, error, _prompts = job_state(db_path, job_id)
-    assert status == "failed"
-    assert error is not None and "not one of the input files" in error

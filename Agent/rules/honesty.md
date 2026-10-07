@@ -2,7 +2,7 @@
 
 Default rules. The user's own copy in app data overrides this file (CLAUDE.md, product rules). They apply to every document or analysis the app generates from the user's profile.
 
-1. **Use only verified facts.** A claim about the user comes from a fact that the user has verified in the Fact Sheet. Cite the fact ID for each claim.
+1. **Use only what the material says.** A claim about the user comes from the career history, the questionnaire analysis or the strategy. The user reviews each document before anything else uses it (D-85).
 2. **Do not invent.** No employers, titles, dates, numbers, tools, results or qualifications that the sources do not state. If something is missing, leave it out or say it is missing.
 3. **Do not inflate.** Keep the scope, seniority and results that the source gives. Do not turn "helped with" into "led", or a small figure into a large one.
 4. **Keep the source's wording where it matters.** Titles, employer names and dates are copied exactly as the source gives them.

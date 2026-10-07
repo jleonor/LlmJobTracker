@@ -22,6 +22,10 @@ from localjobtracker.migrations import PROFILE_FILE_KINDS
 PROFILE_FOLDER_NAME: Final = "profile"
 MAX_UPLOAD_BYTES: Final = 25 * 1024 * 1024
 ALLOWED_EXTENSIONS: Final = frozenset({".pdf", ".docx", ".txt", ".md"})
+# These kinds hold one file at a time (D-84). A new one, uploaded or generated, replaces it.
+SINGLE_FILE_KINDS: Final = frozenset(
+    {"own_full_cv_history", "own_questionnaire_analysis", "own_strategy"}
+)
 
 
 class ProfileUploadError(Exception):
@@ -42,6 +46,7 @@ class ProfileFile(BaseModel):
     uploaded_at: str
     extraction_status: str | None
     extraction_message: str | None
+    generated: bool
 
 
 class ProfileFileText(BaseModel):
@@ -82,6 +87,10 @@ def store_profile_file(
         raise ProfileUploadError(400, "The file is empty.")
     if len(content) > MAX_UPLOAD_BYTES:
         raise ProfileUploadError(413, "The file is larger than 25 MB.")
+
+    if kind in SINGLE_FILE_KINDS:
+        # This kind holds one file. A new upload replaces whatever was there (D-84).
+        _clear_kind(conn, data_folder, kind)
 
     digest = hashlib.sha256(content).hexdigest()
     existing = conn.execute(
@@ -130,6 +139,7 @@ def store_profile_file(
         uploaded_at=uploaded_at,
         extraction_status=result.status,
         extraction_message=result.message,
+        generated=False,
     )
 
 
@@ -137,7 +147,7 @@ def list_profile_files(conn: sqlite3.Connection) -> list[ProfileFile]:
     rows = conn.execute(
         """
         SELECT id, kind, original_name, sha256, size_bytes, uploaded_at,
-               extraction_status, extraction_message
+               extraction_status, extraction_message, generated
         FROM profile_files ORDER BY kind, id
         """
     ).fetchall()
@@ -177,8 +187,8 @@ def open_in_default_app(path: Path) -> None:
         subprocess.run(["xdg-open", str(path)], check=False)
 
 
-def delete_profile_file(conn: sqlite3.Connection, data_folder: Path, file_id: int) -> int:
-    """Remove an upload, its copy, and the facts that cite it (D-82). Returns the facts removed.
+def delete_profile_file(conn: sqlite3.Connection, data_folder: Path, file_id: int) -> None:
+    """Remove an upload and its copy (D-82).
 
     Later outputs keep the snapshot they were made from. They are rebuilt on the next run that
     changes what they depend on.
@@ -187,10 +197,63 @@ def delete_profile_file(conn: sqlite3.Connection, data_folder: Path, file_id: in
     if row is None:
         raise ProfileUploadError(404, "No such file.")
     with conn:
-        removed = conn.execute("DELETE FROM facts WHERE source_file_id = ?", (file_id,)).rowcount
         conn.execute("DELETE FROM profile_files WHERE id = ?", (file_id,))
     (data_folder / str(row["stored_path"])).unlink(missing_ok=True)
-    return removed
+
+
+def _clear_kind(conn: sqlite3.Connection, data_folder: Path, kind: str) -> None:
+    """Remove every file of this kind, uploaded or generated."""
+    rows = conn.execute(
+        "SELECT id, stored_path FROM profile_files WHERE kind = ?", (kind,)
+    ).fetchall()
+    if not rows:
+        return
+    with conn:
+        conn.execute("DELETE FROM profile_files WHERE kind = ?", (kind,))
+    for row in rows:
+        (data_folder / str(row["stored_path"])).unlink(missing_ok=True)
+
+
+def store_generated_file(
+    conn: sqlite3.Connection, data_folder: Path, kind: str, name: str, content: bytes
+) -> ProfileFile:
+    """Save a generated output as the one file in its kind's slot, readable like an upload (D-84).
+
+    Used only when nothing of the user's own is there (the caller checks this). It replaces
+    whatever was in the slot before, since a kind in SINGLE_FILE_KINDS holds one file.
+    """
+    _clear_kind(conn, data_folder, kind)
+    digest = hashlib.sha256(content).hexdigest()
+    relative = Path(PROFILE_FOLDER_NAME) / kind / f"{digest}.md"
+    target = data_folder / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(content)
+    uploaded_at = _now()
+    text = content.decode("utf-8")
+    with conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO profile_files (
+                kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                extraction_status, extraction_message, extracted_text, generated
+            ) VALUES (?, ?, ?, ?, ?, ?, 'ok', NULL, ?, 1)
+            """,
+            (kind, name, relative.as_posix(), digest, len(content), uploaded_at, text),
+        )
+    file_id = cursor.lastrowid
+    if file_id is None:
+        raise RuntimeError("SQLite did not return the new row id")
+    return ProfileFile(
+        id=file_id,
+        kind=kind,
+        original_name=name,
+        sha256=digest,
+        size_bytes=len(content),
+        uploaded_at=uploaded_at,
+        extraction_status="ok",
+        extraction_message=None,
+        generated=True,
+    )
 
 
 def refresh_extracted_text(conn: sqlite3.Connection, data_folder: Path) -> None:

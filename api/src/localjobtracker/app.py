@@ -5,10 +5,11 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from sqlite3 import Connection
-from typing import Annotated, Any
+from typing import Annotated
 from urllib.parse import unquote
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from pydantic import BaseModel
 
 from localjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
 from localjobtracker.claude_jobs import (
@@ -20,14 +21,6 @@ from localjobtracker.claude_jobs import (
     recover_interrupted,
 )
 from localjobtracker.job_applications import JobApplication, list_job_applications
-from localjobtracker.profile_facts import (
-    Fact,
-    FactError,
-    FactSheet,
-    FactUpdate,
-    fact_sheet,
-    update_fact,
-)
 from localjobtracker.profile_files import (
     ProfileFile,
     ProfileFileText,
@@ -57,6 +50,10 @@ CHECK_PROMPT = "Reply with the single word OK."
 TOKEN_HEADER = "X-Launch-Token"
 
 
+class DocumentEdit(BaseModel):
+    text: str
+
+
 def create_app(
     launch_token: str, db_path: Path, runner: Runner, *, run_worker: bool = False
 ) -> FastAPI:
@@ -65,7 +62,7 @@ def create_app(
     `run_worker` starts the Claude Jobs worker with the app. Tests leave it off and step the
     queue themselves (ClaudeJobQueue.process_next), so the results are repeatable.
     """
-    render, on_result = make_pipeline()
+    render, on_result = make_pipeline(db_path.parent)
     queue = ClaudeJobQueue(db_path, runner, on_result=on_result, render=render)
 
     # A stopped worker can leave jobs half done. Put them back in the queue (D-62).
@@ -182,14 +179,11 @@ def create_app(
         "/profile/files/{file_id}",
         dependencies=[Depends(require_token)],
     )
-    def remove_profile_file(
-        file_id: int, conn: Annotated[Connection, Depends(get_db)]
-    ) -> dict[str, int]:
+    def remove_profile_file(file_id: int, conn: Annotated[Connection, Depends(get_db)]) -> None:
         try:
-            removed = delete_profile_file(conn, db_path.parent, file_id)
+            delete_profile_file(conn, db_path.parent, file_id)
         except ProfileUploadError as error:
             raise HTTPException(status_code=error.status, detail=error.message) from error
-        return {"removed_facts": removed}
 
     @app.get(
         "/profile/files/{file_id}/text",
@@ -205,27 +199,6 @@ def create_app(
         return text
 
     @app.get(
-        "/profile/facts",
-        response_model=FactSheet,
-        dependencies=[Depends(require_token)],
-    )
-    def profile_facts(conn: Annotated[Connection, Depends(get_db)]) -> FactSheet:
-        return fact_sheet(conn)
-
-    @app.patch(
-        "/profile/facts/{fact_id}",
-        response_model=Fact,
-        dependencies=[Depends(require_token)],
-    )
-    def patch_profile_fact(
-        fact_id: int, change: FactUpdate, conn: Annotated[Connection, Depends(get_db)]
-    ) -> Fact:
-        try:
-            return update_fact(conn, fact_id, change)
-        except FactError as error:
-            raise HTTPException(status_code=error.status, detail=error.message) from error
-
-    @app.get(
         "/profile/outputs",
         response_model=list[ProfileOutput],
         dependencies=[Depends(require_token)],
@@ -239,10 +212,10 @@ def create_app(
         dependencies=[Depends(require_token)],
     )
     def save_profile_output(
-        kind: str, body: dict[str, Any], conn: Annotated[Connection, Depends(get_db)]
+        kind: str, edit: DocumentEdit, conn: Annotated[Connection, Depends(get_db)]
     ) -> ProfileOutput:
         try:
-            return save_user_version(conn, kind, body)
+            return save_user_version(conn, db_path.parent, kind, edit.text)
         except PromptRejected as error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)

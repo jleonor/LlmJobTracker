@@ -1,7 +1,4 @@
-import copy
-import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -45,17 +42,16 @@ def versions(db_path: Path, kind: str) -> list[int]:
     return [int(row[0]) for row in rows]
 
 
-def latest_body(db_path: Path, kind: str) -> dict[str, Any]:
+def latest_document(db_path: Path, kind: str) -> str:
     conn = connect(db_path)
     try:
         row = conn.execute(
-            "SELECT body_json FROM profile_outputs WHERE kind = ? ORDER BY version DESC LIMIT 1",
+            "SELECT document FROM profile_outputs WHERE kind = ? ORDER BY version DESC LIMIT 1",
             (kind,),
         ).fetchone()
     finally:
         conn.close()
-    body: dict[str, Any] = json.loads(row[0])
-    return body
+    return str(row[0])
 
 
 def test_an_edited_history_is_stored_as_a_new_version_and_the_first_is_kept(
@@ -63,75 +59,64 @@ def test_an_edited_history_is_stored_as_a_new_version_and_the_first_is_kept(
 ) -> None:
     conn = connect(db_path)
     try:
-        body = latest_body(db_path, "full_cv_history")
-        body["items"][0]["text"] = "Senior analyst, Example Corp"
-        saved = save_user_version(conn, "full_cv_history", body)
+        edited = latest_document(db_path, "full_cv_history") + "\n\nSenior analyst, Example Corp."
+        saved = save_user_version(conn, db_path.parent, "full_cv_history", edited)
     finally:
         conn.close()
 
     assert saved.version == 2
     assert saved.claude_job_id is None
     assert versions(db_path, "full_cv_history") == [1, 2]
-    assert latest_body(db_path, "full_cv_history")["items"][0]["text"].startswith("Senior")
+    assert latest_document(db_path, "full_cv_history").endswith("Senior analyst, Example Corp.")
 
 
-def test_a_history_edit_must_pass_the_same_checks(db_path: Path, analysed: int) -> None:
-    body = latest_body(db_path, "full_cv_history")
-    body["items"][0]["date"] = "sometime"
+def test_an_empty_edit_is_refused(db_path: Path, analysed: int) -> None:
     conn = connect(db_path)
     try:
-        with pytest.raises(PromptRejected, match="date must be"):
-            save_user_version(conn, "full_cv_history", body)
+        with pytest.raises(PromptRejected, match="needs some text"):
+            save_user_version(conn, db_path.parent, "full_cv_history", "   ")
     finally:
         conn.close()
     assert versions(db_path, "full_cv_history") == [1]
 
 
-def test_a_renamed_lane_is_stored_and_keeps_its_facts(db_path: Path, analysed: int) -> None:
-    body = copy.deepcopy(latest_body(db_path, "strategy"))
-    body["primary_lanes"][0]["role"] = "Analytics and reporting"
-    conn = connect(db_path)
-    try:
-        saved = save_user_version(conn, "strategy", body)
-    finally:
-        conn.close()
-
-    assert saved.version == 2
-    assert saved.body["primary_lanes"][0]["role"] == "Analytics and reporting"
-    assert saved.body["primary_lanes"][0]["fact_ids"] == ["F-001"]
-
-
-def test_a_lane_cannot_cite_a_fact_that_does_not_exist(db_path: Path, analysed: int) -> None:
-    body = copy.deepcopy(latest_body(db_path, "strategy"))
-    body["primary_lanes"][0]["fact_ids"] = ["F-999"]
-    conn = connect(db_path)
-    try:
-        with pytest.raises(PromptRejected, match="unknown id F-999"):
-            save_user_version(conn, "strategy", body)
-    finally:
-        conn.close()
-
-
-def test_other_outputs_cannot_be_edited(db_path: Path, analysed: int) -> None:
+def test_an_unknown_kind_cannot_be_edited(db_path: Path, analysed: int) -> None:
     conn = connect(db_path)
     try:
         with pytest.raises(PromptRejected, match="cannot be edited"):
-            save_user_version(conn, "fact_sheet", {"facts": [], "conflicts": []})
+            save_user_version(conn, db_path.parent, "nonexistent", "Some text.")
     finally:
         conn.close()
 
 
-def test_the_put_route_saves_an_edit_and_refuses_a_bad_one(db_path: Path, analysed: int) -> None:
+def test_an_edit_updates_the_readable_generated_file_copy(db_path: Path, analysed: int) -> None:
+    conn = connect(db_path)
+    try:
+        before = conn.execute(
+            "SELECT sha256 FROM profile_files WHERE kind = 'own_strategy'"
+        ).fetchone()[0]
+        edited = latest_document(db_path, "strategy") + "\n\nA clearer differentiator."
+        save_user_version(conn, db_path.parent, "strategy", edited)
+        after = conn.execute(
+            "SELECT sha256, generated FROM profile_files WHERE kind = 'own_strategy'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert after["sha256"] != before
+    assert after["generated"] == 1
+
+
+def test_the_put_route_saves_an_edit(db_path: Path, analysed: int) -> None:
     with TestClient(create_app(TOKEN, db_path, CannedRunner({}))) as client:
         client.headers[TOKEN_HEADER] = TOKEN
-        body = latest_body(db_path, "strategy")
-        body["differentiator"] = "A clearer differentiator."
+        edited = latest_document(db_path, "strategy") + "\n\nA clearer differentiator."
 
-        saved = client.put("/profile/outputs/strategy", json=body)
+        saved = client.put("/profile/outputs/strategy", json={"text": edited})
         assert saved.status_code == 200
         assert saved.json()["version"] == 2
+        assert saved.json()["document"] == edited
 
-        body["primary_lanes"][0]["fact_ids"] = []
-        refused = client.put("/profile/outputs/strategy", json=body)
+        refused = client.put("/profile/outputs/strategy", json={"text": "   "})
         assert refused.status_code == 400
-        assert "lane needs at least one fact" in refused.json()["detail"]
+        assert "needs some text" in refused.json()["detail"]

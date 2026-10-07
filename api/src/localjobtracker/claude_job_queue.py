@@ -56,6 +56,7 @@ class RenderedPrompt:
     json_schema: dict[str, Any] | None = None
     # True when the output is already in place. The prompt is then not sent (D-69).
     skip: bool = False
+    skip_message: str = "Skipped: already in place."
 
 
 # Builds a prompt from what earlier prompts have stored. Raise PromptRejected if it cannot.
@@ -215,7 +216,7 @@ class ClaudeJobQueue:
                         prompt.id,
                         ("running",),
                         "done",
-                        result_text="Skipped: already in place.",
+                        result_text=rendered.skip_message,
                     )
                     continue
                 text, schema = rendered.text, rendered.json_schema

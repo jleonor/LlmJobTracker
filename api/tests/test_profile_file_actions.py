@@ -1,4 +1,3 @@
-import json
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -7,7 +6,7 @@ from fastapi.testclient import TestClient
 
 import localjobtracker.app as app_module
 from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.profile_files import store_profile_file
+from localjobtracker.profile_files import store_generated_file, store_profile_file
 from localjobtracker.runner import FakeRunner
 from localjobtracker.storage import connect
 
@@ -40,32 +39,8 @@ def test_removing_a_file_deletes_its_copy(client: TestClient, db_path: Path) -> 
     response = client.delete(f"/profile/files/{file_id}")
 
     assert response.status_code == 200
-    assert response.json() == {"removed_facts": 0}
     assert not copy.exists()
     assert client.get("/profile/files").json() == []
-
-
-def test_removing_a_file_removes_the_facts_that_cite_it(client: TestClient, db_path: Path) -> None:
-    file_id, _copy = upload_one(db_path, "master_cv", "cv.txt", b"A CV.")
-    conn = connect(db_path)
-    try:
-        with conn:
-            output = conn.execute(
-                "INSERT INTO profile_outputs (kind, version, body_json, input_sha256s) "
-                "VALUES ('fact_sheet', 1, ?, '[]')",
-                (json.dumps({"facts": [], "conflicts": []}),),
-            ).lastrowid
-            conn.execute(
-                "INSERT INTO facts (profile_output_id, fact_key, text, date, source_file_id, "
-                "source_location) VALUES (?, 'F-001', 'A fact.', '2020', ?, 'Line 2')",
-                (output, file_id),
-            )
-    finally:
-        conn.close()
-
-    response = client.delete(f"/profile/files/{file_id}")
-
-    assert response.json() == {"removed_facts": 1}
 
 
 def test_removing_an_unknown_file_is_not_found(client: TestClient) -> None:
@@ -87,3 +62,62 @@ def test_open_hands_the_copy_to_the_default_app(
 
 def test_open_of_an_unknown_file_is_not_found(client: TestClient) -> None:
     assert client.post("/profile/files/999/open").status_code == 404
+
+
+def test_a_second_upload_to_a_single_file_kind_replaces_the_first(
+    client: TestClient, db_path: Path
+) -> None:
+    _first_id, first_copy = upload_one(db_path, "own_strategy", "old.md", b"Old strategy.")
+    second_id, second_copy = upload_one(db_path, "own_strategy", "new.md", b"New strategy.")
+
+    assert not first_copy.exists()
+    assert second_copy.exists()
+    listed = client.get("/profile/files").json()
+    assert [item["id"] for item in listed] == [second_id]
+
+
+def test_a_generated_file_is_listed_and_readable_like_an_upload(
+    client: TestClient, db_path: Path
+) -> None:
+    conn = connect(db_path)
+    try:
+        file = store_generated_file(
+            conn, db_path.parent, "own_full_cv_history", "full_cv_history.md", b"# Career history"
+        )
+    finally:
+        conn.close()
+
+    listed = client.get("/profile/files").json()
+    assert len(listed) == 1
+    assert listed[0]["id"] == file.id
+    assert listed[0]["generated"] is True
+
+    response = client.delete(f"/profile/files/{file.id}")
+    assert response.status_code == 200
+    assert client.get("/profile/files").json() == []
+
+
+def test_an_upload_replaces_a_generated_file_in_the_same_slot(
+    client: TestClient, db_path: Path
+) -> None:
+    conn = connect(db_path)
+    try:
+        generated = store_generated_file(
+            conn, db_path.parent, "own_questionnaire_analysis", "analysis.md", b"# Analysis"
+        )
+    finally:
+        conn.close()
+    generated_copy = (
+        db_path.parent / "profile" / "own_questionnaire_analysis" / f"{generated.sha256}.md"
+    )
+    assert generated_copy.exists()
+
+    uploaded_id, uploaded_copy = upload_one(
+        db_path, "own_questionnaire_analysis", "mine.pdf", b"My own analysis."
+    )
+
+    assert not generated_copy.exists()
+    assert uploaded_copy.exists()
+    listed = client.get("/profile/files").json()
+    assert [item["id"] for item in listed] == [uploaded_id]
+    assert listed[0]["generated"] is False

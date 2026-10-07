@@ -1,5 +1,3 @@
-import copy
-import json
 import re
 import threading
 from collections.abc import Iterator
@@ -16,10 +14,8 @@ from localjobtracker.profile_files import store_profile_file
 from localjobtracker.profile_pipeline import (
     DEFAULT_RULES_PATH,
     PROMPT_KINDS,
-    SCHEMAS,
     ProfileBusy,
     ProfileNotReady,
-    check_facts,
     make_pipeline,
     submit_profile_analysis,
 )
@@ -34,10 +30,9 @@ TASK_LINE = re.compile(r"^TASK: (\w+)$", re.MULTILINE)
 class CannedRunner:
     """Answers each profile prompt from a table, keyed by the TASK line in the prompt."""
 
-    def __init__(self, answers: dict[str, Any]) -> None:
+    def __init__(self, answers: dict[str, str]) -> None:
         self.answers = answers
         self.prompts: list[str] = []
-        self.schemas: list[dict[str, Any] | None] = []
         self.limit_before: set[str] = set()
 
     def run(
@@ -50,13 +45,10 @@ class CannedRunner:
         assert match is not None, "every profile prompt names its task"
         kind = match.group(1)
         self.prompts.append(prompt)
-        self.schemas.append(json_schema)
         if kind in self.limit_before:
             self.limit_before.discard(kind)
             raise RateLimitError("Plan limit (canned runner).")
-        answer = self.answers[kind]
-        text = answer if isinstance(answer, str) else json.dumps(answer)
-        return RunResult(ok=True, text=text, duration_ms=0, cost_usd=0.0)
+        return RunResult(ok=True, text=self.answers[kind], duration_ms=0, cost_usd=0.0)
 
 
 def store(db_path: Path, kind: str, name: str, content: bytes) -> int:
@@ -77,97 +69,30 @@ def questionnaire_id(db_path: Path) -> int:
     return store(db_path, "questionnaire", "q.txt", (FIXTURES / "questionnaire.txt").read_bytes())
 
 
-def good_answers(cv: int) -> dict[str, Any]:
+def good_answers(cv: int) -> dict[str, str]:
     return {
-        "full_cv_history": {
-            "items": [
-                {
-                    "id": "H-001",
-                    "kind": "role",
-                    "text": "Analyst, Example Corp",
-                    "employer": "Example Corp",
-                    "title": "Analyst",
-                    "date": "2020",
-                    "end": "2022",
-                    "source": {"file_id": cv, "location": "Line 2"},
-                    "conflicts": [{"with": "H-002", "note": "End year differs."}],
-                },
-                {
-                    "id": "H-002",
-                    "kind": "role",
-                    "text": "Analyst, Example Corp, to 2022",
-                    "employer": "Example Corp",
-                    "title": "Analyst",
-                    "date": "2020",
-                    "end": "2022",
-                    "source": {"file_id": cv, "location": "Line 2"},
-                    "conflicts": [{"with": "H-001", "note": "End year differs."}],
-                },
-            ]
-        },
-        "fact_sheet": {
-            "facts": [
-                {
-                    "id": "F-001",
-                    "category": "role",
-                    "text": "Worked as an analyst at Example Corp.",
-                    "date": "2020",
-                    "source": {"file_id": cv, "location": "Line 2"},
-                    "history_ids": ["H-001"],
-                },
-                {
-                    "id": "F-002",
-                    "category": "role",
-                    "text": "Analyst role ended in 2022.",
-                    "date": "2022",
-                    "source": {"file_id": cv, "location": "Line 2"},
-                    "history_ids": ["H-002"],
-                },
-            ],
-            "conflicts": [{"id": "C-01", "fact_ids": ["F-001", "F-002"], "note": "End year."}],
-        },
-        "questionnaire_analysis": {
-            "how_the_material_reads": "A clear analyst story with a focus on reporting.",
-            "career_narrative": "Moves towards reporting and data quality.",
-            "patterns": [
-                {
-                    "id": "Q-001",
-                    "title": "Analyst roles",
-                    "text": "Wants analyst roles.",
-                    "questionnaire_ref": "Q1",
-                    "fact_ids": ["F-001"],
-                }
-            ],
-            "independent_work": [],
-            "cv_support": [{"text": "Reporting work is in the CV.", "fact_ids": ["F-001"]}],
-            "nuance": [],
-            "cv_implications": ["Lead with the reporting work."],
-            "open_items": ["Salary range is not given."],
-        },
-        "strategy": {
-            "differentiator": "Analyst work with reporting.",
-            "primary_lanes": [
-                {
-                    "id": "L-01",
-                    "role": "Reporting analyst",
-                    "fit": 4.5,
-                    "why": "Matches the reporting work.",
-                    "fact_ids": ["F-001"],
-                    "questionnaire_ids": ["Q-001"],
-                }
-            ],
-            "secondary_lanes": [],
-            "avoid": [],
-            "geography": "",
-            "comp_anchor": "",
-            "effort_allocation": "Mostly the primary lane.",
-            "open_questions": [],
-        },
+        "full_cv_history": (
+            "# Career history\n\n"
+            "## Analyst, Example Corp\n"
+            f"2020 to 2022, per FILE {cv}. Worked as an analyst with a focus on reporting.\n"
+        ),
+        "questionnaire_analysis": (
+            "# Questionnaire analysis\n\n"
+            "## How the material reads\n"
+            "A clear analyst story with a focus on reporting.\n\n"
+            "## Patterns\n"
+            "Wants analyst roles that lean on reporting work.\n"
+        ),
+        "strategy": (
+            "# Positioning strategy\n\n"
+            "## Primary lanes\n"
+            "Reporting analyst, fit 4.5/5. Matches the reporting work.\n"
+        ),
     }
 
 
 def make_queue(db_path: Path, runner: CannedRunner) -> ClaudeJobQueue:
-    render, on_result = make_pipeline(rules_path=DEFAULT_RULES_PATH)
+    render, on_result = make_pipeline(db_path.parent, rules_path=DEFAULT_RULES_PATH)
     return ClaudeJobQueue(db_path, runner, on_result=on_result, render=render)
 
 
@@ -203,7 +128,7 @@ def outputs(db_path: Path) -> list[tuple[str, int]]:
     return [(row["kind"], row["version"]) for row in rows]
 
 
-def test_a_full_run_stores_the_four_outputs_and_their_facts(
+def test_a_full_run_stores_the_three_documents(
     db_path: Path, cv_id: int, questionnaire_id: int
 ) -> None:
     runner = CannedRunner(good_answers(cv_id))
@@ -212,21 +137,11 @@ def test_a_full_run_stores_the_four_outputs_and_their_facts(
 
     run_all(queue)
 
-    assert job_state(db_path, job_id) == ("done", None, ["done"] * 4)
+    assert job_state(db_path, job_id) == ("done", None, ["done"] * 3)
     assert outputs(db_path) == [(kind, 1) for kind in PROMPT_KINDS]
-    conn = connect(db_path)
-    try:
-        facts = conn.execute("SELECT fact_key, date, source_file_id, status FROM facts").fetchall()
-    finally:
-        conn.close()
-    assert [(f["fact_key"], f["date"], f["source_file_id"], f["status"]) for f in facts] == [
-        ("F-001", "2020", cv_id, "unverified"),
-        ("F-002", "2022", cv_id, "unverified"),
-    ]
-    assert check_facts(connect(db_path)) == []
 
 
-def test_each_prompt_is_sent_with_its_schema(
+def test_a_full_run_also_saves_each_output_as_a_readable_generated_file(
     db_path: Path, cv_id: int, questionnaire_id: int
 ) -> None:
     runner = CannedRunner(good_answers(cv_id))
@@ -234,7 +149,36 @@ def test_each_prompt_is_sent_with_its_schema(
     start(db_path, queue)
     run_all(queue)
 
-    assert runner.schemas == [SCHEMAS[kind] for kind in PROMPT_KINDS]
+    conn = connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT kind FROM profile_files WHERE generated = 1 ORDER BY kind"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert [row["kind"] for row in rows] == [
+        "own_full_cv_history",
+        "own_questionnaire_analysis",
+        "own_strategy",
+    ]
+
+
+def test_a_generated_file_is_not_sent_back_as_evidence(
+    db_path: Path, cv_id: int, questionnaire_id: int
+) -> None:
+    runner = CannedRunner(good_answers(cv_id))
+    queue = make_queue(db_path, runner)
+    start(db_path, queue)
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        generated_id = conn.execute(
+            "SELECT id FROM profile_files WHERE kind = 'own_full_cv_history'"
+        ).fetchone()["id"]
+    finally:
+        conn.close()
+    assert f"FILE {generated_id} |" not in runner.prompts[0]
 
 
 def test_each_prompt_builds_on_what_came_before(
@@ -245,10 +189,11 @@ def test_each_prompt_builds_on_what_came_before(
     start(db_path, queue)
     run_all(queue)
 
-    fact_sheet, questionnaire, strategy = runner.prompts[1:]
-    assert '"H-001"' in fact_sheet  # the history it was built from, stored by the first prompt
-    assert '"F-001"' in questionnaire
-    assert '"Q-001"' in strategy and '"F-002"' in strategy
+    questionnaire_prompt, strategy_prompt = runner.prompts[1:]
+    # The history it was built from, stored by the first prompt.
+    assert "Analyst, Example Corp" in questionnaire_prompt
+    assert "Analyst, Example Corp" in strategy_prompt
+    assert "clear analyst story" in strategy_prompt
 
 
 def test_unreadable_files_are_left_out_of_the_prompts(
@@ -296,123 +241,56 @@ def test_a_second_run_creates_nothing_when_everything_is_there(
     with pytest.raises(ProfileNotReady, match="Nothing is missing"):
         start(db_path, queue)
     assert outputs(db_path) == before
-    assert len(runner.prompts) == 4
+    assert len(runner.prompts) == 3
 
 
-BAD_ANSWERS: list[tuple[str, str, Any, str]] = [
-    (
-        "full_cv_history",
-        "source file",
-        lambda a: a["items"][0]["source"].update(file_id=999),
-        "source file_id is not one of the input files",
-    ),
-    (
-        "full_cv_history",
-        "date",
-        lambda a: a["items"][0].update(date="sometime"),
-        "date must be",
-    ),
-    (
-        "full_cv_history",
-        "end date",
-        lambda a: a["items"][0].update(end="later"),
-        "end must be empty",
-    ),
-    (
-        "full_cv_history",
-        "empty conflict note",
-        lambda a: a["items"][1]["conflicts"][0].update(note=" "),
-        "note' is empty",
-    ),
-    (
-        "fact_sheet",
-        "unknown history id",
-        lambda a: a["facts"][0].update(history_ids=["H-404"]),
-        "unknown id H-404",
-    ),
-    (
-        "fact_sheet",
-        "missing location",
-        lambda a: a["facts"][0]["source"].update(location=" "),
-        "source location is empty",
-    ),
-    (
-        "fact_sheet",
-        "unknown category",
-        lambda a: a["facts"][0].update(category="gossip"),
-        "category is not allowed",
-    ),
-    (
-        "questionnaire_analysis",
-        "unknown fact",
-        lambda a: a["patterns"][0].update(fact_ids=["F-777"]),
-        "unknown id F-777",
-    ),
-    (
-        "strategy",
-        "lane without facts",
-        lambda a: a["primary_lanes"][0].update(fact_ids=[]),
-        "a lane needs at least one fact",
-    ),
-    (
-        "strategy",
-        "fit off the 0.5 steps",
-        lambda a: a["primary_lanes"][0].update(fit=4.3),
-        "steps of 0.5",
-    ),
-]
-
-
-@pytest.mark.parametrize(("kind", "label", "break_answer", "message"), BAD_ANSWERS)
-def test_a_bad_answer_fails_the_job_with_the_reason(
-    db_path: Path,
-    cv_id: int,
-    questionnaire_id: int,
-    kind: str,
-    label: str,
-    break_answer: Any,
-    message: str,
-) -> None:
+def test_an_empty_answer_fails_the_job(db_path: Path, cv_id: int, questionnaire_id: int) -> None:
     answers = good_answers(cv_id)
-    broken = copy.deepcopy(answers[kind])
-    break_answer(broken)
-    answers[kind] = broken
+    answers["full_cv_history"] = "   "
     queue = make_queue(db_path, CannedRunner(answers))
     job_id = start(db_path, queue)
 
     run_all(queue)
 
     status, error, _prompts = job_state(db_path, job_id)
-    assert status == "failed", label
-    assert error is not None and message in error
-    assert kind not in [name for name, _version in outputs(db_path)]
+    assert status == "failed"
+    assert error is not None and "empty" in error
+    assert "full_cv_history" not in [name for name, _version in outputs(db_path)]
 
 
 def test_an_answer_wrapped_in_a_code_fence_is_accepted(
     db_path: Path, cv_id: int, questionnaire_id: int
 ) -> None:
     answers = good_answers(cv_id)
-    answers["full_cv_history"] = "```json\n" + json.dumps(answers["full_cv_history"]) + "\n```"
+    answers["full_cv_history"] = "```markdown\n" + answers["full_cv_history"] + "```"
     queue = make_queue(db_path, CannedRunner(answers))
     job_id = start(db_path, queue)
 
     run_all(queue)
 
     assert job_state(db_path, job_id)[0] == "done"
+    conn = connect(db_path)
+    try:
+        document = conn.execute(
+            "SELECT document FROM profile_outputs WHERE kind = 'full_cv_history'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert not document.startswith("```")
 
 
 def test_a_plan_limit_pauses_the_analysis_and_resume_builds_the_prompt_again(
     db_path: Path, cv_id: int, questionnaire_id: int
 ) -> None:
     runner = CannedRunner(good_answers(cv_id))
-    runner.limit_before = {"fact_sheet"}
+    runner.limit_before = {"questionnaire_analysis"}
     queue = make_queue(db_path, runner)
     job_id = start(db_path, queue)
     run_all(queue)
 
     status, error, prompt_statuses = job_state(db_path, job_id)
     assert status == "paused"
-    assert prompt_statuses == ["done", "queued", "queued", "queued"]
+    assert prompt_statuses == ["done", "queued", "queued"]
     assert error is not None and "Paused at a plan limit" in error
 
     conn = connect(db_path)
@@ -422,7 +300,7 @@ def test_a_plan_limit_pauses_the_analysis_and_resume_builds_the_prompt_again(
         conn.close()
     run_all(queue)
 
-    assert job_state(db_path, job_id) == ("done", None, ["done"] * 4)
+    assert job_state(db_path, job_id) == ("done", None, ["done"] * 3)
 
 
 def test_the_users_own_writing_rules_replace_the_default(
@@ -477,7 +355,7 @@ def test_the_analysis_route_refuses_when_inputs_are_missing(analysis_client: Tes
     assert "questionnaire" in response.json()["detail"]
 
 
-def test_the_analysis_route_queues_four_prompts_and_refuses_a_second_start(
+def test_the_analysis_route_queues_three_prompts_and_refuses_a_second_start(
     db_path: Path, analysis_client: TestClient, cv_id: int, questionnaire_id: int
 ) -> None:
     started = analysis_client.post("/profile/analysis")
@@ -501,150 +379,7 @@ def test_the_outputs_route_returns_the_latest_version_of_each(
         listed = client.get("/profile/outputs").json()
 
     assert [item["kind"] for item in listed] == list(PROMPT_KINDS)
-    assert listed[0]["body"]["items"][0]["id"] == "H-001"
-
-
-def test_malformed_ids_are_renumbered_and_their_references_follow(
-    db_path: Path, cv_id: int, questionnaire_id: int
-) -> None:
-    answers = good_answers(cv_id)
-    answers["full_cv_history"]["items"][0]["id"] = "H1"
-    answers["full_cv_history"]["items"][1]["id"] = "2"
-    answers["full_cv_history"]["items"][1]["conflicts"] = [{"with": "H1", "note": "End year."}]
-    answers["full_cv_history"]["items"][0]["conflicts"] = [{"with": "2", "note": "End year."}]
-    answers["fact_sheet"]["facts"][0]["id"] = "F1"
-    answers["fact_sheet"]["facts"][1]["id"] = "F2"
-    answers["fact_sheet"]["conflicts"] = [{"id": "C1", "fact_ids": ["F1", "F2"], "note": "End."}]
-    queue = make_queue(db_path, CannedRunner(answers))
-    job_id = start(db_path, queue)
-
-    run_all(queue)
-
-    assert job_state(db_path, job_id)[0] == "done"
-    conn = connect(db_path)
-    try:
-        history = json.loads(
-            conn.execute(
-                "SELECT body_json FROM profile_outputs WHERE kind = 'full_cv_history'"
-            ).fetchone()[0]
-        )
-        fact_sheet = json.loads(
-            conn.execute(
-                "SELECT body_json FROM profile_outputs WHERE kind = 'fact_sheet'"
-            ).fetchone()[0]
-        )
-    finally:
-        conn.close()
-    assert [item["id"] for item in history["items"]] == ["H-001", "H-002"]
-    assert history["items"][0]["conflicts"][0]["with"] == "H-002"
-    assert history["items"][1]["conflicts"][0]["with"] == "H-001"
-    assert [fact["id"] for fact in fact_sheet["facts"]] == ["F-001", "F-002"]
-    assert fact_sheet["conflicts"][0]["fact_ids"] == ["F-001", "F-002"]
-    assert fact_sheet["conflicts"][0]["id"] == "C-01"
-
-
-def test_dates_in_other_forms_are_read_as_a_year_and_month(
-    db_path: Path, cv_id: int, questionnaire_id: int
-) -> None:
-    answers = good_answers(cv_id)
-    answers["full_cv_history"]["items"][0]["date"] = "Jan 2020 - Mar 2022"
-    answers["full_cv_history"]["items"][0]["end"] = "Mar 2022"
-    answers["full_cv_history"]["items"][1]["date"] = "09/2020"
-    answers["fact_sheet"]["facts"][0]["date"] = "2020 to 2022"
-    queue = make_queue(db_path, CannedRunner(answers))
-    job_id = start(db_path, queue)
-
-    run_all(queue)
-
-    assert job_state(db_path, job_id)[0] == "done"
-    conn = connect(db_path)
-    try:
-        history = json.loads(
-            conn.execute(
-                "SELECT body_json FROM profile_outputs WHERE kind = 'full_cv_history'"
-            ).fetchone()[0]
-        )
-    finally:
-        conn.close()
-    assert history["items"][0]["date"] == "2020-01"
-    assert history["items"][0]["end"] == "2022-03"
-    assert history["items"][1]["date"] == "2020-09"
-
-
-def test_a_history_item_without_a_date_is_accepted(
-    db_path: Path, cv_id: int, questionnaire_id: int
-) -> None:
-    answers = good_answers(cv_id)
-    answers["full_cv_history"]["items"][1]["date"] = ""
-    answers["full_cv_history"]["items"][1]["end"] = ""
-    queue = make_queue(db_path, CannedRunner(answers))
-    job_id = start(db_path, queue)
-
-    run_all(queue)
-
-    assert job_state(db_path, job_id)[0] == "done"
-
-
-def test_a_conflict_may_name_another_source_in_words(
-    db_path: Path, cv_id: int, questionnaire_id: int
-) -> None:
-    answers = good_answers(cv_id)
-    answers["full_cv_history"]["items"][0]["conflicts"] = [
-        {"with": "Cover letter, 2023, Work Experience", "note": "The end year differs."}
-    ]
-    answers["full_cv_history"]["items"][1]["conflicts"] = []
-    queue = make_queue(db_path, CannedRunner(answers))
-    job_id = start(db_path, queue)
-
-    run_all(queue)
-
-    assert job_state(db_path, job_id)[0] == "done"
-
-
-def test_an_undated_fact_takes_the_date_of_the_history_item_it_cites(
-    db_path: Path, cv_id: int, questionnaire_id: int
-) -> None:
-    answers = good_answers(cv_id)
-    answers["fact_sheet"]["facts"][0]["date"] = ""
-    queue = make_queue(db_path, CannedRunner(answers))
-    job_id = start(db_path, queue)
-
-    run_all(queue)
-
-    assert job_state(db_path, job_id)[0] == "done"
-    conn = connect(db_path)
-    try:
-        dates = [row[0] for row in conn.execute("SELECT date FROM facts ORDER BY fact_key")]
-    finally:
-        conn.close()
-    assert dates[0] == "2020"
-
-
-def test_not_stated_is_no_date_and_a_range_takes_its_start_month(
-    db_path: Path, cv_id: int, questionnaire_id: int
-) -> None:
-    answers = good_answers(cv_id)
-    answers["full_cv_history"]["items"][0]["date"] = "Apr\u2013May 2026"
-    answers["full_cv_history"]["items"][0]["end"] = "present"
-    answers["fact_sheet"]["facts"][0]["date"] = "Not stated"
-    queue = make_queue(db_path, CannedRunner(answers))
-    job_id = start(db_path, queue)
-
-    run_all(queue)
-
-    assert job_state(db_path, job_id)[0] == "done"
-    conn = connect(db_path)
-    try:
-        history = json.loads(
-            conn.execute(
-                "SELECT body_json FROM profile_outputs WHERE kind = 'full_cv_history'"
-            ).fetchone()[0]
-        )
-        dates = [row[0] for row in conn.execute("SELECT date FROM facts ORDER BY fact_key")]
-    finally:
-        conn.close()
-    assert history["items"][0]["date"] == "2026-04"
-    assert dates[0] == "2026-04"  # the fact took its history item's date
+    assert "Analyst, Example Corp" in listed[0]["document"]
 
 
 def test_an_analysis_reads_each_upload_again_from_its_copy(
