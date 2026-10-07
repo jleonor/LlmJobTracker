@@ -24,6 +24,7 @@ class ClaudeJobPrompt(BaseModel):
     started_at: str | None
     finished_at: str | None
     skipped: bool
+    skip_reason: str | None
     answer_chars: int | None
 
 
@@ -98,6 +99,7 @@ def _prompts_for(conn: sqlite3.Connection, job_id: int) -> list[ClaudeJobPrompt]
         SELECT position, prompt_kind, status, error, cost_usd, duration_ms, model,
                started_at, finished_at,
                COALESCE(result_text LIKE 'Skipped%', 0) AS skipped,
+               CASE WHEN result_text LIKE 'Skipped%' THEN result_text END AS skip_reason,
                LENGTH(result_text) AS answer_chars
         FROM claude_job_prompts WHERE claude_job_id = ? ORDER BY position
         """,

@@ -16,6 +16,7 @@ function prompt(overrides: Partial<ClaudeJobPrompt>): ClaudeJobPrompt {
     started_at: null,
     finished_at: null,
     skipped: false,
+    skip_reason: null,
     answer_chars: null,
     ...overrides,
   }
@@ -57,8 +58,29 @@ describe('analysisLines', () => {
   })
 
   it('says when a prompt was skipped because it is already in place', () => {
-    const lines = analysisLines(job('done', [prompt({ prompt_kind: 'strategy', skipped: true })]))
-    expect(lines.map((line) => line.text)).toContain('Strategy: already in place, skipped')
+    const lines = analysisLines(
+      job('done', [
+        prompt({
+          prompt_kind: 'strategy',
+          skipped: true,
+          skip_reason: 'Skipped: already in place.',
+        }),
+      ]),
+    )
+    expect(lines.map((line) => line.text)).toContain('Strategy: already in place.')
+  })
+
+  it('shows the real reason when a prompt was skipped for using the own file', () => {
+    const lines = analysisLines(
+      job('done', [
+        prompt({
+          prompt_kind: 'questionnaire_analysis',
+          skipped: true,
+          skip_reason: 'Skipped: using your own file.',
+        }),
+      ]),
+    )
+    expect(lines.map((line) => line.text)).toContain('Questionnaire report: using your own file.')
   })
 
   it('shows a failure with its reason', () => {

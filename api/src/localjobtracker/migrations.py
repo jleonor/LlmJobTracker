@@ -487,6 +487,15 @@ MIGRATIONS: tuple[Migration, ...] = (
             _V3_FACTS,
         ),
     ),
+    Migration(
+        version=11,
+        name="record whether a document was generated or copied from your own file",
+        up=(
+            "ALTER TABLE profile_outputs ADD COLUMN source TEXT NOT NULL DEFAULT 'generated' "
+            "CHECK (source IN ('generated', 'imported'))",
+        ),
+        down=("ALTER TABLE profile_outputs DROP COLUMN source",),
+    ),
 )
 
 _LEDGER = """

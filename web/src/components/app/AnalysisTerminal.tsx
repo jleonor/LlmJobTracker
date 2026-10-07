@@ -32,7 +32,9 @@ export function analysisLines(job: ClaudeJob, now: number = Date.now()): Line[] 
   for (const prompt of job.prompts) {
     const name = PROMPT_LABELS[prompt.prompt_kind] ?? prompt.prompt_kind
     if (prompt.skipped) {
-      lines.push({ time: null, text: `${name}: already in place, skipped`, tone: 'info' })
+      // The backend's own reason (e.g. "Skipped: using your own file."), not a generic message.
+      const reason = (prompt.skip_reason ?? 'Skipped: already in place.').replace(/^Skipped:\s*/, '')
+      lines.push({ time: null, text: `${name}: ${reason}`, tone: 'info' })
       continue
     }
     const model = prompt.model ? ` (${prompt.model})` : ''

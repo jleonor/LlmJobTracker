@@ -14,6 +14,8 @@ from test_profile_pipeline import (
     store,
 )
 
+from localjobtracker.claude_jobs import get_claude_job
+from localjobtracker.profile_files import delete_profile_file
 from localjobtracker.profile_pipeline import ProfileNotReady
 from localjobtracker.storage import connect
 
@@ -81,6 +83,19 @@ def test_missing_outputs_are_made_and_the_uploaded_ones_are_used_as_is(
         conn.close()
     assert document == "My own questionnaire analysis."
     assert hashlib.sha256(analysis).hexdigest() in recorded
+
+    # The API tells "used your own file" apart from "already in place" (not both just "skipped").
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None
+    assert [p.skip_reason for p in job.prompts] == [
+        None,
+        "Skipped: using your own file.",
+        "Skipped: using your own file.",
+    ]
 
 
 def test_a_run_with_everything_in_place_is_refused(
@@ -160,3 +175,41 @@ def test_a_history_upload_works_without_any_cv(db_path: Path, questionnaire: int
 
     assert job_state(db_path, job_id)[0] == "done"
     assert latest_versions(db_path)["full_cv_history"] == 1
+
+
+def test_deleting_an_imported_own_file_makes_the_next_run_generate_a_fresh_one(
+    db_path: Path, cv: int, questionnaire: int
+) -> None:
+    own_id = store(db_path, "own_strategy", "strategy.txt", b"My own strategy.")
+    runner = CannedRunner(good_answers(cv))
+    queue = make_queue(db_path, runner)
+    start(db_path, queue)
+    run_all(queue)
+    assert latest_versions(db_path)["strategy"] == 1
+
+    conn = connect(db_path)
+    try:
+        delete_profile_file(conn, db_path.parent, own_id)
+    finally:
+        conn.close()
+
+    # Nothing of the user's own is left for strategy, and it is no longer "in place": the file
+    # it was copied from is gone, so the next run must generate a fresh one, not keep reusing
+    # the deleted file's content forever (D-93).
+    job_id = start(db_path, queue)
+    run_all(queue)
+
+    assert job_state(db_path, job_id)[0] == "done"
+    assert latest_versions(db_path)["strategy"] == 2
+    results = prompt_results(db_path, job_id)
+    assert results[2] not in ("Skipped: already in place.", "Skipped: using your own file.")
+    conn = connect(db_path)
+    try:
+        document, source = conn.execute(
+            "SELECT document, source FROM profile_outputs WHERE kind = 'strategy' "
+            "ORDER BY version DESC LIMIT 1"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert source == "generated"
+    assert document == good_answers(cv)["strategy"].strip()

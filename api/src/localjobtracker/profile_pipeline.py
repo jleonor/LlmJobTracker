@@ -227,6 +227,14 @@ def _made_in_job(conn: sqlite3.Connection, kind: str, job_id: int | None) -> boo
     return row is not None
 
 
+def _latest_output_source(conn: sqlite3.Connection, kind: str) -> str | None:
+    row = conn.execute(
+        "SELECT source FROM profile_outputs WHERE kind = ? ORDER BY version DESC LIMIT 1",
+        (kind,),
+    ).fetchone()
+    return None if row is None else str(row["source"])
+
+
 def decide(conn: sqlite3.Connection, kind: str, job_id: int | None) -> str:
     """What the job does for one output (D-68, D-69, D-86).
 
@@ -234,7 +242,8 @@ def decide(conn: sqlite3.Connection, kind: str, job_id: int | None) -> str:
         not been copied in, or something it is built on was made again in this job). Copying it
         in is a code action, with no Claude call (D-86).
     generate: the output is missing and the user has not uploaded one, or something it is built
-        on was made again in this job.
+        on was made again in this job, or the current version was imported from a file that is
+        no longer uploaded (D-93).
     skip: the output is already there and nothing it depends on changed.
     """
     own = own_upload(conn, kind)
@@ -246,6 +255,10 @@ def decide(conn: sqlite3.Connection, kind: str, job_id: int | None) -> str:
     if latest_document(conn, kind) is None:
         return "generate"
     if upstream_changed:
+        return "generate"
+    if _latest_output_source(conn, kind) == "imported":
+        # The file this version was copied from is gone. Nothing of the user's own is left, so
+        # it is as if the output were missing, not a version to keep (D-93).
         return "generate"
     return "skip"
 
@@ -327,7 +340,7 @@ def build_prompt(conn: sqlite3.Connection, prompt: PromptRow, rules_path: Path) 
         own = own_upload(conn, kind)
         if own is None:
             raise PromptRejected("The uploaded file could not be read.")
-        _store_output(conn, kind, own.text, prompt.claude_job_id, [own.sha256])
+        _store_output(conn, kind, own.text, prompt.claude_job_id, [own.sha256], source="imported")
         return RenderedPrompt(text="", skip=True, skip_message="Skipped: using your own file.")
     rules = writing_rules_text(conn, rules_path)
     parts = [
@@ -371,6 +384,7 @@ def _store_output(
     document: str,
     job_id: int | None,
     input_hashes: list[str],
+    source: str,
 ) -> int:
     with conn:
         version = conn.execute(
@@ -378,10 +392,11 @@ def _store_output(
         ).fetchone()[0]
         cursor = conn.execute(
             """
-            INSERT INTO profile_outputs (kind, version, claude_job_id, document, input_sha256s)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO profile_outputs
+                (kind, version, claude_job_id, document, input_sha256s, source)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (kind, version, job_id, document, json.dumps(input_hashes)),
+            (kind, version, job_id, document, json.dumps(input_hashes), source),
         )
     output_id = cursor.lastrowid
     if output_id is None:
@@ -409,7 +424,7 @@ def make_pipeline(
             hashes = [file.sha256 for file in usable_files(conn, QUESTIONNAIRE_KINDS)]
         else:
             hashes = []
-        _store_output(conn, kind, document, prompt.claude_job_id, hashes)
+        _store_output(conn, kind, document, prompt.claude_job_id, hashes, source="generated")
         own_kind = OWN_KINDS.get(kind)
         if own_kind is not None and own_upload(conn, kind) is None:
             # Nothing of the user's own is in this slot, so the generated output fills it,

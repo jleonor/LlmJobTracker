@@ -54,6 +54,7 @@ export type ClaudeJobPrompt = {
   started_at: string | null
   finished_at: string | null
   skipped: boolean
+  skip_reason: string | null
   answer_chars: number | null
 }
 
