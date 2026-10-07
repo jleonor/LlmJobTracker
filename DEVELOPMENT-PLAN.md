@@ -1,6 +1,6 @@
 # LocalJobTracker: Development Plan
 
-**Current phase: 2, done.** Phase 0 and Phase 1 are done. Phase 2's 12 steps are built and committed on `phase-2-profile`, and every "Done when" item is checked, including step 12 (the run on your real files, which you confirmed in chat on 2026-10-07). Waiting on you to say when to fast-forward `main` to it (D-61). O-08, O-09 and O-10 are answered (D-62 to D-64). Tables are renamed as D-59 proposes (`job_applications`, `status_history`).
+**Current phase: 3, not started.** Phases 0 through 2 are done; `main` is fast-forwarded to Phase 2's end (D-61). Phase 3's step list is drafted (D-97) and awaiting your approval before any product code is written (CLAUDE.md rule 7).
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -128,7 +128,22 @@ Scope
 - Skills in `Agent/skills/`: convert docx to PDF, and read docx. Check how the runner loads them (this is verified in this phase, not assumed).
 - Specs: `Agent/specs/domain.md` (entities: Job Application, status history, Claude Job with its prompts, requirement with weight and match; statuses), `Agent/specs/files.md` (managed folder layout).
 
+Step list (drafted 2026-10-07, awaiting approval; reordered per D-97 so the job page is designed against real data shape and a Claude-CLI backfill is tried before the definitive migration and import are written)
+
+1. Cut `phase-3-tracker` from `main` (D-61). Write `Agent/specs/domain.md` and `Agent/specs/files.md`. Docs only.
+2. Extend the synthetic fixture (`tests/fixtures/synthetic/job_applications.json`) with the fields the job page needs but the table didn't: description, requirements, notes, and a sample file link.
+3. Build the Job Application page against that seed data: the D-56/D-98 layout — flags, header (with a per-application queue badge beside the status tag), job details (portal, description, requirements, location, work mode, contract type), positioning analysis (fit bullets, gap bullets, match score with a visual, all from seed data), application history (status timeline, notes, next action, due date), files. The tailored CV, cover letter and the positioning breakdown document stay "not done yet" (D-48); their content is Phase 5. Check the result against the `planning/stitch` job-detail mockups before calling it done.
+4. Side experiment, not wired into the app: a throwaway script that reads the real `Job Application Tracker.xlsx` (read-only) and the reference folder, and asks the Claude CLI to classify the fields the spreadsheet doesn't have for a sample of real rows — lane, work mode, contract type. Nothing is committed; `description` and `requirements` are left out of the experiment since older rows have no real source for them and backfilling would mean inventing content (D-85). Note which fields came back reliably in `planning/import-backfill-notes.md`.
+5. Migration: add `description`, `requirements`, `notes` to `job_applications`; add a file-links table per `files.md`. Tests: applies on a copy of the dev database and an empty database, and rolls back.
+6. Dry-run import: read the spreadsheet read-only, map columns (including the D-05 status fold), apply whatever step 4 found reliable, and report row counts and the changed rows. No writes.
+7. Apply import: idempotent insert of `job_applications` and `status_history` rows; a second run creates no duplicates.
+8. Table UI: the D-46 columns, sort, status filter, search, the queue badge (idle, queued, processing), and a queue counter beside Add Job.
+9. Inline table editing: status, lane, location, file links.
+10. File preview: `.docx` to a temporary PDF deleted after viewing, `.eml`/`.msg` rendered as HTML or text, "Open in Word" via the system handler. `Agent/skills/`: convert-docx-to-pdf, read-docx — check how the runner actually loads them, not assumed.
+11. Checks: `scripts/check.py` output; personal-data scan; screenshots of the job page on seed data, the dry-run report, table filters/search, inline edit, each preview type, and migration rollback.
+
 Done when
+- [ ] The Job Application page, built on seed data, matches the D-56 layout (screenshot, compared against the job-detail mockups).
 - [ ] The dry-run report matches the spreadsheet: row counts, the 8 changed rows, and three spot-checked rows.
 - [ ] Running the import twice creates no duplicates.
 - [ ] An edit survives an app restart.

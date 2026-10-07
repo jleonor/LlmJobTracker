@@ -5,7 +5,9 @@ import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ApiError, fetchJobApplications } from '@/lib/api'
+import { sampleDetailFor } from '@/lib/sampleJobDetail'
 import type { JobApplication } from '@/lib/types'
+import { JobApplicationDetailPage } from '@/pages/JobApplicationDetailPage'
 
 type State =
   | { kind: 'loading' }
@@ -28,6 +30,9 @@ const COLUMNS = [
 
 export function JobApplicationsPage() {
   const [state, setState] = useState<State>({ kind: 'loading' })
+  // Design pass only (Phase 3 step list): the detail page shows seed data by company, since
+  // there is no detail endpoint yet. Selecting by id keeps this ready to swap for a real fetch.
+  const [selectedId, setSelectedId] = useState<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -44,6 +49,18 @@ export function JobApplicationsPage() {
       cancelled = true
     }
   }, [])
+
+  if (state.kind === 'ready' && selectedId !== null) {
+    const selected = state.applications.find((app) => app.id === selectedId)
+    if (selected) {
+      return (
+        <JobApplicationDetailPage
+          application={sampleDetailFor(selected)}
+          onBack={() => setSelectedId(null)}
+        />
+      )
+    }
+  }
 
   return (
     <section aria-labelledby="applications-heading" className="flex flex-col gap-4">
@@ -87,7 +104,11 @@ export function JobApplicationsPage() {
             </TableHeader>
             <TableBody>
               {state.applications.map((app) => (
-                <TableRow key={app.id}>
+                <TableRow
+                  key={app.id}
+                  onClick={() => setSelectedId(app.id)}
+                  className="cursor-pointer"
+                >
                   <TableCell className="font-semibold">{app.company}</TableCell>
                   <TableCell>{app.role_title}</TableCell>
                   <TableCell>
