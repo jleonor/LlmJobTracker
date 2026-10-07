@@ -74,38 +74,37 @@ Done when
 
 ## Phase 2: Profile onboarding
 
-**Goal:** your background becomes a reviewed Fact Sheet that later documents may use.
+**Goal:** your background becomes a reviewed career history, questionnaire analysis and strategy that later documents may use.
 
 Scope
-- Upload screen for: master CVs (one kind for English and French, D-67), older CVs, older cover letters, the questionnaire, the cover letter template (D-71), and optionally the user's own career history, questionnaire analysis and positioning strategy (D-68). Files are copied into app data. Originals are never touched.
-- Claude produces four outputs from these files, in this order: `FULL_CV_HISTORY` (D-40, D-64), a non-positioned CV Fact Sheet, a questionnaire analysis, and a strategy overview. Each fact has a source file, a location in it, and a date.
-- Conflicts between files: the master CVs win, and the conflict is shown to you.
-- Review screen: edit facts, mark each one verified or rejected. Only verified facts are usable later.
+- Upload screen for: master CVs (one kind for English and French, D-67), older CVs, older cover letters, the questionnaire, the cover letter template (D-71), and optionally the user's own career history, questionnaire analysis and positioning strategy (D-68, narrowed by D-86). Files are copied into app data. Originals are never touched.
+- Claude produces three documents from these files, in this order: the career history (D-40, D-86), a questionnaire analysis, and a strategy overview. Each is Markdown prose, with a claim's source given in words where it matters, not as a structured field (D-86).
+- Conflicts between files: recorded in the career history's prose, not resolved by the app; the user reads and judges them.
+- The career history, questionnaire analysis and strategy are read and edited as documents on the Profile page (D-85, D-86). There is no per-claim verify or reject step.
 - Upload screen for your own writing rules. They are stored in app data and override the defaults in `Agent/rules/`.
 - Profile page (D-58): old CVs, old cover letters, master CVs, the questionnaire, the questionnaire report, and the positioning strategy with its lanes (O-12).
 - Claude Jobs queue (D-49 to D-52): one Claude Job runs at a time, in creation order, and all of its prompts finish before the next one starts. The queue is stored in SQLite and survives a restart (O-10). A plan limit pauses the queue and shows a Resume button (O-09). The queue sits between the app and the runner. `ClaudeCodeRunner` does not know about it.
 - O-08, O-09 and O-10 are answered (D-62, D-63, D-64). The queue pauses on a plan limit and resumes on a Resume click (D-63).
 - Create `Agent/specs/profile-steps.md` (inputs, outputs, validation) and `Agent/rules/honesty.md` (default) before this phase's code.
 
-Step list (approved in chat 2026-10-06; starts when you say go)
+Step list (approved in chat 2026-10-06; starts when you say go. Steps 7 to 9 and the done-when list revised 2026-10-07 per D-85/D-86: the Fact Sheet is dropped, and the three remaining outputs are Markdown documents, not a validated JSON schema.)
 
 1. Cut `phase-2-profile` from `main` (D-61). Write `Agent/specs/profile-steps.md` (inputs, outputs, validation for the four prompts, including `FULL_CV_HISTORY`) and `Agent/rules/honesty.md` (generic default). Docs only.
-2. Migration 3: `claude_jobs` (kind, optional `job_application_id`, status), `claude_job_prompts` (ordered), `profile_files` (kind, app-data path, SHA-256, upload date, extracted text), `profile_outputs` (versioned `FULL_CV_HISTORY`, Fact Sheet, questionnaire analysis, strategy), `facts` (text, source file, location, date, status unverified, verified or rejected). Tests: applies on a copy of the dev database, and an empty database.
+2. Migration 3: `claude_jobs` (kind, optional `job_application_id`, status), `claude_job_prompts` (ordered), `profile_files` (kind, app-data path, SHA-256, upload date, extracted text), `profile_outputs` (versioned `FULL_CV_HISTORY`, Fact Sheet, questionnaire analysis, strategy), `facts` (text, source file, location, date, status unverified, verified or rejected). Tests: applies on a copy of the dev database, and an empty database. (2026-10-07: migration 10 drops the Fact Sheet's part of this schema; see step 7.)
 3. Runner: a `RateLimitError` type in the `Runner` interface. `FakeRunner` can simulate it. `ClaudeCodeRunner` maps the CLI's `rate_limit` events to it (runner-notes). Check whether the CLI reports a reset time: record the result in `planning/runner-notes.md`. The only outcome the app relies on is Resume (D-63).
 4. Claude Jobs queue as an app module between the API and the `Runner` (D-51). One job at a time, in creation order, all prompts before the next. Stored in SQLite (D-62). On startup, a job left `processing` returns to `queued`, and its interrupted prompt runs again from the start. Pause on `RateLimitError`. Resume and Cancel endpoints. Cancel sends SIGTERM and marks the job cancelled (runner-notes). Tests with `FakeRunner`: pause at a simulated limit, resume, restart survival, cancel.
 5. Upload endpoints and screen for master CVs (EN and FR), older CVs, older cover letters, and the questionnaire. Files are copied into `%LOCALAPPDATA%\LocalJobTracker\`, with a SHA-256 hash. Upload of your own writing rules, also in app data. Test: the source file is unchanged after upload.
 6. Text extraction by code: `pypdf` for PDF, `python-docx` for DOCX, plain text for `.txt`. The result is stored with the file, and any file with no text is reported. Synthetic fixtures under `tests/fixtures/synthetic/`.
-7. The four Claude Jobs, one per output, in the D-64 order: `FULL_CV_HISTORY`, Fact Sheet, questionnaire analysis, strategy. Each makes only what is missing, and converts the user's own version where one is uploaded (D-68, D-69). Each is a headless prompt with a structured output (`--json-schema`), checked against `Agent/specs/profile-steps.md`. Code checks that every fact has a source and a date, and that each source file exists. Conflicts between sources are recorded with both sides.
-8. Fact Sheet review screen: edit, verify or reject each fact, and see its conflicts. One function returns only verified facts; later steps may use only that function.
-9. Profile page (D-58): old CVs, old cover letters, master CVs, questionnaire, questionnaire report, `FULL_CV_HISTORY`, and the strategy with editable lanes (O-12).
+7. (Revised 2026-10-07, D-85/D-86.) Three Claude Jobs, one per document, in order: the career history, the questionnaire analysis, the strategy. Each makes only what is missing, and uses the user's own upload as-is where one exists, with no reformatting call (D-69, D-86). Each is a headless prompt with no schema; the answer is Markdown, checked only for being non-empty against `Agent/specs/profile-steps.md`. Migration 10 drops the Fact Sheet's schema: the `facts` table, the `fact_sheet` and `own_fact_sheet` kinds.
+8. (Revised 2026-10-07, D-85/D-86. Replaces the Fact Sheet review screen.) The career history, questionnaire analysis and strategy are each read and edited as a document on the Profile page, the way `full_cv_history` and `strategy` already could. No per-claim verify or reject step.
+9. Profile page (D-58): old CVs, old cover letters, master CVs, questionnaire, questionnaire report, career history, and the strategy, each editable as a document (O-12).
 10. Claude Jobs queue screen: idle, queued, processing, paused, cancelled and done. Resume and Cancel buttons. The header counter, and the table badge later, read "Claude: queued" (D-59).
 11. Checks: `python scripts/check.py` output; personal-data scan of the repo; screenshots of the pause and resume (fake runner) and of a queue that survives a restart; a note in `planning/runner-notes.md` for the reset-time result.
-12. The real-file run: you upload your files, the four Claude Jobs run, and you check the output. Quality is your call.
+12. The real-file run: you upload your files, the three Claude Jobs run, and you check the output. Quality is your call.
 
 Done when
 - [ ] The analysis runs on your real files, and you check its output.
-- [x] Every fact has a source and a date (automated check). (2026-10-06: `check_facts` in `profile_pipeline.py`, run after a full analysis in `test_a_full_run_stores_the_four_outputs_and_their_facts`, returns no problems. The answer checks reject a missing source or date, and the database rejects an empty date or location.)
-- [ ] You verify or correct the Fact Sheet in the UI.
+- [ ] Each document is reviewed by reading it, edited if needed, on the Profile page.
 - [x] A queued Claude Job pauses at a simulated plan limit (fake runner) and resumes on click. (2026-10-06: `test_a_plan_limit_pauses_the_job_and_resume_runs_the_prompt_again`. In the browser, Resume on a paused demo job moved it to done, with both prompts done. Screen read through the page text.)
 - [x] Queued Claude Jobs survive an app restart. (2026-10-06: tests in `api/tests/test_claude_job_queue.py` restart the app with a job paused, a job left processing, and a prompt half done. Each comes back as the decisions say (D-62, D-63).)
 - [ ] Personal-data scan of the repo is clean.

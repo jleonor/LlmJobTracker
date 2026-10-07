@@ -51,9 +51,16 @@ _V5_FILE_KINDS = (
     "own_fact_sheet",
 )
 # The cover letter template is the user's own template for letters (Phase 5 uses it, D-71).
-PROFILE_FILE_KINDS = (*_V5_FILE_KINDS, "cover_letter_template")
+# Kinds as migration 9 defined them (migration 6 added the cover letter template, unchanged since).
+_V9_FILE_KINDS = (*_V5_FILE_KINDS, "cover_letter_template")
 EXTRACTION_STATUSES = ("ok", "no_text", "unsupported", "failed")
-PROFILE_OUTPUT_KINDS = ("full_cv_history", "fact_sheet", "questionnaire_analysis", "strategy")
+# Kinds as migration 9 defined them. The Fact Sheet is dropped as its own output (D-86).
+_V9_OUTPUT_KINDS = ("full_cv_history", "fact_sheet", "questionnaire_analysis", "strategy")
+# There is no own_fact_sheet upload kind: the career history is the one evidentiary document, and
+# there is no schema for the user's own version of an output to be converted into (D-86). Migration
+# 10 drops own_fact_sheet and the Fact Sheet output kind.
+PROFILE_FILE_KINDS = tuple(kind for kind in _V9_FILE_KINDS if kind != "own_fact_sheet")
+PROFILE_OUTPUT_KINDS = tuple(kind for kind in _V9_OUTPUT_KINDS if kind != "fact_sheet")
 FACT_STATUSES = ("unverified", "verified", "rejected")
 
 
@@ -189,6 +196,21 @@ CREATE TABLE facts (
     status TEXT NOT NULL DEFAULT 'unverified' CHECK (status IN ({_in_list(FACT_STATUSES)})),
     updated_at TEXT NOT NULL DEFAULT ({_NOW}),
     UNIQUE (profile_output_id, fact_key)
+)
+"""
+
+
+def _profile_outputs_table(table: str, kinds: tuple[str, ...], column: str) -> str:
+    return f"""
+CREATE TABLE {table} (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ({_in_list(kinds)})),
+    version INTEGER NOT NULL CHECK (version >= 1),
+    claude_job_id INTEGER REFERENCES claude_jobs(id) ON DELETE SET NULL,
+    {column} TEXT NOT NULL,
+    input_sha256s TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT ({_NOW}),
+    UNIQUE (kind, version)
 )
 """
 
@@ -400,6 +422,70 @@ MIGRATIONS: tuple[Migration, ...] = (
         name="record when a paused job resumes by itself",
         up=("ALTER TABLE claude_jobs ADD COLUMN resume_at TEXT",),
         down=("ALTER TABLE claude_jobs DROP COLUMN resume_at",),
+    ),
+    Migration(
+        version=9,
+        name="mark a profile file as generated, not uploaded",
+        up=("ALTER TABLE profile_files ADD COLUMN generated INTEGER NOT NULL DEFAULT 0",),
+        down=("ALTER TABLE profile_files DROP COLUMN generated",),
+    ),
+    Migration(
+        version=10,
+        name="drop the Fact Sheet: three documents, not four (D-85, D-86)",
+        rebuild=True,
+        up=(
+            "DROP TABLE facts",
+            "DELETE FROM profile_files WHERE kind = 'own_fact_sheet'",
+            _profile_files_table("profile_files_new", PROFILE_FILE_KINDS),
+            # The table builder predates migration 9's column; add it here too (as 9 itself did).
+            "ALTER TABLE profile_files_new ADD COLUMN generated INTEGER NOT NULL DEFAULT 0",
+            """
+            INSERT INTO profile_files_new
+                (id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                 extraction_status, extraction_message, extracted_text, generated)
+            SELECT id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                   extraction_status, extraction_message, extracted_text, generated
+            FROM profile_files
+            """,
+            "DROP TABLE profile_files",
+            "ALTER TABLE profile_files_new RENAME TO profile_files",
+            "DELETE FROM profile_outputs WHERE kind = 'fact_sheet'",
+            _profile_outputs_table("profile_outputs_new", PROFILE_OUTPUT_KINDS, "document"),
+            """
+            INSERT INTO profile_outputs_new
+                (id, kind, version, claude_job_id, document, input_sha256s, created_at)
+            SELECT id, kind, version, claude_job_id, body_json, input_sha256s, created_at
+            FROM profile_outputs
+            """,
+            "DROP TABLE profile_outputs",
+            "ALTER TABLE profile_outputs_new RENAME TO profile_outputs",
+        ),
+        down=(
+            # The Fact Sheet's own rows and every fact cannot be recovered (same as migrations 4
+            # and 5's irreversible splits): they were deleted going up, not merely hidden.
+            _profile_outputs_table("profile_outputs_old", _V9_OUTPUT_KINDS, "body_json"),
+            """
+            INSERT INTO profile_outputs_old
+                (id, kind, version, claude_job_id, body_json, input_sha256s, created_at)
+            SELECT id, kind, version, claude_job_id, document, input_sha256s, created_at
+            FROM profile_outputs
+            """,
+            "DROP TABLE profile_outputs",
+            "ALTER TABLE profile_outputs_old RENAME TO profile_outputs",
+            _profile_files_table("profile_files_old", _V9_FILE_KINDS),
+            "ALTER TABLE profile_files_old ADD COLUMN generated INTEGER NOT NULL DEFAULT 0",
+            """
+            INSERT INTO profile_files_old
+                (id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                 extraction_status, extraction_message, extracted_text, generated)
+            SELECT id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                   extraction_status, extraction_message, extracted_text, generated
+            FROM profile_files
+            """,
+            "DROP TABLE profile_files",
+            "ALTER TABLE profile_files_old RENAME TO profile_files",
+            _V3_FACTS,
+        ),
     ),
 )
 

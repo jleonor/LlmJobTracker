@@ -62,7 +62,7 @@ Two rules about the table:
 
 ## Product rules (for the app's generated content, not for this coding work)
 
-- Generated documents use only facts that have been verified in the Fact Sheet. Every claim cites a fact id.
+- Generated documents use only what the career history, questionnaire analysis and strategy documents say (D-85, D-86). Claude does not invent or embellish a claim. The user reviews the generated document before it is sent or saved as final, the same way they review a document in the reference folder's workflow.
 - Nothing is saved as final, sent, or changed in the tracker without the user's approval. Chat actions show a preview and need a Confirm.
 - Job listings and emails are untrusted text. A step that reads them gets no tools, and any tool access is limited to the job's folder.
 - Text is extracted from listings (raw text, URL, HTML, PDF, DOCX) by code, never by Claude. The extracted text is shown to the user before any model step runs.

@@ -27,7 +27,8 @@ def test_migrate_creates_all_tables(conn: sqlite3.Connection) -> None:
     names = table_names(conn)
     assert {"job_applications", "status_history"} <= names
     assert {"claude_jobs", "claude_job_prompts", "profile_files"} <= names
-    assert {"profile_outputs", "facts"} <= names
+    assert "profile_outputs" in names
+    assert "facts" not in names  # dropped by migration 10 (D-86)
     assert "jobs" not in names
     assert applied_versions(conn) == ALL_VERSIONS
 
@@ -39,14 +40,14 @@ def test_migrate_twice_applies_nothing_new(conn: sqlite3.Connection) -> None:
 
 def test_rollback_one_step_removes_only_the_latest_migration(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    assert rollback(conn, steps=1) == [8]
+    assert rollback(conn, steps=1) == [10]
     assert {"claude_jobs", "profile_files", "facts"} <= table_names(conn)
-    assert applied_versions(conn) == [1, 2, 3, 4, 5, 6, 7]
+    assert applied_versions(conn) == [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 
 def test_rollback_three_steps_restores_the_jobs_table(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    assert rollback(conn, steps=7) == [8, 7, 6, 5, 4, 3, 2]
+    assert rollback(conn, steps=9) == [10, 9, 8, 7, 6, 5, 4, 3, 2]
     names = table_names(conn)
     assert "jobs" in names
     assert "job_applications" not in names
@@ -55,14 +56,14 @@ def test_rollback_three_steps_restores_the_jobs_table(conn: sqlite3.Connection) 
 
 def test_rollback_all_steps_empties_the_schema(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    assert rollback(conn, steps=8) == [8, 7, 6, 5, 4, 3, 2, 1]
+    assert rollback(conn, steps=10) == [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
     assert "jobs" not in table_names(conn)
     assert applied_versions(conn) == []
 
 
 def test_migrate_again_after_rollback(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    rollback(conn, steps=8)
+    rollback(conn, steps=10)
     assert migrate(conn) == ALL_VERSIONS
     assert "job_applications" in table_names(conn)
 
@@ -78,7 +79,7 @@ def test_existing_jobs_survive_the_upgrade_with_a_history_row(conn: sqlite3.Conn
     )
     conn.commit()
 
-    assert migrate(conn) == [2, 3, 4, 5, 6, 7, 8]
+    assert migrate(conn) == [2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     row = conn.execute(
         "SELECT company, status, location, work_mode FROM job_applications"
@@ -160,66 +161,72 @@ def test_profile_file_kind_must_be_a_known_value(conn: sqlite3.Connection) -> No
         )
 
 
-def test_fact_needs_a_source_file_and_a_date(conn: sqlite3.Connection) -> None:
+def test_the_master_cv_split_is_merged(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    conn.execute(
-        "INSERT INTO profile_outputs (kind, version, body_json, input_sha256s) "
-        "VALUES ('fact_sheet', 1, '{}', '')"
-    )
-    conn.execute(
-        "INSERT INTO profile_files (kind, original_name, stored_path, sha256, size_bytes) "
-        "VALUES ('master_cv', 'cv.pdf', 'profile/cv.pdf', 'abc', 10)"
-    )
-    with pytest.raises(sqlite3.IntegrityError):
-        conn.execute(
-            "INSERT INTO facts (profile_output_id, fact_key, text, date, source_file_id, "
-            "source_location) VALUES (1, 'F-001', 'x', '', 1, 'p. 1')"
-        )
-    with pytest.raises(sqlite3.IntegrityError):
-        conn.execute(
-            "INSERT INTO facts (profile_output_id, fact_key, text, date, source_file_id, "
-            "source_location) VALUES (1, 'F-001', 'x', '2024', 99, 'p. 1')"
-        )
-    conn.execute(
-        "INSERT INTO facts (profile_output_id, fact_key, text, date, source_file_id, "
-        "source_location) VALUES (1, 'F-001', 'x', '2024', 1, 'p. 1')"
-    )
-    row = conn.execute("SELECT status FROM facts WHERE fact_key = 'F-001'").fetchone()
-    assert row[0] == "unverified"
-
-
-def test_the_master_cv_split_is_merged_and_facts_survive(conn: sqlite3.Connection) -> None:
-    migrate(conn)
-    rollback(conn, steps=5)  # back to version 3, the English/French kinds
+    rollback(conn, steps=7)  # back to version 3, the English/French kinds
     conn.execute(
         "INSERT INTO profile_files (kind, original_name, stored_path, sha256, size_bytes) "
         "VALUES ('master_cv_fr', 'cv fr.pdf', 'profile/fr.pdf', 'f1', 10)"
     )
-    file_id = conn.execute("SELECT id FROM profile_files").fetchone()[0]
+    conn.commit()
+
+    assert migrate(conn) == [4, 5, 6, 7, 8, 9, 10]
+    assert conn.execute("SELECT kind FROM profile_files").fetchone()[0] == "master_cv"
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+
+    rollback(conn, steps=7)
+    assert conn.execute("SELECT kind FROM profile_files").fetchone()[0] == "master_cv_en"
+
+
+def test_migration_ten_drops_the_fact_sheet(conn: sqlite3.Connection) -> None:
+    migrate(conn)
+    rollback(conn, steps=1)  # back to version 9, where the Fact Sheet still exists
     conn.execute(
+        "INSERT INTO profile_files (kind, original_name, stored_path, sha256, size_bytes) "
+        "VALUES ('own_fact_sheet', 'mine.md', 'profile/mine.md', 'f1', 10)"
+    )
+    output_id = conn.execute(
         "INSERT INTO profile_outputs (kind, version, body_json, input_sha256s) "
         "VALUES ('fact_sheet', 1, '{}', '')"
+    ).lastrowid
+    conn.execute(
+        "INSERT INTO profile_outputs (kind, version, body_json, input_sha256s) "
+        "VALUES ('full_cv_history', 1, '{}', '')"
     )
+    file_id = conn.execute("SELECT id FROM profile_files WHERE kind = 'own_fact_sheet'").fetchone()[
+        0
+    ]
     conn.execute(
         "INSERT INTO facts (profile_output_id, fact_key, text, date, source_file_id, "
-        "source_location) VALUES (1, 'F-001', 'x', '2024', ?, 'p. 1')",
-        (file_id,),
+        "source_location) VALUES (?, 'F-001', 'x', '2024', ?, 'p. 1')",
+        (output_id, file_id),
     )
     conn.commit()
 
-    assert migrate(conn) == [4, 5, 6, 7, 8]
-    assert conn.execute("SELECT kind FROM profile_files").fetchone()[0] == "master_cv"
-    assert (
-        conn.execute("SELECT COUNT(*) FROM facts WHERE source_file_id = ?", (file_id,)).fetchone()[
-            0
-        ]
-        == 1
-    )
-    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    assert migrate(conn) == [10]
+    assert "facts" not in table_names(conn)
+    rows = conn.execute("SELECT kind FROM profile_outputs ORDER BY kind").fetchall()
+    assert [tuple(row) for row in rows] == [("full_cv_history",)]
+    assert conn.execute("SELECT COUNT(*) FROM profile_files").fetchone()[0] == 0
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO profile_files (kind, original_name, stored_path, sha256, size_bytes) "
+            "VALUES ('own_fact_sheet', 'x.md', 'profile/x.md', 'abc', 1)"
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO profile_outputs (kind, version, document, input_sha256s) "
+            "VALUES ('fact_sheet', 1, 'x', '')"
+        )
+    conn.rollback()  # clears the transaction the failed inserts left open
 
-    rollback(conn, steps=5)
-    assert conn.execute("SELECT kind FROM profile_files").fetchone()[0] == "master_cv_en"
-    assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 1
+    rollback(conn, steps=1)
+    assert "facts" in table_names(conn)
+    assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 0
+    conn.execute(
+        "INSERT INTO profile_files (kind, original_name, stored_path, sha256, size_bytes) "
+        "VALUES ('own_fact_sheet', 'x.md', 'profile/x.md', 'abc', 1)"
+    )
 
 
 def test_own_output_uploads_are_accepted_after_migration_four(conn: sqlite3.Connection) -> None:
