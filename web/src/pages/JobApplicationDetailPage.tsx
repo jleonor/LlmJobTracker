@@ -104,7 +104,7 @@ function JobDetails({ application }: { application: JobApplicationDetail }) {
   return (
     <Section title="Job details">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Field label="Portal">
+        <Field label="URL">
           {application.portal_name ? (
             application.portal_url ? (
               <a
@@ -242,13 +242,7 @@ function ApplicationHistory({ application }: { application: JobApplicationDetail
             {application.notes ?? <span className="text-muted-foreground">No notes.</span>}
           </Field>
           <Field label="Next action">{application.next_action ?? EMPTY}</Field>
-          <Field label="Due date">
-            {application.due_date ? (
-              <span className="font-mono text-xs">{application.due_date}</span>
-            ) : (
-              EMPTY
-            )}
-          </Field>
+          <Field label="Due date">{application.due_date ?? EMPTY}</Field>
         </div>
       </div>
     </Section>
