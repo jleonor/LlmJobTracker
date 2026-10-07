@@ -98,4 +98,9 @@
   html {
     @apply font-sans;
     }
+  /* Every muted-foreground text (#9e8e7c), including the sidebar's inactive nav buttons,
+     reads in the secondary font. */
+  .text-muted-foreground {
+    @apply font-mono;
+    }
 }
