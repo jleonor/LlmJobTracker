@@ -10,7 +10,7 @@ import type { JobApplicationDetail, StatusHistoryEntry } from '@/lib/types'
 
 // The statuses that count as forward progress (D-44). Rejected and Withdrawn are end states,
 // reached from wherever the application was, not a further step in this sequence.
-const MAIN_STATUSES = ['Not Started', 'Applied', 'Screening', 'Interview', 'Offer'] as const
+const MAIN_STATUSES = ['Identified', 'Applied', 'Screening', 'Interview', 'Offer'] as const
 const END_STATUSES = ['Rejected', 'Withdrawn'] as const
 
 // The Job Application page's layout (D-56, D-98, planning/product-model.md), Phase 3's slice:

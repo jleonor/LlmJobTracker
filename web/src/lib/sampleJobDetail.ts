@@ -43,7 +43,7 @@ const SAMPLES_BY_COMPANY: Record<string, SampleDetail> = {
     next_action: 'Follow up on application',
     due_date: '2026-10-12',
     status_history: [
-      { status: 'Not Started', changed_at: '2026-09-28T09:00:00Z' },
+      { status: 'Identified', changed_at: '2026-09-28T09:00:00Z' },
       { status: 'Applied', changed_at: '2026-10-01T10:30:00Z' },
     ],
     files: [
@@ -73,7 +73,7 @@ const SAMPLES_BY_COMPANY: Record<string, SampleDetail> = {
     notes: null,
     next_action: 'Read listing and draft positioning',
     due_date: '2026-10-09',
-    status_history: [{ status: 'Not Started', changed_at: '2026-10-02T08:15:00Z' }],
+    status_history: [{ status: 'Identified', changed_at: '2026-10-02T08:15:00Z' }],
     files: [
       { name: 'listing.txt', kind: 'listing' },
       { name: 'Positioning breakdown.md', kind: 'positioning_breakdown' },
@@ -106,7 +106,7 @@ const SAMPLES_BY_COMPANY: Record<string, SampleDetail> = {
     next_action: 'Prepare for panel interview',
     due_date: '2026-10-07',
     status_history: [
-      { status: 'Not Started', changed_at: '2026-09-20T09:00:00Z' },
+      { status: 'Identified', changed_at: '2026-09-20T09:00:00Z' },
       { status: 'Applied', changed_at: '2026-09-22T14:00:00Z' },
       { status: 'Screening', changed_at: '2026-09-29T11:00:00Z' },
       { status: 'Interview', changed_at: '2026-10-03T16:00:00Z' },
@@ -130,7 +130,7 @@ const SAMPLES_BY_COMPANY: Record<string, SampleDetail> = {
     notes: null,
     next_action: null,
     due_date: null,
-    status_history: [{ status: 'Not Started', changed_at: '2026-10-04T07:45:00Z' }],
+    status_history: [{ status: 'Identified', changed_at: '2026-10-04T07:45:00Z' }],
     files: [],
   },
   'Adatum Retail': {
@@ -157,7 +157,7 @@ const SAMPLES_BY_COMPANY: Record<string, SampleDetail> = {
     next_action: null,
     due_date: null,
     status_history: [
-      { status: 'Not Started', changed_at: '2026-09-10T09:00:00Z' },
+      { status: 'Identified', changed_at: '2026-09-10T09:00:00Z' },
       { status: 'Applied', changed_at: '2026-09-12T09:00:00Z' },
       { status: 'Rejected', changed_at: '2026-09-25T13:00:00Z' },
     ],
@@ -186,7 +186,7 @@ const SAMPLES_BY_COMPANY: Record<string, SampleDetail> = {
     next_action: 'Check for reply',
     due_date: '2026-10-15',
     status_history: [
-      { status: 'Not Started', changed_at: '2026-09-30T09:00:00Z' },
+      { status: 'Identified', changed_at: '2026-09-30T09:00:00Z' },
       { status: 'Applied', changed_at: '2026-10-01T09:00:00Z' },
     ],
     files: [

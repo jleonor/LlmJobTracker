@@ -118,9 +118,9 @@ Out of scope: positioning for a specific job.
 **Goal:** your tracker data lives in the database, with a table, editing and file preview.
 
 Scope
-- Import from `Job Application Tracker.xlsx`. A dry-run report comes first. The import is idempotent and read-only on the source. The 8 "Identified" rows become "Not Started" (see DECISIONS.md), and the dry run lists them.
+- Import from `Job Application Tracker.xlsx`. A dry-run report comes first. The import is idempotent and read-only on the source. The 8 "Identified" rows need no renaming now that the app's own first status reads "Identified" too (D-101, narrows D-05); the dry run still lists them.
 - Table: the D-46 columns, sort, filter by status and search. The due or overdue section is removed (D-46). A queue badge (idle, queued, processing) comes from the Claude Jobs queue, and a queue counter sits beside Add Job.
-- Statuses per D-44: Not Started, Applied, Screening, Interview, Offer, with Rejected and Withdrawn as end states. The import maps the spreadsheet's values to these (D-05, D-44).
+- Statuses per D-44/D-101: Identified, Applied, Screening, Interview, Offer, with Rejected and Withdrawn as end states. The import maps the spreadsheet's values to these (D-05, D-44, D-101).
 - Status history (D-45): each change is stored with its date and time. "Last updated" is the newest row's date. Only forward moves count as progress.
 - Job Application fields (D-54, D-55): portal (name and URL), location, work mode, contract type, description, requirements, lane, notes, next action, due date, file links. Location is free text, and Claude's suggested city match is confirmed by the user (D-53).
 - Inline editing on the table: status, lane, location, and the file links. Next action, due date and notes are edited on the job page (D-56).
@@ -135,7 +135,7 @@ Step list (drafted 2026-10-07, awaiting approval; reordered per D-97 so the job 
 3. Build the Job Application page against that seed data: the D-56/D-98 layout — flags, header (with a per-application queue badge beside the status tag), job details (portal, description, requirements, location, work mode, contract type), positioning analysis (fit bullets, gap bullets, match score with a visual, all from seed data), application history (status timeline, notes, next action, due date), files. The tailored CV, cover letter and the positioning breakdown document stay "not done yet" (D-48); their content is Phase 5. Check the result against the `planning/stitch` job-detail mockups before calling it done.
 4. Side experiment, not wired into the app: a throwaway script that reads the real `Job Application Tracker.xlsx` (read-only) and the reference folder, and asks the Claude CLI to classify the fields the spreadsheet doesn't have for a sample of real rows — lane, work mode, contract type. Nothing is committed; `description` and `requirements` are left out of the experiment since older rows have no real source for them and backfilling would mean inventing content (D-85). Note which fields came back reliably in `planning/import-backfill-notes.md`.
 5. Migration: add `description`, `requirements`, `notes` to `job_applications`; add a file-links table per `files.md`. Tests: applies on a copy of the dev database and an empty database, and rolls back.
-6. Dry-run import: read the spreadsheet read-only, map columns (including the D-05 status fold), apply whatever step 4 found reliable, and report row counts and the changed rows. No writes.
+6. Dry-run import: read the spreadsheet read-only, map columns (including the D-05/D-101 status mapping), apply whatever step 4 found reliable, and report row counts and the changed rows. No writes.
 7. Apply import: idempotent insert of `job_applications` and `status_history` rows; a second run creates no duplicates.
 8. Table UI: the D-46 columns, sort, status filter, search, the queue badge (idle, queued, processing), and a queue counter beside Add Job.
 9. Inline table editing: status, lane, location, file links.
@@ -174,7 +174,7 @@ Scope
 - Claude receives the reviewed text and returns the listing file plus structured fields: company, role, lane suggestion, location (matched to an existing city value where one fits, for the user to confirm), work mode (Onsite, Hybrid, Remote, Unknown), contract type (Full-Time, Part-Time, Contract/Short Term, Other, Unknown), portal (name and URL, or "Email"), description and requirements. This step gets no tools.
 - Duplicate check by URL and by content hash.
 - The listing is saved to the managed folder (`files/<company>/<role>/listing.txt`), and a tracker row is created.
-- A new Job Application starts as Not Started, and it queues one positioning Claude Job (D-49). The positioning output itself is built in Phase 5.
+- A new Job Application starts as Identified, and it queues one positioning Claude Job (D-49). The positioning output itself is built in Phase 5.
 - Create `Agent/specs/intake-steps.md` (extraction rules per input type, and the Claude step contract).
 - Candidate libraries, confirmed in this phase: `pypdf` (or PyMuPDF) for PDF, an HTML-to-text extractor such as `trafilatura`, and `python-docx` for DOCX.
 
@@ -185,7 +185,7 @@ Done when
 - [ ] The extracted text can be edited before Claude runs.
 - [ ] A hostile fixture ("ignore previous instructions...") changes nothing beyond the extracted fields.
 - [ ] A repeat of an added listing is detected.
-- [ ] Adding a listing creates its tracker row with status Not Started and queues one positioning Claude Job, which the queue badge shows.
+- [ ] Adding a listing creates its tracker row with status Identified and queues one positioning Claude Job, which the queue badge shows.
 - [ ] Synthetic fixtures for each input type exist under `tests/fixtures/synthetic/`.
 
 ---

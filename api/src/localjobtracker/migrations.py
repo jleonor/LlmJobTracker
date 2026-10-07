@@ -8,7 +8,20 @@ import sqlite3
 from dataclasses import dataclass
 
 # Allowed values, from D-44 (statuses), D-54 (work mode and contract type).
-STATUSES = ("Not Started", "Applied", "Screening", "Interview", "Offer", "Rejected", "Withdrawn")
+# "Not Started" as migrations 1 and 2 named it (D-05, D-44). Migration 13 renames it to
+# "Identified" (D-101); this frozen tuple keeps migration 2's own SQL exactly as it was applied.
+_V2_STATUSES = (
+    "Not Started",
+    "Applied",
+    "Screening",
+    "Interview",
+    "Offer",
+    "Rejected",
+    "Withdrawn",
+)
+# Current values (D-101 renames "Not Started" to "Identified", matching the reference
+# spreadsheet's own word for a listing that hasn't been applied to yet).
+STATUSES = ("Identified", "Applied", "Screening", "Interview", "Offer", "Rejected", "Withdrawn")
 WORK_MODES = ("Onsite", "Hybrid", "Remote", "Unknown")
 CONTRACT_TYPES = ("Full-Time", "Part-Time", "Contract/Short Term", "Other", "Unknown")
 
@@ -104,7 +117,7 @@ CREATE TABLE job_applications (
         CHECK (contract_type IN ({_in_list(CONTRACT_TYPES)})),
     portal_name TEXT,
     portal_url TEXT,
-    status TEXT NOT NULL DEFAULT 'Not Started' CHECK (status IN ({_in_list(STATUSES)})),
+    status TEXT NOT NULL DEFAULT 'Not Started' CHECK (status IN ({_in_list(_V2_STATUSES)})),
     match_score REAL CHECK (match_score IS NULL OR (match_score >= 0 AND match_score <= 100)),
     next_action TEXT,
     due_date TEXT,
@@ -116,7 +129,7 @@ _V2_STATUS_HISTORY = f"""
 CREATE TABLE status_history (
     id INTEGER PRIMARY KEY,
     job_application_id INTEGER NOT NULL REFERENCES job_applications(id) ON DELETE CASCADE,
-    status TEXT NOT NULL CHECK (status IN ({_in_list(STATUSES)})),
+    status TEXT NOT NULL CHECK (status IN ({_in_list(_V2_STATUSES)})),
     changed_at TEXT NOT NULL
 )
 """
@@ -230,6 +243,68 @@ CREATE TABLE {table} (
     ),
     extraction_message TEXT,
     extracted_text TEXT
+)
+"""
+
+
+# Migration 13 (D-101): job_applications and status_history both have a status CHECK, so renaming
+# the value needs a rebuild of both, same as the profile_files/profile_outputs kind renames above.
+_V13_JOB_APPLICATIONS_NEW = f"""
+CREATE TABLE job_applications_new (
+    id INTEGER PRIMARY KEY,
+    company TEXT NOT NULL,
+    role_title TEXT NOT NULL,
+    lane TEXT,
+    location TEXT,
+    work_mode TEXT NOT NULL DEFAULT 'Unknown' CHECK (work_mode IN ({_in_list(WORK_MODES)})),
+    contract_type TEXT NOT NULL DEFAULT 'Unknown'
+        CHECK (contract_type IN ({_in_list(CONTRACT_TYPES)})),
+    portal_name TEXT,
+    portal_url TEXT,
+    status TEXT NOT NULL DEFAULT 'Identified' CHECK (status IN ({_in_list(STATUSES)})),
+    match_score REAL CHECK (match_score IS NULL OR (match_score >= 0 AND match_score <= 100)),
+    next_action TEXT,
+    due_date TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+)
+"""
+
+_V13_STATUS_HISTORY_NEW = f"""
+CREATE TABLE status_history_new (
+    id INTEGER PRIMARY KEY,
+    job_application_id INTEGER NOT NULL REFERENCES job_applications(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ({_in_list(STATUSES)})),
+    changed_at TEXT NOT NULL
+)
+"""
+
+# The pre-D-101 shape, for migration 13's down step.
+_V13_JOB_APPLICATIONS_OLD = f"""
+CREATE TABLE job_applications_old (
+    id INTEGER PRIMARY KEY,
+    company TEXT NOT NULL,
+    role_title TEXT NOT NULL,
+    lane TEXT,
+    location TEXT,
+    work_mode TEXT NOT NULL DEFAULT 'Unknown' CHECK (work_mode IN ({_in_list(WORK_MODES)})),
+    contract_type TEXT NOT NULL DEFAULT 'Unknown'
+        CHECK (contract_type IN ({_in_list(CONTRACT_TYPES)})),
+    portal_name TEXT,
+    portal_url TEXT,
+    status TEXT NOT NULL DEFAULT 'Not Started' CHECK (status IN ({_in_list(_V2_STATUSES)})),
+    match_score REAL CHECK (match_score IS NULL OR (match_score >= 0 AND match_score <= 100)),
+    next_action TEXT,
+    due_date TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+)
+"""
+
+_V13_STATUS_HISTORY_OLD = f"""
+CREATE TABLE status_history_old (
+    id INTEGER PRIMARY KEY,
+    job_application_id INTEGER NOT NULL REFERENCES job_applications(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ({_in_list(_V2_STATUSES)})),
+    changed_at TEXT NOT NULL
 )
 """
 
@@ -507,6 +582,63 @@ MIGRATIONS: tuple[Migration, ...] = (
             "INSERT INTO settings (id, user_name) VALUES (1, 'YourName')",
         ),
         down=("DROP TABLE settings",),
+    ),
+    Migration(
+        version=13,
+        name="rename the Not Started status to Identified (D-101)",
+        rebuild=True,
+        up=(
+            _V13_JOB_APPLICATIONS_NEW,
+            """
+            INSERT INTO job_applications_new
+                (id, company, role_title, lane, location, work_mode, contract_type,
+                 portal_name, portal_url, status, match_score, next_action, due_date, created_at)
+            SELECT id, company, role_title, lane, location, work_mode, contract_type,
+                   portal_name, portal_url,
+                   CASE WHEN status = 'Not Started' THEN 'Identified' ELSE status END,
+                   match_score, next_action, due_date, created_at
+            FROM job_applications
+            """,
+            "DROP TABLE job_applications",
+            "ALTER TABLE job_applications_new RENAME TO job_applications",
+            _V13_STATUS_HISTORY_NEW,
+            """
+            INSERT INTO status_history_new (id, job_application_id, status, changed_at)
+            SELECT id, job_application_id,
+                   CASE WHEN status = 'Not Started' THEN 'Identified' ELSE status END,
+                   changed_at
+            FROM status_history
+            """,
+            "DROP TABLE status_history",
+            "ALTER TABLE status_history_new RENAME TO status_history",
+            "CREATE INDEX status_history_by_job ON status_history (job_application_id, changed_at)",
+        ),
+        down=(
+            _V13_JOB_APPLICATIONS_OLD,
+            """
+            INSERT INTO job_applications_old
+                (id, company, role_title, lane, location, work_mode, contract_type,
+                 portal_name, portal_url, status, match_score, next_action, due_date, created_at)
+            SELECT id, company, role_title, lane, location, work_mode, contract_type,
+                   portal_name, portal_url,
+                   CASE WHEN status = 'Identified' THEN 'Not Started' ELSE status END,
+                   match_score, next_action, due_date, created_at
+            FROM job_applications
+            """,
+            "DROP TABLE job_applications",
+            "ALTER TABLE job_applications_old RENAME TO job_applications",
+            _V13_STATUS_HISTORY_OLD,
+            """
+            INSERT INTO status_history_old (id, job_application_id, status, changed_at)
+            SELECT id, job_application_id,
+                   CASE WHEN status = 'Identified' THEN 'Not Started' ELSE status END,
+                   changed_at
+            FROM status_history
+            """,
+            "DROP TABLE status_history",
+            "ALTER TABLE status_history_old RENAME TO status_history",
+            "CREATE INDEX status_history_by_job ON status_history (job_application_id, changed_at)",
+        ),
     ),
 )
 

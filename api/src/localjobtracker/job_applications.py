@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-DEFAULT_STATUS = "Not Started"
+DEFAULT_STATUS = "Identified"
 
 
 class JobApplication(BaseModel):
@@ -53,7 +53,7 @@ def insert_job_application(
     """Insert one application and its status history in one transaction.
 
     `history` is a list of (status, changed_at) pairs, oldest first. The current status is
-    the last one. With no history, the application starts as Not Started, dated now.
+    the last one. With no history, the application starts as Identified, dated now.
     """
     steps = history or [(DEFAULT_STATUS, _now())]
     current_status = steps[-1][0]

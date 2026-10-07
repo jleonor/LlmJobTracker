@@ -92,7 +92,7 @@ def test_seed_twice_adds_no_duplicates(
     assert "skipped" in capsys.readouterr().out
 
 
-def test_insert_without_history_starts_as_not_started(db_path: Path) -> None:
+def test_insert_without_history_starts_as_identified(db_path: Path) -> None:
     conn = connect(db_path)
     try:
         from localjobtracker.migrations import migrate
@@ -107,8 +107,8 @@ def test_insert_without_history_starts_as_not_started(db_path: Path) -> None:
         ).fetchall()
     finally:
         conn.close()
-    assert status[0] == "Not Started"
-    assert [h[0] for h in history] == ["Not Started"]
+    assert status[0] == "Identified"
+    assert [h[0] for h in history] == ["Identified"]
 
 
 def test_insert_rejects_an_unknown_status(db_path: Path) -> None:

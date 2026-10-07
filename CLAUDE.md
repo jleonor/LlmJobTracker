@@ -16,7 +16,7 @@ A local, single-user desktop app. It takes job listings and produces what an app
 - **Claude Jobs queue**: the list of Claude Jobs, with idle, queued and processing states.
 - **Lane**: a positioning group, defined by the positioning strategy.
 - **Fit %**: the match score, computed in code from weights and matches (D-47).
-- **Statuses**: Not Started, Applied, Screening, Interview, Offer, Rejected, Withdrawn (D-44).
+- **Statuses**: Identified, Applied, Screening, Interview, Offer, Rejected, Withdrawn (D-44, D-101).
 
 ## Stack (decided, see DECISIONS.md)
 
