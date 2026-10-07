@@ -16,6 +16,19 @@ const TONE: Record<string, string> = {
   cancelled: 'border-muted-foreground/30 text-muted-foreground line-through',
 }
 
+// Just the text colour from TONE, for the per-status counts beside a date (not a full badge).
+const STATUS_TEXT: Record<string, string> = {
+  queued: 'text-[#a6c8fd]',
+  processing: 'text-[#c9bcff]',
+  paused: 'text-[#ffca85]',
+  done: 'text-[#84e7b0]',
+  failed: 'text-[#ffb4ab]',
+  cancelled: 'text-muted-foreground line-through',
+}
+
+// Active statuses first (they need attention), then resolved ones.
+const STATUS_ORDER = ['processing', 'paused', 'queued', 'failed', 'done', 'cancelled']
+
 // Prompt kinds, in the words the user sees on the Profile page.
 const PROMPT_LABELS: Record<string, string> = {
   full_cv_history: 'Career history',
@@ -43,6 +56,18 @@ function groupByDate(jobs: ClaudeJob[]): DateGroup[] {
     }
   }
   return groups
+}
+
+// How many of a group's jobs are in each status, in STATUS_ORDER, leaving out statuses with none.
+function countByStatus(items: PositionedJob[]): [string, number][] {
+  const counts = new Map<string, number>()
+  for (const { job } of items) {
+    counts.set(job.status, (counts.get(job.status) ?? 0) + 1)
+  }
+  return STATUS_ORDER.filter((status) => counts.has(status)).map((status) => [
+    status,
+    counts.get(status) as number,
+  ])
 }
 
 // The Claude Jobs queue: one job runs at a time, in creation order (D-50, D-62, D-63).
@@ -101,8 +126,12 @@ function DateSection({
       >
         <Chevron className="size-4 text-muted-foreground" aria-hidden="true" />
         {group.date}
-        <span className="font-mono text-xs font-normal text-muted-foreground">
-          {group.items.length} {group.items.length === 1 ? 'job' : 'jobs'}
+        <span className="flex gap-2 font-mono text-xs font-normal">
+          {countByStatus(group.items).map(([status, count]) => (
+            <span key={status} className={STATUS_TEXT[status] ?? 'text-muted-foreground'}>
+              {count} {status}
+            </span>
+          ))}
         </span>
       </button>
       {open && (
