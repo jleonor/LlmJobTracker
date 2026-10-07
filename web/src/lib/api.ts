@@ -3,7 +3,6 @@ import type {
   JobApplication,
   ProfileFile,
   ProfileFileKind,
-  ProfileOutput,
   PromptExchange,
   RunResult,
 } from '@/lib/types'
@@ -75,19 +74,6 @@ export async function uploadProfileFile(kind: ProfileFileKind, file: File): Prom
     throw new ApiError(await errorMessage(response), response.status)
   }
   return (await response.json()) as ProfileFile
-}
-
-export function fetchProfileOutputs(): Promise<ProfileOutput[]> {
-  return request<ProfileOutput[]>('/api/profile/outputs')
-}
-
-// Saves an edited document as a new version. The only check is that it is not empty.
-export function saveProfileOutput(kind: string, text: string): Promise<ProfileOutput> {
-  return request<ProfileOutput>(`/api/profile/outputs/${kind}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
-  })
 }
 
 export function startProfileAnalysis(): Promise<ClaudeJob> {

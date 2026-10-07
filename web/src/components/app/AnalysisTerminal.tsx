@@ -80,6 +80,7 @@ export function analysisLines(job: ClaudeJob, now: number = Date.now()): Line[] 
 export function AnalysisTerminal() {
   const { jobs, error } = useClaudeJobs()
   const latest = [...jobs].reverse().find((job) => job.kind === 'profile_analysis')
+  const [showExchange, setShowExchange] = useState(false)
 
   return (
     <section aria-label="Analysis log" className="flex flex-col gap-2 rounded border border-border bg-zinc-950 p-3">
@@ -98,13 +99,23 @@ export function AnalysisTerminal() {
             </p>
           ))}
       </div>
-      {latest && <Exchanges jobId={latest.id} prompts={latest.prompts} />}
+      {latest && (
+        <div className="border-t border-zinc-800 pt-2">
+          <button
+            type="button"
+            onClick={() => setShowExchange((current) => !current)}
+            className="font-mono text-xs text-zinc-300 underline-offset-2 hover:underline"
+          >
+            {showExchange ? 'Hide' : 'Show'} the exchange with Claude
+          </button>
+          {showExchange && <Exchanges jobId={latest.id} prompts={latest.prompts} />}
+        </div>
+      )}
     </section>
   )
 }
 
-// What was sent to Claude and what came back, for each prompt that has finished (D-77). The
-// exchange of a failed prompt opens by itself, since that is the answer the check rejected.
+// What was sent to Claude and what came back, for each prompt that has finished (D-77).
 // Opening one reads it from the API. Nothing is sent to Claude by opening it.
 function Exchanges({ jobId, prompts }: { jobId: number; prompts: ClaudeJob['prompts'] }) {
   // -1 means the user closed it. null means "the failed one, if there is one".

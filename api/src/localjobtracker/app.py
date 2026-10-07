@@ -9,9 +9,8 @@ from typing import Annotated
 from urllib.parse import unquote
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
-from pydantic import BaseModel
 
-from localjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
+from localjobtracker.claude_job_queue import ClaudeJobQueue
 from localjobtracker.claude_jobs import (
     ClaudeJob,
     PromptExchange,
@@ -38,7 +37,6 @@ from localjobtracker.profile_pipeline import (
     ProfileOutput,
     list_latest_outputs,
     make_pipeline,
-    save_user_version,
     submit_profile_analysis,
 )
 from localjobtracker.runner import Runner, RunResult
@@ -48,10 +46,6 @@ from localjobtracker.storage import connect
 CHECK_PROMPT = "Reply with the single word OK."
 
 TOKEN_HEADER = "X-Launch-Token"
-
-
-class DocumentEdit(BaseModel):
-    text: str
 
 
 def create_app(
@@ -205,21 +199,6 @@ def create_app(
     )
     def profile_outputs(conn: Annotated[Connection, Depends(get_db)]) -> list[ProfileOutput]:
         return list_latest_outputs(conn)
-
-    @app.put(
-        "/profile/outputs/{kind}",
-        response_model=ProfileOutput,
-        dependencies=[Depends(require_token)],
-    )
-    def save_profile_output(
-        kind: str, edit: DocumentEdit, conn: Annotated[Connection, Depends(get_db)]
-    ) -> ProfileOutput:
-        try:
-            return save_user_version(conn, db_path.parent, kind, edit.text)
-        except PromptRejected as error:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
-            ) from error
 
     @app.post(
         "/profile/analysis",

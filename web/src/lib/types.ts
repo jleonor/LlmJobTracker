@@ -42,16 +42,6 @@ export type ProfileFile = {
   generated: boolean
 }
 
-// The three profile documents (Phase 2, D-85, D-86). Each is Markdown prose.
-export type ProfileOutput = {
-  id: number
-  kind: 'full_cv_history' | 'questionnaire_analysis' | 'strategy'
-  version: number
-  claude_job_id: number | null
-  document: string
-  created_at: string
-}
-
 // A Claude Job as the API lists it (no prompt text).
 export type ClaudeJobPrompt = {
   position: number

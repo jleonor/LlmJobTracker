@@ -2,48 +2,21 @@ import { useEffect, useState } from 'react'
 
 import { AnalysisTerminal } from '@/components/app/AnalysisTerminal'
 import { Button } from '@/components/ui/button'
-import { ApiError, fetchProfileOutputs, saveProfileOutput, startProfileAnalysis } from '@/lib/api'
-import type { ProfileOutput } from '@/lib/types'
+import { ApiError, startProfileAnalysis } from '@/lib/api'
 
-type LoadState =
-  | { kind: 'loading' }
-  | { kind: 'error'; message: string }
-  | { kind: 'ready'; outputs: ProfileOutput[] }
-
-const TITLES: Record<ProfileOutput['kind'], string> = {
-  full_cv_history: 'Career history',
-  questionnaire_analysis: 'Questionnaire analysis',
-  strategy: 'Positioning strategy',
-}
-
-function latest(outputs: ProfileOutput[], kind: ProfileOutput['kind']): ProfileOutput | undefined {
-  return outputs.find((output) => output.kind === kind)
-}
-
-// The analysis outputs on the Profile page (D-58). Edits are saved as new versions (D-66, D-85, O-12).
-// refreshKey changes when an analysis finishes, so the outputs are read again without a click.
+// Profile analysis on the Profile page (D-58). The three documents (career history,
+// questionnaire analysis, strategy) are read and reopened as files under their own upload
+// sections above (D-84, D-86); nothing about their content is shown here.
 export function ProfileOutputs({ onChanged, refreshKey }: { onChanged: () => void; refreshKey: number | null }) {
-  const [state, setState] = useState<LoadState>({ kind: 'loading' })
   const [starting, setStarting] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
-  function load() {
-    onChanged()
-    fetchProfileOutputs()
-      .then((outputs) => setState({ kind: 'ready', outputs }))
-      .catch((error: unknown) => {
-        const message = error instanceof ApiError ? error.message : 'Could not load the outputs.'
-        setState({ kind: 'error', message })
-      })
-  }
-
+  // When the latest analysis finishes, the file list is read again without a click, so a new
+  // or changed document shows up where it can be opened.
   useEffect(() => {
-    fetchProfileOutputs()
-      .then((outputs) => setState({ kind: 'ready', outputs }))
-      .catch((error: unknown) => {
-        const message = error instanceof ApiError ? error.message : 'Could not load the outputs.'
-        setState({ kind: 'error', message })
-      })
+    if (refreshKey !== null) onChanged()
+    // onChanged is stable across renders in practice; refreshKey is the only real trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey])
 
   async function handleStart() {
@@ -51,7 +24,7 @@ export function ProfileOutputs({ onChanged, refreshKey }: { onChanged: () => voi
     setNotice(null)
     try {
       const job = await startProfileAnalysis()
-      setNotice(`Started "${job.label}". It runs in the background; refresh to see the outputs.`)
+      setNotice(`Started "${job.label}". It runs in the background; refresh to see the files.`)
     } catch (error) {
       setNotice(error instanceof ApiError ? error.message : 'The analysis did not start.')
     } finally {
@@ -67,12 +40,12 @@ export function ProfileOutputs({ onChanged, refreshKey }: { onChanged: () => voi
             Profile analysis
           </h2>
           <p className="text-xs text-muted-foreground">
-            Run the analysis to make what is missing. Anything you uploaded is used as-is, and
-            anything you edit is saved as a new version.
+            Run the analysis to make what is missing. Anything you uploaded is used as-is. Each
+            document appears as a file under its section above once it is ready.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={load}>
+          <Button variant="outline" onClick={onChanged}>
             Refresh
           </Button>
           <Button disabled={starting} onClick={() => void handleStart()}>
@@ -84,110 +57,6 @@ export function ProfileOutputs({ onChanged, refreshKey }: { onChanged: () => voi
       {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
 
       <AnalysisTerminal />
-
-      {state.kind === 'loading' && <p className="text-sm text-muted-foreground">Loading the outputs...</p>}
-      {state.kind === 'error' && (
-        <p role="alert" className="text-sm text-destructive">
-          {state.message}
-        </p>
-      )}
-
-      {state.kind === 'ready' && state.outputs.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No outputs yet. Upload your files, then run the analysis.
-        </p>
-      )}
-
-      {state.kind === 'ready' && (
-        <>
-          {/* The career history has its own viewer: the file in "Your career history" above
-              (D-84), openable the same way as an upload. No separate card here. */}
-          <DocumentCard output={latest(state.outputs, 'questionnaire_analysis')} onSaved={load} />
-          <DocumentCard output={latest(state.outputs, 'strategy')} onSaved={load} />
-        </>
-      )}
     </section>
-  )
-}
-
-// One document: the career history, the questionnaire analysis or the strategy. Read as Markdown
-// prose, edited as plain text (D-85, D-86): there is nothing left to check field by field.
-function DocumentCard({ output, onSaved }: { output: ProfileOutput | undefined; onSaved: () => void }) {
-  if (!output) return null
-  return <DocumentForm key={output.id} output={output} onSaved={onSaved} />
-}
-
-function DocumentForm({ output, onSaved }: { output: ProfileOutput; onSaved: () => void }) {
-  const [editing, setEditing] = useState(false)
-  const [text, setText] = useState(output.document)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  async function save() {
-    setBusy(true)
-    setError(null)
-    try {
-      await saveProfileOutput(output.kind, text)
-      setEditing(false)
-      onSaved()
-    } catch (saveError) {
-      setError(saveError instanceof ApiError ? saveError.message : 'The change was not saved.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-2 rounded border border-border bg-background p-3">
-      <div className="flex items-center justify-between gap-4">
-        <h3 className="text-sm font-semibold">{TITLES[output.kind]}</h3>
-        <p className="font-mono text-xs text-muted-foreground">
-          version {output.version} · {output.created_at.slice(0, 10)}
-          {output.claude_job_id === null ? ' · edited by you' : ' · from Claude'}
-        </p>
-      </div>
-
-      {editing ? (
-        <textarea
-          aria-label={`Edit ${TITLES[output.kind]}`}
-          className="min-h-48 rounded border border-border bg-card p-2 font-mono text-sm text-foreground"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-        />
-      ) : (
-        <pre className="whitespace-pre-wrap font-sans text-sm text-foreground">{output.document}</pre>
-      )}
-
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-
-      <div className="flex gap-2">
-        {editing ? (
-          <>
-            <Button disabled={busy} onClick={() => void save()}>
-              Save as new version
-            </Button>
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => {
-                setText(output.document)
-                setEditing(false)
-                setError(null)
-              }}
-            >
-              Cancel
-            </Button>
-          </>
-        ) : (
-          <Button variant="outline" onClick={() => setEditing(true)}>
-            Edit
-          </Button>
-        )}
-      </div>
-    </div>
   )
 }
