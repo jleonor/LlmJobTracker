@@ -103,4 +103,8 @@
   .text-muted-foreground {
     @apply font-mono;
     }
+  /* Every button, styled or plain, reads in the secondary font too. */
+  button {
+    @apply font-mono;
+    }
 }
