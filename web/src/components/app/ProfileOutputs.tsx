@@ -10,6 +10,9 @@ import { ApiError, startProfileAnalysis } from '@/lib/api'
 export function ProfileOutputs({ onChanged, refreshKey }: { onChanged: () => void; refreshKey: number | null }) {
   const [starting, setStarting] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  // Bumped on each click; AnalysisTerminal reacts by hiding the lines it has so far. 0 means
+  // "never cleared".
+  const [clearSignal, setClearSignal] = useState(0)
 
   // When the latest analysis finishes, the file list is read again without a click, so a new
   // or changed document shows up where it can be opened.
@@ -48,6 +51,9 @@ export function ProfileOutputs({ onChanged, refreshKey }: { onChanged: () => voi
           <Button variant="outline" onClick={onChanged}>
             Refresh
           </Button>
+          <Button variant="outline" onClick={() => setClearSignal((current) => current + 1)}>
+            Clear
+          </Button>
           <Button disabled={starting} onClick={() => void handleStart()}>
             {starting ? 'Starting...' : 'Run profile analysis'}
           </Button>
@@ -56,7 +62,7 @@ export function ProfileOutputs({ onChanged, refreshKey }: { onChanged: () => voi
 
       {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
 
-      <AnalysisTerminal />
+      <AnalysisTerminal clearSignal={clearSignal} />
     </section>
   )
 }

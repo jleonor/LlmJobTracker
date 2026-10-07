@@ -79,10 +79,23 @@ export function analysisLines(job: ClaudeJob, now: number = Date.now()): Line[] 
 }
 
 // A small terminal on the Profile page that shows what the analysis is doing, line by line.
-export function AnalysisTerminal() {
+// clearSignal comes from the "Clear" button beside it (ProfileOutputs); each change hides the
+// lines shown so far, the same way clearing a real terminal does: new lines still appear below.
+export function AnalysisTerminal({ clearSignal }: { clearSignal: number }) {
   const { jobs, error } = useClaudeJobs()
   const latest = [...jobs].reverse().find((job) => job.kind === 'profile_analysis')
   const [showExchange, setShowExchange] = useState(false)
+  const [cleared, setCleared] = useState<{ jobId: number; count: number } | null>(null)
+
+  const lines = latest ? analysisLines(latest) : []
+  const visible = cleared && latest && cleared.jobId === latest.id ? lines.slice(cleared.count) : lines
+
+  useEffect(() => {
+    if (clearSignal === 0) return // the initial render, not an actual click
+    if (latest) setCleared({ jobId: latest.id, count: lines.length })
+    // Only clearSignal should trigger this; lines/latest are read at click time, not watched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clearSignal])
 
   return (
     <section aria-label="Analysis log" className="flex flex-col gap-2 rounded border border-border bg-zinc-950 p-3">
@@ -93,8 +106,9 @@ export function AnalysisTerminal() {
       <div aria-live="polite" className="max-h-64 overflow-y-auto font-mono text-xs leading-relaxed">
         {error && <p className="text-red-400">{error}</p>}
         {!error && !latest && <p className="text-zinc-500">No analysis has run yet.</p>}
+        {!error && latest && visible.length === 0 && <p className="text-zinc-500">Cleared.</p>}
         {latest &&
-          analysisLines(latest).map((line, index) => (
+          visible.map((line, index) => (
             <p key={index} className={TONE[line.tone]}>
               {line.time && <span className="mr-2 text-zinc-500">[{line.time}]</span>}
               {line.text}
