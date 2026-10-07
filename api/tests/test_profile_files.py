@@ -71,9 +71,18 @@ def test_the_original_file_is_not_changed_by_an_upload(
 
 
 def test_the_same_file_twice_in_one_kind_is_refused(upload_client: TestClient) -> None:
-    upload(upload_client, "questionnaire", "q.txt", b"same answers")
-    again = upload(upload_client, "questionnaire", "q.txt", b"same answers")
+    upload(upload_client, "older_cv", "cv.txt", b"same content")
+    again = upload(upload_client, "older_cv", "cv.txt", b"same content")
     assert again.status_code == 409
+
+
+def test_a_second_questionnaire_upload_replaces_the_first(upload_client: TestClient) -> None:
+    first = upload(upload_client, "questionnaire", "old.txt", b"old answers")
+    second = upload(upload_client, "questionnaire", "new.txt", b"new answers")
+    assert first.status_code == 201
+    assert second.status_code == 201
+    listed = upload_client.get("/profile/files").json()
+    assert [item["original_name"] for item in listed] == ["new.txt"]
 
 
 def test_the_same_file_in_another_kind_is_allowed(upload_client: TestClient) -> None:

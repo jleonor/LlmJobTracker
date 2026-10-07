@@ -26,7 +26,7 @@ const COLUMNS = [
   'Queue',
 ] as const
 
-export function JobsPage() {
+export function JobApplicationsPage() {
   const [state, setState] = useState<State>({ kind: 'loading' })
 
   useEffect(() => {

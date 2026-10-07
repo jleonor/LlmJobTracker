@@ -1,8 +1,8 @@
 import { useState } from 'react'
 
 import { AppShell, type Screen } from '@/components/app/AppShell'
-import { JobsPage } from '@/pages/JobsPage'
-import { ClaudeJobsPage } from '@/pages/ClaudeJobsPage'
+import { JobApplicationsPage } from '@/pages/JobApplicationsPage'
+import { LlmHistoryPage } from '@/pages/LlmHistoryPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { queueLabel, useClaudeJobs } from '@/lib/useClaudeJobs'
 
@@ -12,9 +12,9 @@ function App() {
 
   return (
     <AppShell current={screen} onNavigate={setScreen} queueText={queueLabel(queue.jobs)}>
-      {screen === 'jobs' && <JobsPage />}
+      {screen === 'jobs' && <JobApplicationsPage />}
       {screen === 'profile' && <ProfilePage />}
-      {screen === 'queue' && <ClaudeJobsPage queue={queue} />}
+      {screen === 'queue' && <LlmHistoryPage queue={queue} />}
     </AppShell>
   )
 }

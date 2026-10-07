@@ -122,7 +122,7 @@ export function ProfilePage() {
           ))}
 
           <div className="flex flex-col gap-1 border-t border-border pt-4">
-            <h2 className="text-sm font-semibold">Optional: your own versions</h2>
+            <h2 className="text-sm font-semibold">LLM Generated Profile</h2>
             <p className="text-xs text-muted-foreground">
               Leave these out and the analysis makes them. Upload one to use yours instead.
             </p>
@@ -157,6 +157,7 @@ function UploadSection({ kind, title, hint, files, onUploaded }: SectionProps) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
+  const [collapsed, setCollapsed] = useState(true)
 
   async function handleChosen(chosen: FileList | null) {
     if (!chosen || chosen.length === 0) return
@@ -212,11 +213,22 @@ function UploadSection({ kind, title, hint, files, onUploaded }: SectionProps) {
       {files.length === 0 ? (
         <p className="text-xs text-muted-foreground">No files yet.</p>
       ) : (
-        <ul className="flex flex-col divide-y divide-border rounded border border-border">
-          {files.map((file) => (
-            <FileRow key={file.id} file={file} onChanged={onUploaded} />
-          ))}
-        </ul>
+        <>
+          <button
+            type="button"
+            onClick={() => setCollapsed((current) => !current)}
+            className="self-start text-left text-xs text-muted-foreground underline-offset-2 hover:underline"
+          >
+            {collapsed ? 'Show' : 'Hide'} {files.length} {files.length === 1 ? 'file' : 'files'}
+          </button>
+          {!collapsed && (
+            <ul className="flex flex-col divide-y divide-border rounded border border-border">
+              {files.map((file) => (
+                <FileRow key={file.id} file={file} onChanged={onUploaded} />
+              ))}
+            </ul>
+          )}
+        </>
       )}
 
       {errors.length > 0 && (

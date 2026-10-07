@@ -8,9 +8,9 @@ export type Screen = 'jobs' | 'profile' | 'queue'
 
 // Jobs and Profile have screens. The other entries are placeholders for later phases.
 const NAV: { label: string; icon: typeof UserRound; screen: Screen | null }[] = [
-  { label: 'Jobs', icon: BriefcaseBusiness, screen: 'jobs' },
+  { label: 'Job Applications', icon: BriefcaseBusiness, screen: 'jobs' },
   { label: 'Profile', icon: UserRound, screen: 'profile' },
-  { label: 'Claude Jobs', icon: ListOrdered, screen: 'queue' },
+  { label: 'LLM history', icon: ListOrdered, screen: 'queue' },
   { label: 'Settings', icon: Settings, screen: null },
   { label: 'Run Trace', icon: GitBranch, screen: null },
 ]

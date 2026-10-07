@@ -26,7 +26,7 @@ function clock(iso: string | null): string | null {
 }
 
 // The lines for the latest profile analysis, built from its prompts (the same records the
-// Claude Jobs screen shows). Nothing is sent by the model here; this only reads the queue.
+// LLM history screen shows). Nothing is sent by the model here; this only reads the queue.
 export function analysisLines(job: ClaudeJob, now: number = Date.now()): Line[] {
   const lines: Line[] = [{ time: clock(job.created_at), text: `${job.label} queued`, tone: 'info' }]
   for (const prompt of job.prompts) {

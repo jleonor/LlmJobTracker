@@ -43,6 +43,12 @@ UPSTREAM: Final[dict[str, tuple[str, ...]]] = {
     "strategy": ("full_cv_history", "questionnaire_analysis"),
 }
 QUESTIONNAIRE_KINDS: Final = ("questionnaire",)
+# The name a generated document is saved under (D-84), readable where an upload would be.
+DOCUMENT_FILENAMES: Final[dict[str, str]] = {
+    "full_cv_history": "Full CV history.md",
+    "questionnaire_analysis": "Questionnaire analysis.md",
+    "strategy": "Positioning strategy.md",
+}
 # The rules used when the user has not uploaded their own (D-23 and the product rules).
 DEFAULT_RULES_PATH: Final = Path(__file__).resolve().parents[3] / "Agent" / "rules" / "honesty.md"
 # A built prompt above this size is not sent. Splitting large inputs is not part of Phase 2.
@@ -409,7 +415,7 @@ def make_pipeline(
             # Nothing of the user's own is in this slot, so the generated output fills it,
             # readable the same way as an upload (D-84).
             store_generated_file(
-                conn, data_folder, own_kind, f"{kind}.md", document.encode("utf-8")
+                conn, data_folder, own_kind, DOCUMENT_FILENAMES[kind], document.encode("utf-8")
             )
 
     return render, on_result

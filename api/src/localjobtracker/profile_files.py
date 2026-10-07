@@ -22,9 +22,10 @@ from localjobtracker.migrations import PROFILE_FILE_KINDS
 PROFILE_FOLDER_NAME: Final = "profile"
 MAX_UPLOAD_BYTES: Final = 25 * 1024 * 1024
 ALLOWED_EXTENSIONS: Final = frozenset({".pdf", ".docx", ".txt", ".md"})
-# These kinds hold one file at a time (D-84). A new one, uploaded or generated, replaces it.
+# These kinds hold one file at a time (D-84, D-88 for the questionnaire). A new one, uploaded or
+# generated, replaces it.
 SINGLE_FILE_KINDS: Final = frozenset(
-    {"own_full_cv_history", "own_questionnaire_analysis", "own_strategy"}
+    {"questionnaire", "own_full_cv_history", "own_questionnaire_analysis", "own_strategy"}
 )
 
 

@@ -25,12 +25,12 @@ const PROMPT_LABELS: Record<string, string> = {
 const CAN_CANCEL = ['queued', 'paused', 'processing']
 
 // The Claude Jobs queue: one job runs at a time, in creation order (D-50, D-62, D-63).
-export function ClaudeJobsPage({ queue }: { queue: QueueState }) {
+export function LlmHistoryPage({ queue }: { queue: QueueState }) {
   return (
     <section aria-labelledby="queue-heading" className="flex flex-col gap-4">
       <div className="flex items-baseline justify-between">
         <h1 id="queue-heading" className="text-xl font-semibold tracking-tight">
-          Claude Jobs
+          LLM history
         </h1>
         <span className="font-mono text-xs text-muted-foreground">
           {queue.jobs.length} {queue.jobs.length === 1 ? 'job' : 'jobs'} · updates every few seconds
@@ -45,7 +45,7 @@ export function ClaudeJobsPage({ queue }: { queue: QueueState }) {
 
       {queue.jobs.length === 0 && !queue.error && (
         <p className="rounded border border-border p-6 text-center text-sm text-muted-foreground">
-          No Claude Jobs yet. They appear here when you start the profile analysis.
+          No history yet. It appears here when you start the profile analysis.
         </p>
       )}
 
