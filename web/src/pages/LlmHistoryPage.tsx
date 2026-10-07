@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -24,8 +25,30 @@ const PROMPT_LABELS: Record<string, string> = {
 
 const CAN_CANCEL = ['queued', 'paused', 'processing']
 
+type PositionedJob = { job: ClaudeJob; position: number }
+type DateGroup = { date: string; items: PositionedJob[] }
+
+// Newest first, grouped by the day each job was created. Position is the job's place in
+// creation order (the first job ever is #1), kept stable regardless of display order.
+function groupByDate(jobs: ClaudeJob[]): DateGroup[] {
+  const newestFirst = jobs.map((job, index) => ({ job, position: index + 1 })).reverse()
+  const groups: DateGroup[] = []
+  for (const item of newestFirst) {
+    const date = item.job.created_at.slice(0, 10)
+    const current = groups.at(-1)
+    if (current && current.date === date) {
+      current.items.push(item)
+    } else {
+      groups.push({ date, items: [item] })
+    }
+  }
+  return groups
+}
+
 // The Claude Jobs queue: one job runs at a time, in creation order (D-50, D-62, D-63).
 export function LlmHistoryPage({ queue }: { queue: QueueState }) {
+  const groups = groupByDate(queue.jobs)
+
   return (
     <section aria-labelledby="queue-heading" className="flex flex-col gap-4">
       <div className="flex items-baseline justify-between">
@@ -49,10 +72,47 @@ export function LlmHistoryPage({ queue }: { queue: QueueState }) {
         </p>
       )}
 
-      {queue.jobs.map((job, index) => (
-        <JobCard key={job.id} job={job} position={index + 1} onChanged={queue.reload} />
+      {groups.map((group, index) => (
+        <DateSection key={group.date} group={group} defaultOpen={index === 0} onChanged={queue.reload} />
       ))}
     </section>
+  )
+}
+
+function DateSection({
+  group,
+  defaultOpen,
+  onChanged,
+}: {
+  group: DateGroup
+  defaultOpen: boolean
+  onChanged: () => void
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  const Chevron = open ? ChevronDown : ChevronRight
+
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 text-left text-sm font-semibold text-foreground"
+      >
+        <Chevron className="size-4 text-muted-foreground" aria-hidden="true" />
+        {group.date}
+        <span className="font-mono text-xs font-normal text-muted-foreground">
+          {group.items.length} {group.items.length === 1 ? 'job' : 'jobs'}
+        </span>
+      </button>
+      {open && (
+        <div className="flex flex-col gap-3">
+          {group.items.map(({ job, position }) => (
+            <JobCard key={job.id} job={job} position={position} onChanged={onChanged} />
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -61,6 +121,7 @@ type CardProps = { job: ClaudeJob; position: number; onChanged: () => void }
 function JobCard({ job, position, onChanged }: CardProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(true)
 
   async function act(action: (id: number) => Promise<ClaudeJob>) {
     setBusy(true)
@@ -75,20 +136,32 @@ function JobCard({ job, position, onChanged }: CardProps) {
     }
   }
 
+  const Chevron = expanded ? ChevronDown : ChevronRight
+  const doneCount = job.prompts.filter((prompt) => prompt.status === 'done').length
+
   return (
     <article
       aria-label={`Claude Job ${job.id}`}
       className="flex flex-col gap-3 rounded border border-border bg-card p-4"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-sm font-semibold">
-            <span className="mr-2 font-mono text-xs text-muted-foreground">#{position}</span>
-            {job.label}
-          </h2>
-          <p className="font-mono text-xs text-muted-foreground">
-            created {job.created_at.replace('T', ' ').slice(0, 16)} UTC
-          </p>
+      <button
+        type="button"
+        onClick={() => setExpanded((current) => !current)}
+        aria-expanded={expanded}
+        className="flex items-start justify-between gap-4 text-left"
+      >
+        <div className="flex items-start gap-1.5">
+          <Chevron className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-semibold">
+              <span className="mr-2 font-mono text-xs text-muted-foreground">#{position}</span>
+              {job.label}
+            </h2>
+            <p className="font-mono text-xs text-muted-foreground">
+              created {job.created_at.replace('T', ' ').slice(0, 16)} UTC
+              {!expanded && ` · ${doneCount}/${job.prompts.length} prompts`}
+            </p>
+          </div>
         </div>
         <Badge
           variant="outline"
@@ -96,44 +169,48 @@ function JobCard({ job, position, onChanged }: CardProps) {
         >
           {job.status}
         </Badge>
-      </div>
+      </button>
 
-      {job.error && (
-        <p className={job.status === 'failed' ? 'text-sm text-destructive' : 'text-sm text-[#ffca85]'}>
-          {job.error}
-        </p>
+      {expanded && (
+        <>
+          {job.error && (
+            <p className={job.status === 'failed' ? 'text-sm text-destructive' : 'text-sm text-[#ffca85]'}>
+              {job.error}
+            </p>
+          )}
+
+          {job.status === 'paused' && job.resume_at && (
+            <p className="text-sm text-muted-foreground">
+              Resumes by itself at {new Date(job.resume_at).toLocaleString()}.
+            </p>
+          )}
+
+          <ol className="flex flex-col gap-1">
+            {job.prompts.map((prompt) => (
+              <PromptLine key={prompt.position} prompt={prompt} />
+            ))}
+          </ol>
+
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            {job.status === 'paused' && (
+              <Button disabled={busy} onClick={() => void act(resumeClaudeJob)}>
+                Resume
+              </Button>
+            )}
+            {CAN_CANCEL.includes(job.status) && (
+              <Button variant="outline" disabled={busy} onClick={() => void act(cancelClaudeJob)}>
+                Cancel
+              </Button>
+            )}
+          </div>
+        </>
       )}
-
-      {job.status === 'paused' && job.resume_at && (
-        <p className="text-sm text-muted-foreground">
-          Resumes by itself at {new Date(job.resume_at).toLocaleString()}.
-        </p>
-      )}
-
-      <ol className="flex flex-col gap-1">
-        {job.prompts.map((prompt) => (
-          <PromptLine key={prompt.position} prompt={prompt} />
-        ))}
-      </ol>
-
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-
-      <div className="flex gap-2">
-        {job.status === 'paused' && (
-          <Button disabled={busy} onClick={() => void act(resumeClaudeJob)}>
-            Resume
-          </Button>
-        )}
-        {CAN_CANCEL.includes(job.status) && (
-          <Button variant="outline" disabled={busy} onClick={() => void act(cancelClaudeJob)}>
-            Cancel
-          </Button>
-        )}
-      </div>
     </article>
   )
 }
