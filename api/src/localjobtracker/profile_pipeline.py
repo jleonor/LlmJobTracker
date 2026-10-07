@@ -73,11 +73,17 @@ INSTRUCTIONS: Final[dict[str, str]] = {
     ),
     "strategy": (
         "Write the positioning strategy from the questionnaire analysis and the career history "
-        "below. Cover: a differentiator, one paragraph on what sets the person apart; the roles "
-        "to apply for first, and the roles to apply for selectively, each with a fit from 0.5 to "
-        "5 in steps of 0.5 and why it fits; roles not to target as primary, and why; geography; "
-        "the pay level the material supports, or say if it is not stated; how to split effort "
-        "across the roles; and what is still open. Do not write positioning for a specific job."
+        "below. Group the roles to target into lanes: use the word 'lane' for each one. A lane "
+        "is a distinct positioning direction, not a near-duplicate of another lane; two lanes "
+        "should differ in the kind of role, the industry, or the angle taken on the person's "
+        "background, not just in job title. If the material only supports one real direction, "
+        "say so rather than inventing a second lane to pad the list. Cover: a differentiator, "
+        "one paragraph on what sets the person apart; the primary lanes to apply for first, and "
+        "secondary lanes to apply for selectively, each with a fit from 0.5 to 5 in steps of 0.5, "
+        "why it fits, and what makes it distinct from the other lanes; lanes to avoid as primary "
+        "targets, and why; geography; the pay level the material supports, or say if it is not "
+        "stated; how to split effort across the lanes; and what is still open. Do not write "
+        "positioning for a specific job."
     ),
 }
 

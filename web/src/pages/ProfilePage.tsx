@@ -7,6 +7,7 @@ import {
   deleteProfileFile,
   fetchProfileFiles,
   openProfileFile,
+  saveSettings,
   uploadProfileFile,
 } from '@/lib/api'
 import { useClaudeJobs } from '@/lib/useClaudeJobs'
@@ -58,7 +59,13 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function ProfilePage() {
+export function ProfilePage({
+  userName,
+  onNameChanged,
+}: {
+  userName: string
+  onNameChanged: () => void
+}) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
   // When the latest analysis finishes, the outputs are read again.
   const queue = useClaudeJobs()
@@ -98,6 +105,8 @@ export function ProfilePage() {
           Upload your files here. The app keeps its own copy, and your originals are not changed.
         </p>
       </div>
+
+      <NameSection userName={userName} onSaved={onNameChanged} />
 
       {state.kind === 'loading' && <p className="text-sm text-muted-foreground">Loading your files...</p>}
 
@@ -141,6 +150,55 @@ export function ProfilePage() {
       )}
 
       <ProfileOutputs onChanged={reload} refreshKey={finishedAnalysis} />
+    </section>
+  )
+}
+
+// Shown in the sidebar as "{name}'s Job Tracker" (D-94). Saving reloads the shared settings
+// state (App.tsx), so the sidebar picks up the change right away.
+function NameSection({ userName, onSaved }: { userName: string; onSaved: () => void }) {
+  const [name, setName] = useState(userName)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function save() {
+    setBusy(true)
+    setError(null)
+    try {
+      const saved = await saveSettings(name)
+      setName(saved.user_name)
+      onSaved()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The name was not saved.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section aria-labelledby="name-heading" className="flex flex-col gap-2 rounded border border-border bg-card p-4">
+      <h2 id="name-heading" className="text-sm font-semibold">
+        Name
+      </h2>
+      <div className="flex items-center gap-2">
+        <input
+          aria-label="Your name"
+          className="w-64 rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <Button disabled={busy || name === userName} onClick={() => void save()}>
+          Save
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Shown in the sidebar, as "{name || 'YourName'}'s Job Tracker".
+      </p>
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </section>
   )
 }

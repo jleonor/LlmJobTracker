@@ -5,6 +5,7 @@ import type {
   ProfileFileKind,
   PromptExchange,
   RunResult,
+  Settings,
 } from '@/lib/types'
 
 export class ApiError extends Error {
@@ -51,6 +52,18 @@ export function fetchJobApplications(): Promise<JobApplication[]> {
 
 export function runClaudeCheck(): Promise<RunResult> {
   return request<RunResult>('/api/runs/check', { method: 'POST' })
+}
+
+export function fetchSettings(): Promise<Settings> {
+  return request<Settings>('/api/settings')
+}
+
+export function saveSettings(userName: string): Promise<Settings> {
+  return request<Settings>('/api/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_name: userName }),
+  })
 }
 
 export function fetchProfileFiles(): Promise<ProfileFile[]> {

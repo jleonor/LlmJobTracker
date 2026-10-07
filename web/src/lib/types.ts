@@ -18,6 +18,11 @@ export type RunResult = {
   cost_usd: number | null
 }
 
+// The sidebar's display name, read from and saved to /settings.
+export type Settings = {
+  user_name: string
+}
+
 // One uploaded profile file (Profile page). The kinds follow migration 3.
 export type ProfileFileKind =
   | 'master_cv'

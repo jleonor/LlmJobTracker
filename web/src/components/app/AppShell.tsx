@@ -20,14 +20,15 @@ type Props = {
   current: Screen
   onNavigate: (screen: Screen) => void
   queueText: string
+  userName: string
 }
 
-export function AppShell({ children, current, onNavigate, queueText }: Props) {
+export function AppShell({ children, current, onNavigate, queueText, userName }: Props) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <aside className="fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border bg-card">
         <div className="flex h-14 items-center border-b border-border px-4">
-          <span className="text-sm font-semibold tracking-tight">LocalJobTracker</span>
+          <span className="truncate text-lg font-semibold tracking-tight">{userName}'s Job Tracker</span>
         </div>
         <nav className="flex flex-col gap-0.5 p-2" aria-label="Main">
           {NAV.map(({ label, icon: Icon, screen }) => {

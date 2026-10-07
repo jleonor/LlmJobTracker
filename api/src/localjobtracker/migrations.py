@@ -496,6 +496,18 @@ MIGRATIONS: tuple[Migration, ...] = (
         ),
         down=("ALTER TABLE profile_outputs DROP COLUMN source",),
     ),
+    Migration(
+        version=12,
+        name="add a settings table for the user's display name",
+        up=(
+            "CREATE TABLE settings ("
+            "id INTEGER PRIMARY KEY CHECK (id = 1), "
+            "user_name TEXT NOT NULL DEFAULT 'YourName'"
+            ")",
+            "INSERT INTO settings (id, user_name) VALUES (1, 'YourName')",
+        ),
+        down=("DROP TABLE settings",),
+    ),
 )
 
 _LEDGER = """

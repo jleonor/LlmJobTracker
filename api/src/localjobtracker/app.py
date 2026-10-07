@@ -9,6 +9,7 @@ from typing import Annotated
 from urllib.parse import unquote
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from pydantic import BaseModel
 
 from localjobtracker.claude_job_queue import ClaudeJobQueue
 from localjobtracker.claude_jobs import (
@@ -40,12 +41,17 @@ from localjobtracker.profile_pipeline import (
     submit_profile_analysis,
 )
 from localjobtracker.runner import Runner, RunResult
+from localjobtracker.settings import Settings, get_settings, save_settings
 from localjobtracker.storage import connect
 
 # The one prompt the Phase 1 button sends. It contains no personal data.
 CHECK_PROMPT = "Reply with the single word OK."
 
 TOKEN_HEADER = "X-Launch-Token"
+
+
+class SettingsEdit(BaseModel):
+    user_name: str
 
 
 def create_app(
@@ -98,6 +104,16 @@ def create_app(
     @app.get("/health", dependencies=[Depends(require_token)])
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/settings", response_model=Settings, dependencies=[Depends(require_token)])
+    def read_settings(conn: Annotated[Connection, Depends(get_db)]) -> Settings:
+        return get_settings(conn)
+
+    @app.put("/settings", response_model=Settings, dependencies=[Depends(require_token)])
+    def update_settings(
+        edit: SettingsEdit, conn: Annotated[Connection, Depends(get_db)]
+    ) -> Settings:
+        return save_settings(conn, edit.user_name)
 
     @app.get(
         "/job-applications",
