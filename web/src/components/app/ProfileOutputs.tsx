@@ -100,7 +100,8 @@ export function ProfileOutputs({ onChanged, refreshKey }: { onChanged: () => voi
 
       {state.kind === 'ready' && (
         <>
-          <DocumentCard output={latest(state.outputs, 'full_cv_history')} onSaved={load} />
+          {/* The career history has its own viewer: the file in "Your career history" above
+              (D-84), openable the same way as an upload. No separate card here. */}
           <DocumentCard output={latest(state.outputs, 'questionnaire_analysis')} onSaved={load} />
           <DocumentCard output={latest(state.outputs, 'strategy')} onSaved={load} />
         </>
