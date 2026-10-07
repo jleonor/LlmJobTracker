@@ -103,11 +103,11 @@ Step list (approved in chat 2026-10-06; starts when you say go. Steps 7 to 9 and
 12. The real-file run: you upload your files, the three Claude Jobs run, and you check the output. Quality is your call.
 
 Done when
-- [ ] The analysis runs on your real files, and you check its output.
-- [ ] Each document is reviewed by reading it, edited if needed, on the Profile page.
+- [ ] The analysis runs on your real files, and you check its output. **Your call, not checked yet**: a career history, a questionnaire analysis and a strategy have all been generated from your real files this session (confirmed via the running app's own data), but you haven't told me you've read them and are satisfied with what they say.
+- [ ] Each document is reviewed by opening its file in the Profile page's upload section (revised 2026-10-07, D-87: there is no longer an in-app viewer). **Your call, not checked yet**: same as above, this needs you to have actually opened and read one.
 - [x] A queued Claude Job pauses at a simulated plan limit (fake runner) and resumes on click. (2026-10-06: `test_a_plan_limit_pauses_the_job_and_resume_runs_the_prompt_again`. In the browser, Resume on a paused demo job moved it to done, with both prompts done. Screen read through the page text.)
 - [x] Queued Claude Jobs survive an app restart. (2026-10-06: tests in `api/tests/test_claude_job_queue.py` restart the app with a job paused, a job left processing, and a prompt half done. Each comes back as the decisions say (D-62, D-63).)
-- [ ] Personal-data scan of the repo is clean.
+- [x] Personal-data scan of the repo is clean. (2026-10-07: every tracked file scanned for the user's name and email, case-insensitive — no matches. Commit messages (`git log --all`) scanned the same way — no matches. `planning/` holds nothing tracked, per `.gitignore`.)
 
 Out of scope: positioning for a specific job.
 
