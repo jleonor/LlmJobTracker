@@ -41,7 +41,7 @@ export function AppShell({ children, current, onNavigate, queueText }: Props) {
                 aria-current={active ? 'page' : undefined}
                 title={screen === null ? 'Not in this phase yet' : undefined}
                 className={cn(
-                  'flex items-center gap-2 rounded px-3 py-2 text-left text-sm transition-colors',
+                  'flex items-center gap-2 rounded px-3 py-2 text-left font-mono text-sm transition-colors',
                   active
                     ? 'border-l-2 border-primary bg-secondary pl-[10px] font-semibold text-foreground'
                     : screen === null
