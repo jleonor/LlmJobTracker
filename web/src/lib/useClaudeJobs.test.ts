@@ -20,16 +20,16 @@ function job(id: number, status: string): ClaudeJob {
 
 describe('queueLabel', () => {
   it('reads idle when nothing is waiting', () => {
-    expect(queueLabel([])).toBe('Claude: idle')
-    expect(queueLabel([job(1, 'done')])).toBe('Claude: idle')
+    expect(queueLabel([])).toBe('LLM: idle')
+    expect(queueLabel([job(1, 'done')])).toBe('LLM: idle')
   })
 
   it('counts queued jobs', () => {
-    expect(queueLabel([job(1, 'queued'), job(2, 'queued')])).toBe('Claude: 2 queued')
+    expect(queueLabel([job(1, 'queued'), job(2, 'queued')])).toBe('LLM: 2 queued')
   })
 
   it('shows a paused queue as paused, and a running job above both', () => {
-    expect(queueLabel([job(1, 'queued'), job(2, 'paused')])).toBe('Claude: paused')
-    expect(queueLabel([job(1, 'paused'), job(2, 'processing')])).toBe('Claude: processing')
+    expect(queueLabel([job(1, 'queued'), job(2, 'paused')])).toBe('LLM: paused')
+    expect(queueLabel([job(1, 'paused'), job(2, 'processing')])).toBe('LLM: processing')
   })
 })

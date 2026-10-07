@@ -40,12 +40,12 @@ export function JobApplicationDetailPage({
             {application.role_title}
           </h1>
           <StatusBadge status={application.status} />
-          <QueueStatusBadge status={application.queue_status} />
           {application.lane && (
             <Badge variant="outline" className="rounded-sm font-mono text-[11px] font-normal">
               {application.lane}
             </Badge>
           )}
+          <QueueStatusBadge status={application.queue_status} />
         </div>
       </div>
 
@@ -166,7 +166,7 @@ function PositioningAnalysis({ application }: { application: JobApplicationDetai
             Match score
           </span>
         </div>
-        <div className="flex flex-1 flex-col gap-4">
+        <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Fit">
             {application.fit.length > 0 ? (
               <ul className="list-disc space-y-1 pl-5">

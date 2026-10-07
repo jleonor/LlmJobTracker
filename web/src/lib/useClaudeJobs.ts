@@ -37,11 +37,12 @@ export function useClaudeJobs(): QueueState {
   return { jobs, error, reload }
 }
 
-// What the header shows: processing, paused, queued, or idle (D-59 reads "Claude: queued").
+// What the header shows: processing, paused, queued, or idle. Reads "LLM", not "Claude" (D-100,
+// narrows D-59's "Claude: queued" wording).
 export function queueLabel(jobs: ClaudeJob[]): string {
-  if (jobs.some((job) => job.status === 'processing')) return 'Claude: processing'
-  if (jobs.some((job) => job.status === 'paused')) return 'Claude: paused'
+  if (jobs.some((job) => job.status === 'processing')) return 'LLM: processing'
+  if (jobs.some((job) => job.status === 'paused')) return 'LLM: paused'
   const queued = jobs.filter((job) => job.status === 'queued').length
-  if (queued > 0) return `Claude: ${queued} queued`
-  return 'Claude: idle'
+  if (queued > 0) return `LLM: ${queued} queued`
+  return 'LLM: idle'
 }
