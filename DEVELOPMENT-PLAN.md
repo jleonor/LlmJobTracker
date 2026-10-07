@@ -1,6 +1,6 @@
 # LocalJobTracker: Development Plan
 
-**Current phase: 2.** Phase 0 and Phase 1 are done. Phase 2 is in progress: steps 1 to 11 are built and committed on `phase-2-profile`. Step 12 (the run on your real files and your review) waits for you. O-08, O-09 and O-10 are answered (D-62 to D-64). Tables are renamed as D-59 proposes (`job_applications`, `status_history`).
+**Current phase: 2, done.** Phase 0 and Phase 1 are done. Phase 2's 12 steps are built and committed on `phase-2-profile`, and every "Done when" item is checked, including step 12 (the run on your real files, which you confirmed in chat on 2026-10-07). Waiting on you to say when to fast-forward `main` to it (D-61). O-08, O-09 and O-10 are answered (D-62 to D-64). Tables are renamed as D-59 proposes (`job_applications`, `status_history`).
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -18,7 +18,7 @@ This plan says what gets built, in what order, and how we know a phase is done. 
 |---|---|---|
 | 0 | Setup | Repo docs, Agent folder, tools checked, Claude runner confirmed |
 | 1 | Skeleton | Backend, UI, runner and database run end to end with fake data |
-| 2 | Profile onboarding | Your files in, a reviewed Fact Sheet out, and the Claude Jobs queue running |
+| 2 | Profile onboarding | Your files in, a reviewed career history, questionnaire analysis and strategy out, and the Claude Jobs queue running |
 | 3 | Tracker | Real data in a table with status history, editable, with file preview |
 | 4 | Add job | A listing (text, URL, HTML file or PDF) becomes a file, a tracker row and a queued positioning Claude Job |
 | 5 | Job workspace | Job page with positioning and match score, tailored CV and cover letter, revised by comment |
@@ -103,8 +103,8 @@ Step list (approved in chat 2026-10-06; starts when you say go. Steps 7 to 9 and
 12. The real-file run: you upload your files, the three Claude Jobs run, and you check the output. Quality is your call.
 
 Done when
-- [ ] The analysis runs on your real files, and you check its output. **Your call, not checked yet**: a career history, a questionnaire analysis and a strategy have all been generated from your real files this session (confirmed via the running app's own data), but you haven't told me you've read them and are satisfied with what they say.
-- [ ] Each document is reviewed by opening its file in the Profile page's upload section (revised 2026-10-07, D-87: there is no longer an in-app viewer). **Your call, not checked yet**: same as above, this needs you to have actually opened and read one.
+- [x] The analysis runs on your real files, and you check its output. (2026-10-07: run on your real CVs, letters and questionnaire this session; you confirmed in chat you are happy with the career history, questionnaire analysis and strategy it produced.)
+- [x] Each document is reviewed by opening its file in the Profile page's upload section (revised 2026-10-07, D-87: there is no longer an in-app viewer). (2026-10-07: you confirmed in chat you are happy with the outputs and with the Profile page and LLM history UI you used to review them.)
 - [x] A queued Claude Job pauses at a simulated plan limit (fake runner) and resumes on click. (2026-10-06: `test_a_plan_limit_pauses_the_job_and_resume_runs_the_prompt_again`. In the browser, Resume on a paused demo job moved it to done, with both prompts done. Screen read through the page text.)
 - [x] Queued Claude Jobs survive an app restart. (2026-10-06: tests in `api/tests/test_claude_job_queue.py` restart the app with a job paused, a job left processing, and a prompt half done. Each comes back as the decisions say (D-62, D-63).)
 - [x] Personal-data scan of the repo is clean. (2026-10-07: every tracked file scanned for the user's name and email, case-insensitive — no matches. Commit messages (`git log --all`) scanned the same way — no matches. `planning/` holds nothing tracked, per `.gitignore`.)
