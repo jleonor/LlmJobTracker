@@ -3,8 +3,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { ApiError, fetchClaudeJobs } from '@/lib/api'
 import type { ClaudeJob } from '@/lib/types'
 
-// How often the queue is read while the app is open. The queue runs in the background.
+// How often the queue is read while nothing is running. Tightened while a job is processing
+// (D-105), so a streaming trace panel has something fresh to show.
 const POLL_MS = 4000
+const ACTIVE_POLL_MS = 1000
 
 export type QueueState = {
   jobs: ClaudeJob[]
@@ -30,9 +32,15 @@ export function useClaudeJobs(): QueueState {
 
   useEffect(() => {
     reload()
-    const timer = window.setInterval(reload, POLL_MS)
-    return () => window.clearInterval(timer)
   }, [reload])
+
+  // Re-evaluated on every poll (jobs is a new array each time), so the cadence adapts as soon
+  // as a job starts or finishes processing.
+  useEffect(() => {
+    const active = jobs.some((job) => job.status === 'processing')
+    const timer = window.setInterval(reload, active ? ACTIVE_POLL_MS : POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [jobs, reload])
 
   return { jobs, error, reload }
 }

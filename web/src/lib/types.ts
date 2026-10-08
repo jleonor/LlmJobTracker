@@ -101,6 +101,8 @@ export type ClaudeJobPrompt = {
   skipped: boolean
   skip_reason: string | null
   answer_chars: number | null
+  // The answer streamed so far, while this prompt is running (D-105). Null once it isn't.
+  live_text: string | null
 }
 
 export type ClaudeJob = {

@@ -4,8 +4,10 @@ Flags follow planning/runner-notes.md, checked against Claude Code 2.1.289. Ever
 restricted: no tools, no MCP servers, no settings files from the working folder, and no
 prompts that could wait for an answer. A dollar cap limits each run.
 
-Output is read as stream-json. A plan limit shows up as a `rate_limit_event` (or an
-`api_retry` with category `rate_limit`) and is raised as RateLimitError (D-63).
+Output is read as stream-json, incrementally: a reader thread parses each line as it arrives,
+so a plan limit or the answer's text (D-105) can be seen before the CLI exits. A plan limit
+shows up as a `rate_limit_event` (or an `api_retry` with category `rate_limit`) and is raised
+as RateLimitError (D-63).
 """
 
 import json
@@ -14,6 +16,7 @@ import shutil
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -43,6 +46,7 @@ def build_args(executable: str, json_schema: dict[str, Any] | None = None) -> li
         "--output-format",
         "stream-json",
         "--verbose",
+        "--include-partial-messages",
         "--restricted",
         "--strict-mcp-config",
         "--tools",
@@ -56,18 +60,44 @@ def build_args(executable: str, json_schema: dict[str, Any] | None = None) -> li
     return args
 
 
+def _parse_event_line(line: str) -> dict[str, Any] | None:
+    stripped = line.strip()
+    if not stripped:
+        return None
+    try:
+        event: Any = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    return event if isinstance(event, dict) else None
+
+
 def _events(stdout: str) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     for line in stdout.splitlines():
-        if not line.strip():
-            continue
-        try:
-            event: Any = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(event, dict):
+        event = _parse_event_line(line)
+        if event is not None:
             events.append(event)
     return events
+
+
+def _partial_text(event: dict[str, Any]) -> str | None:
+    """A text chunk from --include-partial-messages, if this event carries one (D-105).
+
+    Unverified shape: assumes Claude Code wraps the raw Anthropic streaming event under
+    `type: "stream_event"` / `event`, per its headless docs. Confirm against a real streamed
+    run (this step list's real-file run) and adjust here if the shape differs — see
+    planning/runner-notes.md.
+    """
+    if event.get("type") != "stream_event":
+        return None
+    inner = event.get("event")
+    if not isinstance(inner, dict) or inner.get("type") != "content_block_delta":
+        return None
+    delta = inner.get("delta")
+    if not isinstance(delta, dict) or delta.get("type") != "text_delta":
+        return None
+    text = delta.get("text")
+    return text if isinstance(text, str) else None
 
 
 def _rate_limit(events: list[dict[str, Any]]) -> RateLimitError | None:
@@ -164,6 +194,7 @@ class ClaudeCodeRunner:
         prompt: str,
         cancel: threading.Event | None = None,
         json_schema: dict[str, Any] | None = None,
+        on_text: Callable[[str], None] | None = None,
     ) -> RunResult:
         executable = shutil.which("claude")
         if executable is None:
@@ -187,21 +218,53 @@ class ClaudeCodeRunner:
         except BrokenPipeError:
             # The CLI stopped reading early. Its output below says why.
             pass
+
+        # stdout is drained continuously in a thread, not read at exit, so a text chunk (and a
+        # rate-limit event) is visible to on_text before the CLI finishes. stderr is drained too,
+        # only so its pipe never fills and blocks the CLI; nothing currently reads it.
+        lines: list[str] = []
+
+        def read_stdout() -> None:
+            assert process.stdout is not None
+            for line in process.stdout:
+                lines.append(line)
+                event = _parse_event_line(line)
+                if event is None or on_text is None:
+                    continue
+                chunk = _partial_text(event)
+                if chunk:
+                    try:
+                        on_text(chunk)
+                    except Exception:
+                        pass  # a reporting callback must never break the run
+
+        def drain_stderr() -> None:
+            assert process.stderr is not None
+            for _ in process.stderr:
+                pass
+
+        stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+        stderr_thread = threading.Thread(target=drain_stderr, daemon=True)
+        stdout_thread.start()
+        stderr_thread.start()
+
         deadline = started + self.timeout_s
-        while True:
-            try:
-                stdout, _stderr = process.communicate(timeout=POLL_INTERVAL_S)
-                break
-            except subprocess.TimeoutExpired:
-                if cancel is not None and cancel.is_set():
-                    process.terminate()
-                    process.communicate()
-                    return RunResult(ok=False, error="Cancelled.")
-                if time.monotonic() > deadline:
-                    process.kill()
-                    process.communicate()
-                    return RunResult(
-                        ok=False, error=f"Claude Code did not finish in {self.timeout_s:.0f} s."
-                    )
+        while process.poll() is None:
+            if cancel is not None and cancel.is_set():
+                process.terminate()
+                process.wait()
+                stdout_thread.join(timeout=5.0)
+                return RunResult(ok=False, error="Cancelled.")
+            if time.monotonic() > deadline:
+                process.kill()
+                process.wait()
+                stdout_thread.join(timeout=5.0)
+                return RunResult(
+                    ok=False, error=f"Claude Code did not finish in {self.timeout_s:.0f} s."
+                )
+            time.sleep(POLL_INTERVAL_S)
+
+        stdout_thread.join(timeout=5.0)
+        stderr_thread.join(timeout=5.0)
         duration_ms = int((time.monotonic() - started) * 1000)
-        return parse_stream(stdout, process.returncode, duration_ms)
+        return parse_stream("".join(lines), process.returncode, duration_ms)

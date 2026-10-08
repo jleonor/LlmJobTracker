@@ -151,24 +151,37 @@ class _FakeStdin:
 
 
 class _RunningProcess:
-    """Stands in for a CLI process that keeps running until it is terminated."""
+    """Stands in for a Popen process. `returncode` controls what poll() reports.
 
-    def __init__(self) -> None:
+    Left as None (the default), the process looks like it is still running, the way the cancel
+    and timeout tests below need. Set up front, it looks like it already exited, so the run
+    reads `stdout_lines` and returns at once — what the streaming tests need.
+    """
+
+    def __init__(
+        self, stdout_lines: list[str] | None = None, returncode: int | None = None
+    ) -> None:
         self.stdin = _FakeStdin()
+        self.stdout = iter(stdout_lines or [])
+        self.stderr = iter(())
+        self.returncode = returncode
         self.terminated = False
-        self.returncode: int | None = None
 
-    def communicate(self, timeout: float | None = None) -> tuple[str, str]:
-        if self.terminated:
-            self.returncode = 143
-            return "", ""
-        raise subprocess.TimeoutExpired(cmd="claude", timeout=timeout or 0)
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def wait(self, timeout: float | None = None) -> int:
+        if self.returncode is None:
+            self.returncode = 0
+        return self.returncode
 
     def terminate(self) -> None:
         self.terminated = True
+        self.returncode = 143
 
     def kill(self) -> None:
         self.terminated = True
+        self.returncode = 137
 
 
 def test_cancel_terminates_the_cli_process(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -223,7 +236,7 @@ def test_the_prompt_is_written_to_standard_input_not_the_command_line(
 
     def fake_popen(args: list[str], **_kwargs: object) -> _RunningProcess:
         commands.append(args)
-        process.terminated = True  # ends the run at once; the output is not the point here
+        process.returncode = 0  # ends the run at once; the output is not the point here
         return process
 
     monkeypatch.setattr(shutil, "which", lambda _name: "claude")
@@ -256,6 +269,59 @@ def test_a_run_may_take_up_to_fifteen_minutes() -> None:
     assert ClaudeCodeRunner(workdir=Path(".")).timeout_s == 15 * 60
 
 
+def test_build_args_requests_partial_messages() -> None:
+    # Needed for on_text to see any text before the CLI exits (D-105).
+    assert "--include-partial-messages" in build_args("claude")
+
+
+def test_on_text_receives_each_chunk_as_the_cli_streams_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Shape assumed in _partial_text, not yet confirmed against a real run (see
+    # planning/runner-notes.md).
+    chunks = [
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {"type": "text_delta", "text": "Hel"},
+            },
+        },
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {"type": "text_delta", "text": "lo"},
+            },
+        },
+    ]
+    lines = [json.dumps(event) + "\n" for event in (*chunks, RESULT_OK)]
+    process = _RunningProcess(stdout_lines=lines, returncode=0)
+    monkeypatch.setattr(shutil, "which", lambda _name: "claude")
+    monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: process)
+    seen: list[str] = []
+
+    result = ClaudeCodeRunner(workdir=tmp_path).run("Reply with OK.", on_text=seen.append)
+
+    assert seen == ["Hel", "lo"]
+    assert result.ok is True
+    assert result.text == "OK"
+
+
+def test_on_text_is_not_called_for_non_text_events(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    lines = [json.dumps(event) + "\n" for event in (ALLOWED_EVENT, RESULT_OK)]
+    process = _RunningProcess(stdout_lines=lines, returncode=0)
+    monkeypatch.setattr(shutil, "which", lambda _name: "claude")
+    monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: process)
+    seen: list[str] = []
+
+    ClaudeCodeRunner(workdir=tmp_path).run("Reply with OK.", on_text=seen.append)
+
+    assert seen == []
+
+
 def test_the_api_key_is_removed_from_the_environment_of_the_cli(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -265,7 +331,7 @@ def test_the_api_key_is_removed_from_the_environment_of_the_cli(
 
     def fake_popen(_args: list[str], **kwargs: Any) -> _RunningProcess:
         seen["env"] = kwargs["env"]
-        process.terminated = True
+        process.returncode = 0
         return process
 
     monkeypatch.setattr(shutil, "which", lambda _name: "claude")

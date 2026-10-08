@@ -26,6 +26,9 @@ class ClaudeJobPrompt(BaseModel):
     skipped: bool
     skip_reason: str | None
     answer_chars: int | None
+    # The answer streamed so far, while running (D-105). Not a column: the API layer fills it
+    # in from the queue's live state, which is why it is never selected from the database.
+    live_text: str | None = None
 
 
 class ClaudeJob(BaseModel):

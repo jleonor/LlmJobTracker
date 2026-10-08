@@ -100,6 +100,10 @@ class ClaudeJobQueue:
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        # The answer text streamed so far for the one prompt currently running (D-105), keyed
+        # by (claude_job_id, position). Cleared once that prompt's run call returns, however it
+        # ends — the prompt's own row is the record after that, not this.
+        self._live: dict[tuple[int, int], str] = {}
 
     # Calls from the API, or from code that starts work.
 
@@ -130,6 +134,11 @@ class ClaudeJobQueue:
 
     def wake(self) -> None:
         self._wake.set()
+
+    def live_text(self, job_id: int, position: int) -> str | None:
+        """The answer text streamed so far for a running prompt, or None if it isn't live."""
+        with self._lock:
+            return self._live.get((job_id, position))
 
     # The worker thread.
 
@@ -221,19 +230,36 @@ class ClaudeJobQueue:
                     continue
                 text, schema = rendered.text, rendered.json_schema
                 set_prompt_text(conn, prompt.id, text)
+
+            key = (job_id, prompt.position)
+
+            def on_text(chunk: str, key: tuple[int, int] = key) -> None:
+                with self._lock:
+                    self._live[key] = self._live.get(key, "") + chunk
+
+            with self._lock:
+                self._live[key] = ""
             try:
-                result = self._runner.run(text, cancel=cancel, json_schema=schema)
-            except RateLimitError as limit:
-                if self._stop.is_set():
+                try:
+                    result = self._runner.run(
+                        text, cancel=cancel, json_schema=schema, on_text=on_text
+                    )
+                except RateLimitError as limit:
+                    if self._stop.is_set():
+                        return
+                    set_prompt_status(conn, prompt.id, ("running",), "queued")
+                    pause_job(conn, job_id, _paused_message(limit), _resume_time(limit))
                     return
-                set_prompt_status(conn, prompt.id, ("running",), "queued")
-                pause_job(conn, job_id, _paused_message(limit), _resume_time(limit))
-                return
-            except Exception as error:
-                if self._stop.is_set():
+                except Exception as error:
+                    if self._stop.is_set():
+                        return
+                    self._fail_prompt(
+                        conn, job_id, prompt.id, f"The run failed: {error}", None, None
+                    )
                     return
-                self._fail_prompt(conn, job_id, prompt.id, f"The run failed: {error}", None, None)
-                return
+            finally:
+                with self._lock:
+                    self._live.pop(key, None)
             if result.text:
                 store_answer(conn, prompt.id, result.text)
             if self._stop.is_set():

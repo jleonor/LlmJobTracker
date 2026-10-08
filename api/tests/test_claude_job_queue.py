@@ -135,6 +135,7 @@ def test_a_failed_prompt_fails_the_job_and_skips_the_rest(db_path: Path) -> None
             prompt: str,
             cancel: threading.Event | None = None,
             json_schema: dict[str, Any] | None = None,
+            on_text: Any = None,
         ) -> RunResult:
             self.prompts.append(prompt)
             return RunResult(ok=False, error="Claude Code run failed (error_max_budget).")
@@ -238,6 +239,7 @@ def test_cancel_during_a_run_stops_the_prompt_and_keeps_the_job_cancelled(
             prompt: str,
             cancel: threading.Event | None = None,
             json_schema: dict[str, Any] | None = None,
+            on_text: Any = None,
         ) -> RunResult:
             self.started.set()
             assert cancel is not None
@@ -257,6 +259,84 @@ def test_cancel_during_a_run_stops_the_prompt_and_keeps_the_job_cancelled(
 
     assert not worker.is_alive()
     assert read_job(db_path, job_id) == ("cancelled", ["cancelled", "cancelled"])
+
+
+def test_live_text_is_visible_while_running_and_clears_once_it_is_not(db_path: Path) -> None:
+    class StreamingRunner:
+        def __init__(self) -> None:
+            self.chunks_sent = threading.Event()
+            self.release = threading.Event()
+
+        def run(
+            self,
+            prompt: str,
+            cancel: threading.Event | None = None,
+            json_schema: dict[str, Any] | None = None,
+            on_text: Any = None,
+        ) -> RunResult:
+            assert on_text is not None
+            on_text("Hel")
+            on_text("lo")
+            self.chunks_sent.set()
+            self.release.wait(5)
+            return RunResult(ok=True, text="Hello", duration_ms=1, cost_usd=0.0, model="fake")
+
+    streaming = StreamingRunner()
+    queue = ClaudeJobQueue(db_path, streaming)
+    job_id = submit(db_path, queue, "live", ["one"])
+    assert queue.live_text(job_id, 0) is None  # not running yet
+
+    worker = threading.Thread(target=queue.process_next)
+    worker.start()
+    assert streaming.chunks_sent.wait(5)
+
+    assert queue.live_text(job_id, 0) == "Hello"
+
+    streaming.release.set()
+    worker.join(5)
+    assert queue.live_text(job_id, 0) is None  # cleared once the prompt is done
+    assert read_job(db_path, job_id) == ("done", ["done"])
+
+
+def test_the_claude_jobs_list_carries_live_text_for_the_running_prompt(
+    db_path: Path,
+) -> None:
+    class StreamingRunner:
+        def __init__(self) -> None:
+            self.chunk_sent = threading.Event()
+            self.release = threading.Event()
+
+        def run(
+            self,
+            prompt: str,
+            cancel: threading.Event | None = None,
+            json_schema: dict[str, Any] | None = None,
+            on_text: Any = None,
+        ) -> RunResult:
+            assert on_text is not None
+            on_text("Streaming")
+            self.chunk_sent.set()
+            self.release.wait(5)
+            return RunResult(ok=True, text="Streaming answer", duration_ms=1, cost_usd=0.0)
+
+    streaming = StreamingRunner()
+    with client_for(db_path, streaming) as client:
+        queue = queue_of(client)
+        job_id = submit(db_path, queue, "live", ["one"])
+        worker = threading.Thread(target=queue.process_next)
+        worker.start()
+        assert streaming.chunk_sent.wait(5)
+
+        prompt = client.get("/claude-jobs").json()[0]["prompts"][0]
+        assert prompt["status"] == "running"
+        assert prompt["live_text"] == "Streaming"
+
+        streaming.release.set()
+        worker.join(5)
+
+        prompt = client.get("/claude-jobs").json()[0]["prompts"][0]
+        assert prompt["live_text"] is None
+    assert read_job(db_path, job_id) == ("done", ["done"])
 
 
 def test_list_is_in_creation_order_and_hides_prompt_text(
@@ -283,6 +363,7 @@ def test_an_unexpected_runner_error_fails_the_job_with_a_message(db_path: Path) 
             prompt: str,
             cancel: threading.Event | None = None,
             json_schema: dict[str, Any] | None = None,
+            on_text: Any = None,
         ) -> RunResult:
             raise OSError("The filename or extension is too long")
 

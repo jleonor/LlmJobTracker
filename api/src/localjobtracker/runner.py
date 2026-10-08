@@ -1,6 +1,7 @@
 """The runner seam. The app talks to a Runner. Only ClaudeCodeRunner knows Claude Code (D-20)."""
 
 import threading
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -35,12 +36,15 @@ class Runner(Protocol):
         prompt: str,
         cancel: threading.Event | None = None,
         json_schema: dict[str, Any] | None = None,
+        on_text: Callable[[str], None] | None = None,
     ) -> RunResult:
         """Run one prompt. Raise RateLimitError when the plan's limit is hit.
 
         When `cancel` is set during the run, the runner stops the run and returns a failed
         RunResult (SIGTERM for the CLI, runner-notes.md). `json_schema` asks for an answer that
-        follows the schema (the CLI's --json-schema flag).
+        follows the schema (the CLI's --json-schema flag). `on_text`, when given, is called with
+        each chunk of the answer's text as it streams in (D-105) — a runner that cannot stream
+        simply never calls it.
         """
         ...
 
@@ -52,6 +56,9 @@ class FakeRunner:
         self.text = text
         self.prompts: list[str] = []
         self.schemas: list[dict[str, Any] | None] = []
+        # Chunks replayed through on_text before the result is returned, so tests can simulate
+        # a streamed answer without knowing anything about Claude Code's own event shape.
+        self.stream_chunks: list[str] = []
         self._rate_limits_left = 0
         self._resets_at: datetime | None = None
 
@@ -65,10 +72,14 @@ class FakeRunner:
         prompt: str,
         cancel: threading.Event | None = None,
         json_schema: dict[str, Any] | None = None,
+        on_text: Callable[[str], None] | None = None,
     ) -> RunResult:
         self.prompts.append(prompt)
         self.schemas.append(json_schema)
         if self._rate_limits_left > 0:
             self._rate_limits_left -= 1
             raise RateLimitError("Simulated plan limit (fake runner).", self._resets_at)
+        if on_text is not None:
+            for chunk in self.stream_chunks:
+                on_text(chunk)
         return RunResult(ok=True, text=self.text, duration_ms=0, cost_usd=0.0, model="fake-model")

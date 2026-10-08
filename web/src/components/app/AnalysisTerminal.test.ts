@@ -18,6 +18,7 @@ function prompt(overrides: Partial<ClaudeJobPrompt>): ClaudeJobPrompt {
     skipped: false,
     skip_reason: null,
     answer_chars: null,
+    live_text: null,
     ...overrides,
   }
 }

@@ -133,7 +133,7 @@ def create_app(
 
     @app.get("/claude-jobs", response_model=list[ClaudeJob], dependencies=[Depends(require_token)])
     def claude_jobs(conn: Annotated[Connection, Depends(get_db)]) -> list[ClaudeJob]:
-        return list_claude_jobs(conn)
+        return [_with_live_text(queue, job) for job in list_claude_jobs(conn)]
 
     @app.post(
         "/claude-jobs/{job_id}/resume",
@@ -143,7 +143,7 @@ def create_app(
     def resume_claude_job(job_id: int, conn: Annotated[Connection, Depends(get_db)]) -> ClaudeJob:
         if not queue.resume(conn, job_id):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Not paused.")
-        return _job_or_404(conn, job_id)
+        return _with_live_text(queue, _job_or_404(conn, job_id))
 
     @app.get(
         "/claude-jobs/{job_id}/prompts/{position}",
@@ -166,7 +166,7 @@ def create_app(
     def cancel_claude_job(job_id: int, conn: Annotated[Connection, Depends(get_db)]) -> ClaudeJob:
         if not queue.cancel(conn, job_id):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already finished.")
-        return _job_or_404(conn, job_id)
+        return _with_live_text(queue, _job_or_404(conn, job_id))
 
     @app.get(
         "/profile/files",
@@ -267,4 +267,12 @@ def _job_or_404(conn: Connection, job_id: int) -> ClaudeJob:
     job = get_claude_job(conn, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return job
+
+
+def _with_live_text(queue: ClaudeJobQueue, job: ClaudeJob) -> ClaudeJob:
+    """Fill in each running prompt's streamed-so-far text from the queue's live state (D-105)."""
+    for prompt in job.prompts:
+        if prompt.status == "running":
+            prompt.live_text = queue.live_text(job.id, prompt.position)
     return job

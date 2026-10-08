@@ -40,6 +40,7 @@ class CannedRunner:
         prompt: str,
         cancel: threading.Event | None = None,
         json_schema: dict[str, Any] | None = None,
+        on_text: Any = None,
     ) -> RunResult:
         match = TASK_LINE.search(prompt)
         assert match is not None, "every profile prompt names its task"
