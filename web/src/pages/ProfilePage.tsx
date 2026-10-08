@@ -151,36 +151,42 @@ export function ProfilePage({
 
       {state.kind === 'ready' && (
         <>
-          <h2 className="text-sm font-semibold">Your files</h2>
-          {REQUIRED_SECTIONS.map((section) => (
-            <UploadSection
-              key={section.kind}
-              kind={section.kind}
-              title={section.title}
-              hint={section.hint}
-              collapsible={section.collapsible}
-              files={state.files.filter((file) => file.kind === section.kind)}
-              onUploaded={reload}
-            />
-          ))}
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-semibold">Your files</h2>
+          </div>
+          <div className="flex flex-col divide-y divide-border rounded border border-border bg-card">
+            {REQUIRED_SECTIONS.map((section) => (
+              <UploadSection
+                key={section.kind}
+                kind={section.kind}
+                title={section.title}
+                hint={section.hint}
+                collapsible={section.collapsible}
+                files={state.files.filter((file) => file.kind === section.kind)}
+                onUploaded={reload}
+              />
+            ))}
+          </div>
 
-          <div className="flex flex-col gap-1 border-t border-border pt-4">
-            <h2 className="text-sm font-semibold">LLM Generated Profile</h2>
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-semibold">LLM Files</h2>
             <p className="text-xs text-muted-foreground">
               Leave these out and the analysis makes them. Upload one to use yours instead.
             </p>
           </div>
-          {OPTIONAL_SECTIONS.map((section) => (
-            <UploadSection
-              key={section.kind}
-              kind={section.kind}
-              title={section.title}
-              hint={section.hint}
-              collapsible={section.collapsible}
-              files={state.files.filter((file) => file.kind === section.kind)}
-              onUploaded={reload}
-            />
-          ))}
+          <div className="flex flex-col divide-y divide-border rounded border border-border bg-card">
+            {OPTIONAL_SECTIONS.map((section) => (
+              <UploadSection
+                key={section.kind}
+                kind={section.kind}
+                title={section.title}
+                hint={section.hint}
+                collapsible={section.collapsible}
+                files={state.files.filter((file) => file.kind === section.kind)}
+                onUploaded={reload}
+              />
+            ))}
+          </div>
         </>
       )}
 
@@ -286,7 +292,7 @@ function UploadSection({ kind, title, hint, collapsible, files, onUploaded }: Se
   return (
     <section
       aria-labelledby={headingId}
-      className="group/section flex flex-col gap-3 rounded border border-border bg-card p-4"
+      className="group/section flex flex-col gap-3 p-4"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
