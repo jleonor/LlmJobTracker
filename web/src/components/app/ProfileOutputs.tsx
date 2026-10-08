@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button'
 import { ApiError, startProfileAnalysis } from '@/lib/api'
 import type { ClaudeJob } from '@/lib/types'
 
-// Profile analysis on the Profile page (D-58). The three documents (career history,
-// questionnaire analysis, strategy) are read and reopened as files under their own upload
-// sections above (D-84, D-86); nothing about their content is shown here. Running the analysis
-// opens the overlay (brainstorm #2) instead of showing a terminal inline on the page; "View run"
-// reopens it later, whether the job is still going in the background or already finished.
+// Profile analysis sits at the top of the "LLM Files" group (D-58), above the three documents
+// it writes, which are read and reopened as files under their own upload sections below (D-84,
+// D-86); nothing about their content is shown here. Running the analysis opens the overlay
+// (brainstorm #2) instead of showing a terminal inline on the page; "View last run" reopens it
+// later, whether the job is still going in the background or already finished.
 export function ProfileOutputs({
   onChanged,
   refreshKey,
@@ -55,16 +55,13 @@ export function ProfileOutputs({
           </h2>
           <p className="text-xs text-muted-foreground">
             Run the analysis to make what is missing. Anything you uploaded is used as-is. Each
-            document appears as a file under its section above once it is ready.
+            document appears as a file under its section below once it is ready.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={onChanged}>
-            Refresh
-          </Button>
           {analysis && (
             <Button variant="outline" onClick={() => setOverlayOpen(true)}>
-              View run
+              View last run
             </Button>
           )}
           <Button disabled={starting} onClick={() => void handleStart()}>

@@ -1,19 +1,14 @@
 import { useEffect, useState } from 'react'
 
 import { ApiError, fetchPromptExchange } from '@/lib/api'
+import { PROFILE_DOCUMENT_TITLES } from '@/lib/profileDocuments'
 import type { ClaudeJob, ClaudeJobPrompt, PromptExchange } from '@/lib/types'
-
-const PROMPT_LABELS: Record<string, string> = {
-  full_cv_history: 'Career history',
-  questionnaire_analysis: 'Questionnaire report',
-  strategy: 'Strategy',
-}
 
 // A revise prompt's kind is `revise_own_<document kind>` (D-106); the document it is about
 // reads the same label a generating prompt for it would.
 function labelFor(promptKind: string): string {
   const key = promptKind.startsWith('revise_own_') ? promptKind.slice('revise_own_'.length) : promptKind
-  return PROMPT_LABELS[key] ?? promptKind
+  return PROFILE_DOCUMENT_TITLES[key] ?? promptKind
 }
 
 type Line = { time: string | null; text: string; tone: 'info' | 'ok' | 'warn' | 'error' }
@@ -251,7 +246,10 @@ export function splitPromptBlocks(text: string): PromptSegment[] {
   return segments
 }
 
-function PromptSentBlock({ text }: { text: string }) {
+// What was sent to Claude for one prompt, shown as a labelled block with its bulky parts
+// (file and document blocks) collapsed — reused by the analysis overlay's read-only prompt
+// threads, not only this component's own "show the exchange" toggle.
+export function PromptSentBlock({ text }: { text: string }) {
   const segments = splitPromptBlocks(text)
   return (
     <div className="flex flex-col gap-1">

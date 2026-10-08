@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ApiError, fetchProfileOutputs, fetchReviseTurns, postReviseTurn } from '@/lib/api'
+import { PROFILE_DOCUMENT_CONTEXT, PROFILE_DOCUMENT_TITLES } from '@/lib/profileDocuments'
 import type { ProfileOutput, ReviseTurn } from '@/lib/types'
 
 // How often the conversation is read back while the overlay is open (useClaudeJobs.ts's own
@@ -13,21 +14,6 @@ import type { ProfileOutput, ReviseTurn } from '@/lib/types'
 // update promptly once it finishes.
 const POLL_MS = 4000
 const ACTIVE_POLL_MS = 1000
-
-// What is in context for each document's revise conversation (Agent/specs/revise-steps.md),
-// shown as chips so the user can see what the model is reading without opening the prompt
-// itself — context differs by what is being revised, per the brainstorm.
-const CONTEXT: Record<string, string[]> = {
-  full_cv_history: ['Master CVs', 'Older CVs', 'Older cover letters'],
-  questionnaire_analysis: ['Questionnaire', 'Career history'],
-  strategy: ['Questionnaire analysis', 'Career history'],
-}
-
-const TITLES: Record<string, string> = {
-  full_cv_history: 'Career history',
-  questionnaire_analysis: 'Questionnaire report',
-  strategy: 'Strategy',
-}
 
 // The Revise (LLM) overlay (brainstorm #4): the current document on the left, a chat on the
 // right. Each sent message queues one Claude Job (D-106); its turn shows the user's ask plus a
@@ -108,7 +94,7 @@ export function ReviseOverlay({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[85vh] w-full max-w-6xl flex-col gap-3 sm:max-w-6xl">
         <DialogHeader>
-          <DialogTitle>Revise (LLM): {TITLES[outputKind] ?? outputKind}</DialogTitle>
+          <DialogTitle>Revise (LLM): {PROFILE_DOCUMENT_TITLES[outputKind] ?? outputKind}</DialogTitle>
         </DialogHeader>
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="min-h-0 overflow-y-auto rounded border border-border p-3">
@@ -121,7 +107,7 @@ export function ReviseOverlay({
           <div className="flex min-h-0 flex-col gap-2">
             <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
               <span>Context:</span>
-              {(CONTEXT[outputKind] ?? []).map((label) => (
+              {(PROFILE_DOCUMENT_CONTEXT[outputKind] ?? []).map((label) => (
                 <Badge key={label} variant="outline" className="rounded-sm font-mono text-[10px] font-normal">
                   {label}
                 </Badge>

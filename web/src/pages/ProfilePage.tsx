@@ -174,6 +174,7 @@ export function ProfilePage({
               Leave these out and the analysis makes them. Upload one to use yours instead.
             </p>
           </div>
+          <ProfileOutputs onChanged={reload} refreshKey={finishedAnalysis} analysis={analysis ?? null} />
           <div className="flex flex-col divide-y divide-border rounded border border-border bg-card">
             {OPTIONAL_SECTIONS.map((section) => (
               <UploadSection
@@ -189,8 +190,6 @@ export function ProfilePage({
           </div>
         </>
       )}
-
-      <ProfileOutputs onChanged={reload} refreshKey={finishedAnalysis} analysis={analysis ?? null} />
     </section>
   )
 }
