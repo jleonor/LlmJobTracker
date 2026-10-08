@@ -3,6 +3,7 @@
 A Claude Job is a different thing (D-49). It is not stored here.
 """
 
+import json
 import sqlite3
 from datetime import UTC, datetime
 from typing import Any
@@ -62,10 +63,12 @@ def insert_job_application(
             """
             INSERT INTO job_applications (
                 company, role_title, lane, location, work_mode, contract_type,
-                portal_name, portal_url, status, match_score, next_action, due_date
+                portal_name, portal_url, status, match_score, next_action, due_date,
+                description, requirements, notes
             ) VALUES (
                 :company, :role_title, :lane, :location, :work_mode, :contract_type,
-                :portal_name, :portal_url, :status, :match_score, :next_action, :due_date
+                :portal_name, :portal_url, :status, :match_score, :next_action, :due_date,
+                :description, :requirements, :notes
             )
             """,
             {
@@ -81,6 +84,9 @@ def insert_job_application(
                 "match_score": row.get("match_score"),
                 "next_action": row.get("next_action"),
                 "due_date": row.get("due_date"),
+                "description": row.get("description"),
+                "requirements": json.dumps(row.get("requirements", [])),
+                "notes": row.get("notes"),
             },
         )
         application_id = cursor.lastrowid

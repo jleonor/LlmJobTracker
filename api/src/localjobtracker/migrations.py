@@ -24,6 +24,18 @@ _V2_STATUSES = (
 STATUSES = ("Identified", "Applied", "Screening", "Interview", "Offer", "Rejected", "Withdrawn")
 WORK_MODES = ("Onsite", "Hybrid", "Remote", "Unknown")
 CONTRACT_TYPES = ("Full-Time", "Part-Time", "Contract/Short Term", "Other", "Unknown")
+# A Job Application's own files (Agent/specs/files.md, D-111/D-112). "other" is the catch-all
+# the frontend's Additional files subsection already shows anything unmatched under.
+JOB_FILE_KINDS = (
+    "listing",
+    "master_cv",
+    "tailored_cv",
+    "cover_letter",
+    "positioning_breakdown",
+    "eml",
+    "msg",
+    "other",
+)
 
 # Phase 2 values (D-62, D-64, D-66; Agent/specs/profile-steps.md).
 CLAUDE_JOB_STATUSES = ("queued", "processing", "paused", "cancelled", "done", "failed")
@@ -314,6 +326,21 @@ CREATE TABLE revise_turns (
     output_kind TEXT NOT NULL CHECK (output_kind IN ({_in_list(PROFILE_OUTPUT_KINDS)})),
     claude_job_id INTEGER NOT NULL REFERENCES claude_jobs(id) ON DELETE CASCADE,
     message TEXT NOT NULL CHECK (message <> ''),
+    created_at TEXT NOT NULL DEFAULT ({_NOW})
+)
+"""
+
+# Agent/specs/files.md: a Job Application's own files (the listing, CVs, cover letters, the
+# positioning breakdown document, filed emails), stored under
+# %LOCALAPPDATA%\LocalJobTracker\files\<company>\<role_title>\<name>.
+_V15_JOB_FILES = f"""
+CREATE TABLE job_files (
+    id INTEGER PRIMARY KEY,
+    job_application_id INTEGER NOT NULL REFERENCES job_applications(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ({_in_list(JOB_FILE_KINDS)})),
+    name TEXT NOT NULL,
+    stored_path TEXT NOT NULL,
+    date TEXT,
     created_at TEXT NOT NULL DEFAULT ({_NOW})
 )
 """
@@ -658,6 +685,23 @@ MIGRATIONS: tuple[Migration, ...] = (
             "CREATE INDEX revise_turns_by_kind ON revise_turns (output_kind, id)",
         ),
         down=("DROP TABLE revise_turns",),
+    ),
+    Migration(
+        version=15,
+        name="add description/requirements/notes and job_files (Agent/specs/domain.md, files.md)",
+        up=(
+            "ALTER TABLE job_applications ADD COLUMN description TEXT",
+            "ALTER TABLE job_applications ADD COLUMN requirements TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE job_applications ADD COLUMN notes TEXT",
+            _V15_JOB_FILES,
+            "CREATE INDEX job_files_by_job ON job_files (job_application_id, kind)",
+        ),
+        down=(
+            "DROP TABLE job_files",
+            "ALTER TABLE job_applications DROP COLUMN notes",
+            "ALTER TABLE job_applications DROP COLUMN requirements",
+            "ALTER TABLE job_applications DROP COLUMN description",
+        ),
     ),
 )
 

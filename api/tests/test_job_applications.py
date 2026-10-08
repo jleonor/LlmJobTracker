@@ -111,6 +111,51 @@ def test_insert_without_history_starts_as_identified(db_path: Path) -> None:
     assert [h[0] for h in history] == ["Identified"]
 
 
+def test_insert_stores_description_requirements_and_notes(db_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        from localjobtracker.migrations import migrate
+
+        migrate(conn)
+        app_id = insert_job_application(
+            conn,
+            {
+                "company": "Solo Co",
+                "role_title": "Analyst",
+                "description": "What the role is.",
+                "requirements": ["Python", "SQL"],
+                "notes": "Keep an eye on the deadline.",
+            },
+        )
+        row = conn.execute(
+            "SELECT description, requirements, notes FROM job_applications WHERE id = ?",
+            (app_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row["description"] == "What the role is."
+    assert json.loads(row["requirements"]) == ["Python", "SQL"]
+    assert row["notes"] == "Keep an eye on the deadline."
+
+
+def test_insert_defaults_requirements_to_an_empty_list(db_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        from localjobtracker.migrations import migrate
+
+        migrate(conn)
+        app_id = insert_job_application(conn, {"company": "Solo Co", "role_title": "Analyst"})
+        row = conn.execute(
+            "SELECT description, requirements, notes FROM job_applications WHERE id = ?",
+            (app_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row["description"] is None
+    assert json.loads(row["requirements"]) == []
+    assert row["notes"] is None
+
+
 def test_insert_rejects_an_unknown_status(db_path: Path) -> None:
     conn = connect(db_path)
     try:
