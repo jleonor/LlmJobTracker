@@ -295,7 +295,7 @@ function MatchScoreRing({ score }: { score: number }) {
 function ApplicationHistory({ application }: { application: JobApplicationDetail }) {
   return (
     <Section title="Application history" actions={<ActionButtons buttons={SECTION_ACTIONS} />}>
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         <StatusTimeline history={application.status_history} currentStatus={application.status} />
 
         <div className="flex min-w-0 flex-1 flex-col gap-4">
@@ -320,7 +320,7 @@ function EmailsColumn({ files }: { files: JobApplicationFile[] }) {
   const sorted = [...files].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
 
   return (
-    <div className="flex w-full flex-col gap-2 sm:w-56 sm:shrink-0">
+    <div className="flex w-full flex-col gap-2 lg:w-72 lg:shrink-0">
       <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
         Emails
       </span>
@@ -333,10 +333,10 @@ function EmailsColumn({ files }: { files: JobApplicationFile[] }) {
               key={file.name}
               className="group/file flex items-center justify-between gap-2 px-3 py-2 text-sm"
             >
-              <div className="flex min-w-0 flex-col">
+              <div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
                 <span className="truncate">{file.name.replace(/\.(eml|msg)$/i, '')}</span>
                 {file.date && (
-                  <span className="font-mono text-[11px] text-muted-foreground">
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
                     {file.date.slice(0, 10)}
                   </span>
                 )}
