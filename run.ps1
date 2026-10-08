@@ -5,6 +5,7 @@ $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
 if ($Seed) { $env:LJT_DATA_DIR = Join-Path $env:LOCALAPPDATA 'LocalJobTracker-dev' }
+else { Remove-Item Env:\LJT_DATA_DIR -ErrorAction SilentlyContinue }
 if (-not (Test-Path api\.venv)) { Push-Location api; uv sync; Pop-Location }
 if (-not (Test-Path web\node_modules)) { Push-Location web; npm install; Pop-Location }
 if ($Seed) { Push-Location api; uv run python -m localjobtracker.seed; Pop-Location }
