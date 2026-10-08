@@ -127,3 +127,10 @@ export type PromptExchange = {
   result_text: string | null
   error: string | null
 }
+
+// What GET /profile/files/{id}/preview (or a future job-file equivalent) returns, read from the
+// response's content type (D-107, D-109). "pdf" carries a Blob so the caller can build an object
+// URL for an <iframe>; everything else is decoded text.
+export type FilePreviewData =
+  | { kind: 'pdf'; blob: Blob }
+  | { kind: 'text' | 'markdown' | 'html'; text: string }

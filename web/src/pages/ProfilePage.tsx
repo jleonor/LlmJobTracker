@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { FilePreview } from '@/components/app/FilePreview'
 import { ProfileOutputs } from '@/components/app/ProfileOutputs'
 import {
   ApiError,
@@ -353,6 +354,7 @@ function UploadSection({ kind, title, hint, collapsible, files, onUploaded }: Se
 function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   async function open() {
     setBusy(true)
@@ -393,7 +395,10 @@ function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void
           <span className="font-mono text-xs text-muted-foreground">
             {formatSize(file.size_bytes)} · {file.uploaded_at.slice(0, 10)}
           </span>
-          <div className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/file:opacity-100">
+          <div className="flex items-center gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover/file:opacity-100">
+            <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>
+              Preview
+            </Button>
             <Button variant="outline" size="sm" disabled={busy} onClick={() => void open()}>
               Open
             </Button>
@@ -414,6 +419,12 @@ function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void
           {error}
         </p>
       )}
+      <FilePreview
+        source={{ table: 'profile_file', id: file.id }}
+        name={file.original_name}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+      />
     </li>
   )
 }

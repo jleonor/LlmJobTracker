@@ -1,5 +1,6 @@
 import type {
   ClaudeJob,
+  FilePreviewData,
   JobApplication,
   ProfileFile,
   ProfileFileKind,
@@ -120,6 +121,32 @@ export async function openProfileFile(id: number): Promise<void> {
   if (!response.ok) {
     throw new ApiError(await errorMessage(response), response.status)
   }
+}
+
+// Reads the preview the API built for one profile file (D-107), picked by its response's
+// content type rather than the file's own extension, since the API decides what it could
+// convert the file into.
+export async function fetchProfileFilePreview(id: number): Promise<FilePreviewData> {
+  let response: Response
+  try {
+    response = await fetch(`/api/profile/files/${id}/preview`)
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+  const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.includes('application/pdf')) {
+    return { kind: 'pdf', blob: await response.blob() }
+  }
+  if (contentType.includes('text/markdown')) {
+    return { kind: 'markdown', text: await response.text() }
+  }
+  if (contentType.includes('text/html')) {
+    return { kind: 'html', text: await response.text() }
+  }
+  return { kind: 'text', text: await response.text() }
 }
 
 // Removes an upload and its copy (D-82).
