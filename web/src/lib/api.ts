@@ -4,6 +4,7 @@ import type {
   JobApplication,
   ProfileFile,
   ProfileFileKind,
+  ProfileOutput,
   PromptExchange,
   RunResult,
   Settings,
@@ -92,6 +93,12 @@ export async function uploadProfileFile(kind: ProfileFileKind, file: File): Prom
 
 export function startProfileAnalysis(): Promise<ClaudeJob> {
   return request<ClaudeJob>('/api/profile/analysis', { method: 'POST' })
+}
+
+// The newest version of each of the three generated documents, for the analysis overlay's
+// right-hand panes (D-84, D-86).
+export function fetchProfileOutputs(): Promise<ProfileOutput[]> {
+  return request<ProfileOutput[]>('/api/profile/outputs')
 }
 
 export function fetchClaudeJobs(): Promise<ClaudeJob[]> {

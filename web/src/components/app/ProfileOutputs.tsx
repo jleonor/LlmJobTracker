@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 
-import { RunTrace } from '@/components/app/RunTrace'
+import { AnalysisOverlay } from '@/components/app/AnalysisOverlay'
 import { Button } from '@/components/ui/button'
 import { ApiError, startProfileAnalysis } from '@/lib/api'
 import type { ClaudeJob } from '@/lib/types'
 
 // Profile analysis on the Profile page (D-58). The three documents (career history,
 // questionnaire analysis, strategy) are read and reopened as files under their own upload
-// sections above (D-84, D-86); nothing about their content is shown here.
+// sections above (D-84, D-86); nothing about their content is shown here. Running the analysis
+// opens the overlay (brainstorm #2) instead of showing a terminal inline on the page; "View run"
+// reopens it later, whether the job is still going in the background or already finished.
 export function ProfileOutputs({
   onChanged,
   refreshKey,
@@ -21,9 +23,7 @@ export function ProfileOutputs({
 }) {
   const [starting, setStarting] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
-  // Bumped on each click; AnalysisTerminal reacts by hiding the lines it has so far. 0 means
-  // "never cleared".
-  const [clearSignal, setClearSignal] = useState(0)
+  const [overlayOpen, setOverlayOpen] = useState(false)
 
   // When the latest analysis finishes, the file list is read again without a click, so a new
   // or changed document shows up where it can be opened.
@@ -37,8 +37,8 @@ export function ProfileOutputs({
     setStarting(true)
     setNotice(null)
     try {
-      const job = await startProfileAnalysis()
-      setNotice(`Started "${job.label}". It runs in the background; refresh to see the files.`)
+      await startProfileAnalysis()
+      setOverlayOpen(true)
     } catch (error) {
       setNotice(error instanceof ApiError ? error.message : 'The analysis did not start.')
     } finally {
@@ -62,9 +62,11 @@ export function ProfileOutputs({
           <Button variant="outline" onClick={onChanged}>
             Refresh
           </Button>
-          <Button variant="outline" onClick={() => setClearSignal((current) => current + 1)}>
-            Clear
-          </Button>
+          {analysis && (
+            <Button variant="outline" onClick={() => setOverlayOpen(true)}>
+              View run
+            </Button>
+          )}
           <Button disabled={starting} onClick={() => void handleStart()}>
             {starting ? 'Starting...' : 'Run profile analysis'}
           </Button>
@@ -73,7 +75,7 @@ export function ProfileOutputs({
 
       {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
 
-      <RunTrace job={analysis} clearSignal={clearSignal} />
+      <AnalysisOverlay open={overlayOpen} onOpenChange={setOverlayOpen} job={analysis} />
     </section>
   )
 }

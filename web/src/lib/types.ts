@@ -87,6 +87,17 @@ export type ProfileFile = {
   generated: boolean
 }
 
+// The newest version of one of the three generated profile documents (D-86), as /profile/outputs
+// lists it. kind is one of PROMPT_KINDS: full_cv_history, questionnaire_analysis, strategy.
+export type ProfileOutput = {
+  id: number
+  kind: string
+  version: number
+  claude_job_id: number | null
+  document: string
+  created_at: string
+}
+
 // A Claude Job as the API lists it (no prompt text).
 export type ClaudeJobPrompt = {
   position: number
