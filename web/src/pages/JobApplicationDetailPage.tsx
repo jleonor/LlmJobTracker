@@ -90,10 +90,14 @@ function Section({
   children: ReactNode
 }) {
   return (
-    <section className="flex flex-col gap-3 rounded border border-border bg-card p-4">
+    <section className="group/section flex flex-col gap-3 rounded border border-border bg-card p-4">
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-sm font-semibold">{title}</h2>
-        {actions}
+        {actions && (
+          <div className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/section:opacity-100">
+            {actions}
+          </div>
+        )}
       </div>
       {children}
     </section>
@@ -400,19 +404,24 @@ function FileGroup({
   showKind?: boolean
 }) {
   return (
-    <div className="flex flex-col gap-2">
+    <div className="group/subsection flex flex-col gap-2">
       <div className="flex items-center justify-between gap-4">
         <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
           {title}
         </h3>
-        <ActionButtons buttons={SUBSECTION_ACTIONS} />
+        <div className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/subsection:opacity-100">
+          <ActionButtons buttons={SUBSECTION_ACTIONS} />
+        </div>
       </div>
       {files.length === 0 ? (
         <p className="text-sm text-muted-foreground">{empty}</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border rounded border border-border">
           {files.map((file) => (
-            <li key={file.name} className="flex items-center justify-between gap-4 px-3 py-2 text-sm">
+            <li
+              key={file.name}
+              className="group/file flex items-center justify-between gap-4 px-3 py-2 text-sm"
+            >
               <span>{file.name}</span>
               <div className="flex shrink-0 items-center gap-2">
                 {showKind && (
@@ -423,14 +432,11 @@ function FileGroup({
                     {file.kind}
                   </Badge>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled
-                  title="Opening files comes in a later phase"
-                >
-                  Open
-                </Button>
+                <div className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/file:opacity-100">
+                  <Button variant="outline" size="sm" disabled title="Opening files comes in a later phase">
+                    Open
+                  </Button>
+                </div>
               </div>
             </li>
           ))}

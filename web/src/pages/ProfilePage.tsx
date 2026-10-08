@@ -273,7 +273,10 @@ function UploadSection({ kind, title, hint, collapsible, files, onUploaded }: Se
   const headingId = `${kind}-heading`
 
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3 rounded border border-border bg-card p-4">
+    <section
+      aria-labelledby={headingId}
+      className="group/section flex flex-col gap-3 rounded border border-border bg-card p-4"
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 id={headingId} className="text-sm font-semibold">
@@ -286,9 +289,11 @@ function UploadSection({ kind, title, hint, collapsible, files, onUploaded }: Se
               applies to the LLM Generated Profile kinds (own_*), not the plain uploads above. Not
               wired yet — the job page's matching buttons aren't either (D-102). */}
           {kind.startsWith('own_') && (
-            <Button variant="outline" disabled title="Revising with the LLM comes in a later phase">
-              Revise (LLM)
-            </Button>
+            <div className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/section:opacity-100">
+              <Button variant="outline" disabled title="Revising with the LLM comes in a later phase">
+                Revise (LLM)
+              </Button>
+            </div>
           )}
           <input
             ref={input}
@@ -376,7 +381,7 @@ function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void
   }
 
   return (
-    <li className="flex flex-col gap-1 px-3 py-2 text-sm">
+    <li className="group/file flex flex-col gap-1 px-3 py-2 text-sm">
       <div className="flex items-center justify-between gap-4">
         <span className="truncate">
           {file.original_name}
@@ -388,9 +393,11 @@ function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void
           <span className="font-mono text-xs text-muted-foreground">
             {formatSize(file.size_bytes)} · {file.uploaded_at.slice(0, 10)}
           </span>
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => void open()}>
-            Open
-          </Button>
+          <div className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/file:opacity-100">
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => void open()}>
+              Open
+            </Button>
+          </div>
           <Button
             variant="ghost"
             size="sm"
