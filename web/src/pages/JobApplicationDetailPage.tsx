@@ -308,23 +308,63 @@ function StatusTimeline({
   )
 }
 
+// CV and cover letter files don't exist until Phase 5 writes them (D-57); their subsections just
+// read "Not done yet.", matching the Flags wording above, until then.
+const CV_KINDS = new Set(['master_cv', 'tailored_cv'])
+const COVER_LETTER_KINDS = new Set(['cover_letter'])
+
 function Files({ files }: { files: JobApplicationDetail['files'] }) {
+  const listing = files.filter((file) => file.kind === 'listing')
+  const cv = files.filter((file) => CV_KINDS.has(file.kind))
+  const coverLetter = files.filter((file) => COVER_LETTER_KINDS.has(file.kind))
+  const additional = files.filter(
+    (file) =>
+      file.kind !== 'listing' && !CV_KINDS.has(file.kind) && !COVER_LETTER_KINDS.has(file.kind),
+  )
+
   return (
     <Section title="Files">
+      <FileGroup title="Listing" files={listing} empty="No listing file yet." />
+      <FileGroup title="CV" files={cv} empty="Not done yet." />
+      <FileGroup title="Cover letter" files={coverLetter} empty="Not done yet." />
+      <FileGroup title="Additional files" files={additional} empty="No additional files." showKind />
+    </Section>
+  )
+}
+
+function FileGroup({
+  title,
+  files,
+  empty,
+  showKind = false,
+}: {
+  title: string
+  files: JobApplicationDetail['files']
+  empty: string
+  showKind?: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{title}</h3>
       {files.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No files yet.</p>
+        <p className="text-sm text-muted-foreground">{empty}</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border rounded border border-border">
           {files.map((file) => (
             <li key={file.name} className="flex items-center justify-between gap-4 px-3 py-2 text-sm">
               <span>{file.name}</span>
-              <Badge variant="outline" className="rounded-sm font-mono text-[11px] font-normal text-muted-foreground">
-                {file.kind}
-              </Badge>
+              {showKind && (
+                <Badge
+                  variant="outline"
+                  className="rounded-sm font-mono text-[11px] font-normal text-muted-foreground"
+                >
+                  {file.kind}
+                </Badge>
+              )}
             </li>
           ))}
         </ul>
       )}
-    </Section>
+    </div>
   )
 }
