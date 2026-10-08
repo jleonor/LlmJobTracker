@@ -34,14 +34,16 @@ from localjobtracker.profile_files import (
 )
 from localjobtracker.profile_pipeline import (
     PROMPT_KIND_FOR_OWN,
+    PROMPT_KINDS,
     ProfileBusy,
     ProfileNotReady,
     ProfileOutput,
     clear_output,
     list_latest_outputs,
-    make_pipeline,
     submit_profile_analysis,
 )
+from localjobtracker.revise_pipeline import make_pipeline, submit_revise_turn
+from localjobtracker.revise_turns import ReviseTurn, turn_for_job, turns_for_kind
 from localjobtracker.runner import Runner, RunResult
 from localjobtracker.settings import Settings, get_settings, save_settings
 from localjobtracker.storage import connect
@@ -54,6 +56,19 @@ TOKEN_HEADER = "X-Launch-Token"
 
 class SettingsEdit(BaseModel):
     user_name: str
+
+
+class ReviseTurnCreate(BaseModel):
+    message: str
+
+
+class ReviseTurnView(BaseModel):
+    """One chat turn and the Claude Job it queued (D-106)."""
+
+    id: int
+    message: str
+    created_at: str
+    job: ClaudeJob
 
 
 def create_app(
@@ -241,6 +256,44 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         return _job_or_404(conn, job_id)
 
+    @app.get(
+        "/profile/revise/{output_kind}/turns",
+        response_model=list[ReviseTurnView],
+        dependencies=[Depends(require_token)],
+    )
+    def revise_turns_route(
+        output_kind: str, conn: Annotated[Connection, Depends(get_db)]
+    ) -> list[ReviseTurnView]:
+        if output_kind not in PROMPT_KINDS:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return [_revise_turn_view(queue, conn, turn) for turn in turns_for_kind(conn, output_kind)]
+
+    @app.post(
+        "/profile/revise/{output_kind}/turns",
+        response_model=ReviseTurnView,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def start_revise_turn(
+        output_kind: str, body: ReviseTurnCreate, conn: Annotated[Connection, Depends(get_db)]
+    ) -> ReviseTurnView:
+        if output_kind not in PROMPT_KINDS:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            job_id = submit_revise_turn(conn, queue, output_kind, body.message)
+        except ProfileNotReady as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        turn = turn_for_job(conn, job_id)
+        if turn is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return _revise_turn_view(queue, conn, turn)
+
     @app.post(
         "/profile/files/{kind}",
         response_model=ProfileFile,
@@ -276,3 +329,13 @@ def _with_live_text(queue: ClaudeJobQueue, job: ClaudeJob) -> ClaudeJob:
         if prompt.status == "running":
             prompt.live_text = queue.live_text(job.id, prompt.position)
     return job
+
+
+def _revise_turn_view(queue: ClaudeJobQueue, conn: Connection, turn: ReviseTurn) -> ReviseTurnView:
+    job = _job_or_404(conn, turn.claude_job_id)
+    return ReviseTurnView(
+        id=turn.id,
+        message=turn.message,
+        created_at=turn.created_at,
+        job=_with_live_text(queue, job),
+    )

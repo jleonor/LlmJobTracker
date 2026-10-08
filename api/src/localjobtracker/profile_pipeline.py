@@ -303,7 +303,7 @@ def submit_profile_analysis(
 # Building prompts.
 
 
-def _files_block(files: list[InputFile]) -> str:
+def files_block(files: list[InputFile]) -> str:
     blocks = [
         f"=== FILE {file.id} | {file.kind} | {file.name} ===\n"
         f"{file.text}\n=== END FILE {file.id} ==="
@@ -312,27 +312,27 @@ def _files_block(files: list[InputFile]) -> str:
     return "\n\n".join(blocks) if blocks else "(no files)"
 
 
-def _document_block(label: str, stored: tuple[int, str] | None) -> str:
+def document_block(label: str, stored: tuple[int, str] | None) -> str:
     if stored is None:
         raise PromptRejected(f"{label} is needed first, and it has not been stored.")
     _, document = stored
     return f"=== {label} ===\n{document}\n=== END {label} ==="
 
 
-def _inputs_for(conn: sqlite3.Connection, kind: str) -> str:
+def inputs_for(conn: sqlite3.Connection, kind: str) -> str:
     """The material a prompt gets: the files it reads, and the documents it builds on."""
     if kind == "full_cv_history":
-        return _files_block(usable_files(conn, EVIDENCE_KINDS))
+        return files_block(usable_files(conn, EVIDENCE_KINDS))
     if kind == "questionnaire_analysis":
         questionnaire = usable_files(conn, QUESTIONNAIRE_KINDS)
         if not questionnaire:
             raise PromptRejected("The questionnaire has no readable text.")
-        history = _document_block("CAREER HISTORY", latest_document(conn, "full_cv_history"))
-        return "\n\n".join([_files_block(questionnaire), history])
-    analysis = _document_block(
+        history = document_block("CAREER HISTORY", latest_document(conn, "full_cv_history"))
+        return "\n\n".join([files_block(questionnaire), history])
+    analysis = document_block(
         "QUESTIONNAIRE ANALYSIS", latest_document(conn, "questionnaire_analysis")
     )
-    history = _document_block("CAREER HISTORY", latest_document(conn, "full_cv_history"))
+    history = document_block("CAREER HISTORY", latest_document(conn, "full_cv_history"))
     return "\n\n".join([analysis, history])
 
 
@@ -348,14 +348,14 @@ def build_prompt(conn: sqlite3.Connection, prompt: PromptRow, rules_path: Path) 
         own = own_upload(conn, kind)
         if own is None:
             raise PromptRejected("The uploaded file could not be read.")
-        _store_output(conn, kind, own.text, prompt.claude_job_id, [own.sha256], source="imported")
+        store_output(conn, kind, own.text, prompt.claude_job_id, [own.sha256], source="imported")
         return RenderedPrompt(text="", skip=True, skip_message="Skipped: using your own file.")
     rules = writing_rules_text(conn, rules_path)
     parts = [
         f"TASK: {kind}",
         PREAMBLE.format(rules=rules),
         INSTRUCTIONS[kind],
-        _inputs_for(conn, kind),
+        inputs_for(conn, kind),
     ]
     text = "\n\n".join(parts)
     if len(text) > MAX_PROMPT_CHARS:
@@ -368,7 +368,7 @@ def build_prompt(conn: sqlite3.Connection, prompt: PromptRow, rules_path: Path) 
 # Checking answers.
 
 
-def _clean_document(text: str) -> str:
+def clean_document(text: str) -> str:
     """The model's answer, stripped of a wrapping code fence if it added one anyway."""
     cleaned = text.strip()
     if cleaned.startswith("```"):
@@ -398,7 +398,7 @@ def clear_output(conn: sqlite3.Connection, kind: str) -> None:
         conn.execute("DELETE FROM profile_outputs WHERE kind = ?", (kind,))
 
 
-def _store_output(
+def store_output(
     conn: sqlite3.Connection,
     kind: str,
     document: str,
@@ -437,14 +437,14 @@ def make_pipeline(
         kind = prompt.prompt_kind
         if kind not in PROMPT_KINDS:
             return  # Not a profile prompt: the queue stores its answer as it is.
-        document = _clean_document(result.text)
+        document = clean_document(result.text)
         if kind == "full_cv_history":
             hashes = [file.sha256 for file in usable_files(conn, EVIDENCE_KINDS)]
         elif kind == "questionnaire_analysis":
             hashes = [file.sha256 for file in usable_files(conn, QUESTIONNAIRE_KINDS)]
         else:
             hashes = []
-        _store_output(conn, kind, document, prompt.claude_job_id, hashes, source="generated")
+        store_output(conn, kind, document, prompt.claude_job_id, hashes, source="generated")
         own_kind = OWN_KINDS.get(kind)
         if own_kind is not None and own_upload(conn, kind) is None:
             # Nothing of the user's own is in this slot, so the generated output fills it,

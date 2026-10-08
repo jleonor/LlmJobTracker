@@ -308,6 +308,16 @@ CREATE TABLE status_history_old (
 )
 """
 
+_V14_REVISE_TURNS = f"""
+CREATE TABLE revise_turns (
+    id INTEGER PRIMARY KEY,
+    output_kind TEXT NOT NULL CHECK (output_kind IN ({_in_list(PROFILE_OUTPUT_KINDS)})),
+    claude_job_id INTEGER NOT NULL REFERENCES claude_jobs(id) ON DELETE CASCADE,
+    message TEXT NOT NULL CHECK (message <> ''),
+    created_at TEXT NOT NULL DEFAULT ({_NOW})
+)
+"""
+
 
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(
@@ -639,6 +649,15 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE status_history_old RENAME TO status_history",
             "CREATE INDEX status_history_by_job ON status_history (job_application_id, changed_at)",
         ),
+    ),
+    Migration(
+        version=14,
+        name="add revise_turns for the Revise (LLM) chat (D-106)",
+        up=(
+            _V14_REVISE_TURNS,
+            "CREATE INDEX revise_turns_by_kind ON revise_turns (output_kind, id)",
+        ),
+        down=("DROP TABLE revise_turns",),
     ),
 )
 
