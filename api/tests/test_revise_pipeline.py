@@ -16,6 +16,19 @@ from localjobtracker.storage import connect
 TOKEN = "test-token"
 
 
+def rewrite(document: str) -> str:
+    """A MODE: rewrite answer (D-110), the shape every FakeRunner answer used before D-110."""
+    return f"MODE: rewrite\n\n{document}"
+
+
+def edit(*pairs: tuple[str, str]) -> str:
+    """A MODE: edit answer (D-110) made of one or more OLD/NEW blocks."""
+    blocks = "\n\n".join(
+        f"=== EDIT ===\nOLD:\n{old}\nNEW:\n{new}\n=== END EDIT ===" for old, new in pairs
+    )
+    return f"MODE: edit\n\n{blocks}"
+
+
 def seed_document(db_path: Path, kind: str, document: str) -> None:
     conn = connect(db_path)
     try:
@@ -64,7 +77,7 @@ def test_a_turn_sends_the_current_document_and_the_request_and_stores_the_answer
     db_path: Path,
 ) -> None:
     seed_document(db_path, "full_cv_history", "# Career history\n\nOriginal text.")
-    runner = FakeRunner(text="# Career history\n\nPunchier text.")
+    runner = FakeRunner(text=rewrite("# Career history\n\nPunchier text."))
     queue = make_queue(db_path, runner)
 
     job_id = submit(db_path, queue, "full_cv_history", "Make it punchier.")
@@ -89,12 +102,12 @@ def test_a_second_turn_reads_the_first_turns_answer_and_replays_it_as_history(
     db_path: Path,
 ) -> None:
     seed_document(db_path, "full_cv_history", "# Career history\n\nOriginal.")
-    runner = FakeRunner(text="v2")
+    runner = FakeRunner(text=rewrite("v2"))
     queue = make_queue(db_path, runner)
     submit(db_path, queue, "full_cv_history", "First ask.")
     run_all(queue)
 
-    runner.text = "v3"
+    runner.text = rewrite("v3")
     submit(db_path, queue, "full_cv_history", "Second ask.")
     run_all(queue)
 
@@ -139,7 +152,7 @@ def test_an_unknown_output_kind_is_refused(db_path: Path) -> None:
 
 def test_the_revised_document_is_saved_as_a_readable_generated_file(db_path: Path) -> None:
     seed_document(db_path, "full_cv_history", "# Career history\n\nOriginal.")
-    runner = FakeRunner(text="# Career history\n\nRevised.")
+    runner = FakeRunner(text=rewrite("# Career history\n\nRevised."))
     queue = make_queue(db_path, runner)
     submit(db_path, queue, "full_cv_history", "Revise it.")
     run_all(queue)
@@ -151,6 +164,104 @@ def test_the_revised_document_is_saved_as_a_readable_generated_file(db_path: Pat
         conn.close()
     assert len(files) == 1
     assert files[0].generated is True
+
+
+def test_the_prompt_explains_the_edit_and_rewrite_modes(db_path: Path) -> None:
+    seed_document(db_path, "full_cv_history", "# Career history\n\nOriginal.")
+    runner = FakeRunner(text=rewrite("New."))
+    queue = make_queue(db_path, runner)
+    submit(db_path, queue, "full_cv_history", "Make it punchier.")
+    run_all(queue)
+
+    assert "MODE: edit" in runner.prompts[0]
+    assert "MODE: rewrite" in runner.prompts[0]
+    assert "=== EDIT ===" in runner.prompts[0]
+
+
+def test_a_single_edit_is_applied_to_the_current_document(db_path: Path) -> None:
+    seed_document(db_path, "full_cv_history", "# Career history\n\nAnalyst at Example Corp.")
+    runner = FakeRunner(text=edit(("Analyst at Example Corp.", "Senior Analyst at Example Corp.")))
+    queue = make_queue(db_path, runner)
+    submit(db_path, queue, "full_cv_history", "Say senior.")
+    run_all(queue)
+
+    assert (
+        latest_document(db_path, "full_cv_history")
+        == "# Career history\n\nSenior Analyst at Example Corp."
+    )
+
+
+def test_several_edits_are_all_applied(db_path: Path) -> None:
+    seed_document(
+        db_path, "full_cv_history", "# Career history\n\nRole: Analyst.\nYears: 2020-2022."
+    )
+    runner = FakeRunner(
+        text=edit(
+            ("Role: Analyst.", "Role: Senior Analyst."),
+            ("Years: 2020-2022.", "Years: 2020-2023."),
+        )
+    )
+    queue = make_queue(db_path, runner)
+    submit(db_path, queue, "full_cv_history", "Fix the title and the end date.")
+    run_all(queue)
+
+    assert latest_document(db_path, "full_cv_history") == (
+        "# Career history\n\nRole: Senior Analyst.\nYears: 2020-2023."
+    )
+
+
+def test_an_edit_that_does_not_match_fails_the_job_and_leaves_the_document_unchanged(
+    db_path: Path,
+) -> None:
+    seed_document(db_path, "full_cv_history", "# Career history\n\nOriginal text.")
+    runner = FakeRunner(text=edit(("Text that is not in the document", "Replacement")))
+    queue = make_queue(db_path, runner)
+    job_id = submit(db_path, queue, "full_cv_history", "Change something.")
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None
+    assert job.status == "failed"
+    assert "Could not find this text" in (job.error or "")
+    assert latest_document(db_path, "full_cv_history") == "# Career history\n\nOriginal text."
+
+
+def test_an_edit_whose_old_text_is_not_unique_fails_the_job(db_path: Path) -> None:
+    seed_document(db_path, "full_cv_history", "# Career history\n\nAnalyst. Analyst.")
+    runner = FakeRunner(text=edit(("Analyst.", "Senior Analyst.")))
+    queue = make_queue(db_path, runner)
+    job_id = submit(db_path, queue, "full_cv_history", "Fix the title.")
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None
+    assert job.status == "failed"
+    assert "not unique" in (job.error or "")
+
+
+def test_an_answer_with_no_mode_line_fails_the_job(db_path: Path) -> None:
+    seed_document(db_path, "full_cv_history", "# Career history\n\nOriginal.")
+    runner = FakeRunner(text="Just the document, no MODE line.")
+    queue = make_queue(db_path, runner)
+    job_id = submit(db_path, queue, "full_cv_history", "Change something.")
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None
+    assert job.status == "failed"
+    assert "MODE" in (job.error or "")
 
 
 def test_questionnaire_analysis_revise_fails_without_a_questionnaire(db_path: Path) -> None:
@@ -176,7 +287,7 @@ def client_for(db_path: Path, runner: FakeRunner) -> TestClient:
 
 def test_the_api_queues_a_turn_and_lists_it_once_done(db_path: Path) -> None:
     seed_document(db_path, "full_cv_history", "# Career history\n\nOriginal.")
-    runner = FakeRunner(text="# Career history\n\nRevised via chat.")
+    runner = FakeRunner(text=rewrite("# Career history\n\nRevised via chat."))
     with client_for(db_path, runner) as client:
         app = client.app
         assert isinstance(app, FastAPI)

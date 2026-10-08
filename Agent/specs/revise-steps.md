@@ -37,16 +37,46 @@ In this order:
    requested and can confirm each was addressed.
 5. **The user's new message** for this turn.
 
-## Answer
+## Answer (D-110)
 
-One Markdown document, in the same voice and structure as the document it replaces — same rule as
-`profile-steps.md`'s "Answer." No surrounding JSON, no code fence, no commentary about what
-changed outside the document itself (the chat reply shown to the user is built from the job's own
-metadata — started, streamed, done — not a separate "here's what I did" message the model writes;
-see Trace below).
+The answer chooses one of two modes, declared on its first line:
 
-Code checks: the answer is not empty. Same size cap as `profile-steps.md` (150,000 characters
-built) applies to the whole prompt, context files included.
+- **`MODE: edit`** — for most requests. A list of one or more exact text replacements, each one
+  block:
+
+  ```
+  === EDIT ===
+  OLD:
+  <text copied character for character from the current document, unique within it>
+  NEW:
+  <replacement text>
+  === END EDIT ===
+  ```
+
+  Code applies each edit in order: `OLD` must appear in the current document exactly once, the
+  same invariant Claude Code's own edit tool enforces. If it does not — not found, or found more
+  than once — the prompt fails with that reason, and the document is left unchanged; there is no
+  automatic retry and no silent fallback to a rewrite. The user sends another turn to try again.
+
+- **`MODE: rewrite`** — only when the request cannot be expressed as a small number of edits, for
+  example reorganising the whole document. The full document follows, as Markdown, the same shape
+  `profile-steps.md`'s "Answer" describes: no surrounding JSON, no code fence, no commentary.
+
+A full rewrite was the only option before D-110, and it reworded parts of the document the user
+never asked to change, even when told to keep its structure. An edit, verbatim-matched by code
+before it is applied, cannot touch anything it was not given — closer to how a person edits a
+document, and closer to what the brainstorm asked for ("how Claude Code does it") without giving
+Claude a file-editing tool (D-85/86's no-tools design stays as it is; the `=== EDIT ===` block
+reuses the same delimiter convention the prompt's own file and document blocks already use,
+rather than the runner's `--json-schema` path, which stays unverified live — runner-notes.md).
+
+No separate "here's what I did" message outside the edits or the document: the chat reply shown
+to the user is built from the job's own metadata — started, streamed, done — same as before (see
+Trace below).
+
+Code checks: the mode line is present and recognised, and the edit or document body is not
+empty. Same size cap as `profile-steps.md` (150,000 characters built) applies to the whole
+prompt, context files included.
 
 ## Trace (D-105)
 

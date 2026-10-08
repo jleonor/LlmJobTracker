@@ -7,12 +7,21 @@ prompt is built when the job runs, not when it is queued, so it always reads the
 document and the latest context files, even if an earlier turn in the same conversation is
 still queued or has failed.
 
+The answer picks its own mode (D-110): MODE: edit, a list of exact old-text/new-text
+replacements applied by code, for most requests; MODE: rewrite, the full document, only when
+the request cannot be expressed as a small number of such edits. A full-document answer, asked
+for every time, tended to reword parts of the document the user never asked to change, even
+when told to keep its structure — a code-applied, verbatim-matched edit cannot touch anything
+it was not given.
+
 The result of a turn is stored exactly where a fresh generation would be (profile_outputs,
 and the generated file in its own_* slot, D-84) — a revised document is not a different kind
 of thing from a generated one, just a later version of it.
 """
 
+import re
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -59,22 +68,100 @@ DOCUMENT_LABELS: Final[dict[str, str]] = {
 
 INSTRUCTIONS: Final[dict[str, str]] = {
     "full_cv_history": (
-        "Revise the career history below to satisfy the user's request in this conversation, "
-        "keeping its structure and its sourcing style (saying in words which file a claim comes "
-        "from where it matters). Use only what the career history, the CVs and the letters below "
-        "state; do not invent or embellish a claim to satisfy the request."
+        "Revise the career history below to satisfy the user's request in this conversation. "
+        "Use only what the career history, the CVs and the letters below state; do not invent "
+        "or embellish a claim to satisfy the request."
     ),
     "questionnaire_analysis": (
         "Revise the questionnaire report below to satisfy the user's request in this "
-        "conversation, keeping its section structure. Use only what the questionnaire and the "
-        "career history below state."
+        "conversation. Use only what the questionnaire and the career history below state."
     ),
     "strategy": (
         "Revise the positioning strategy below to satisfy the user's request in this "
-        "conversation, keeping its section structure and the 'lane' terminology. Use only what "
-        "the questionnaire analysis and the career history below state."
+        "conversation. Use only what the questionnaire analysis and the career history below "
+        "state."
     ),
 }
+
+# The delimiter convention mirrors the one the prompt's own FILE and document blocks already
+# use (profile_pipeline.py's files_block/document_block), since the model has just read several
+# examples of it in this same prompt.
+EDIT_FORMAT_INSTRUCTIONS: Final = """How to answer: choose one mode, and start your answer with
+exactly one of these two lines, then a blank line, then the edits or the document.
+
+MODE: edit — for most requests: anything that changes, adds, or removes specific parts of the
+document without touching the rest. List each change as one block:
+
+=== EDIT ===
+OLD:
+<the exact text being replaced, copied character for character from the current document above,
+with enough surrounding context that it appears only once in it>
+NEW:
+<the replacement text>
+=== END EDIT ===
+
+Use as many === EDIT === blocks as the request needs. OLD must match the current document
+exactly and appear in it exactly once — do not paraphrase it. Keep each OLD as short as it can
+be while still being unique.
+
+MODE: rewrite — only when the request cannot be expressed as a small number of such edits, for
+example reorganising the whole document. Answer with the full revised document, as Markdown,
+and nothing else, right after the MODE line."""
+
+
+_MODE_LINE = re.compile(r"^MODE:\s*(edit|rewrite)\s*$", re.IGNORECASE | re.MULTILINE)
+_EDIT_BLOCK = re.compile(r"=== EDIT ===\nOLD:\n(.*?)\nNEW:\n(.*?)\n=== END EDIT ===", re.DOTALL)
+
+
+@dataclass(frozen=True)
+class RewriteAnswer:
+    document: str
+
+
+@dataclass(frozen=True)
+class EditAnswer:
+    # (old_text, new_text) pairs, in the order the model gave them.
+    edits: list[tuple[str, str]]
+
+
+def parse_revise_answer(text: str) -> RewriteAnswer | EditAnswer:
+    """Read a revise answer's chosen mode (D-110) and its edits or document.
+
+    Raises PromptRejected if the mode line or its body is missing or malformed — the same way
+    a built prompt is rejected, not silently guessed at.
+    """
+    match = _MODE_LINE.search(text)
+    if match is None:
+        raise PromptRejected('The answer did not start with "MODE: edit" or "MODE: rewrite".')
+    mode = match.group(1).lower()
+    rest = text[match.end() :].strip()
+    if mode == "rewrite":
+        if not rest:
+            raise PromptRejected("The answer was empty.")
+        return RewriteAnswer(document=rest)
+    edits = [
+        (block.group(1).strip(), block.group(2).strip()) for block in _EDIT_BLOCK.finditer(rest)
+    ]
+    edits = [(old, new) for old, new in edits if old]
+    if not edits:
+        raise PromptRejected("MODE: edit was given, but no === EDIT === blocks were found.")
+    return EditAnswer(edits=edits)
+
+
+def apply_edits(document: str, edits: list[tuple[str, str]]) -> str:
+    """Apply each (old_text, new_text) pair in order, the same way Claude Code's own edit tool
+    would: OLD must appear in the document exactly once, so the change is unambiguous."""
+    result = document
+    for old_text, new_text in edits:
+        count = result.count(old_text)
+        if count == 0:
+            raise PromptRejected(f"Could not find this text to change: {old_text[:80]!r}")
+        if count > 1:
+            raise PromptRejected(
+                f"This text to change is not unique in the document: {old_text[:80]!r}"
+            )
+        result = result.replace(old_text, new_text, 1)
+    return result
 
 
 def output_kind_for(prompt_kind: str) -> str | None:
@@ -139,6 +226,7 @@ def build_revise_prompt(
         document_block(f"CURRENT {DOCUMENT_LABELS[output_kind]}", stored),
         _history_block(history),
         f"=== THE USER'S NEW REQUEST ===\n{turn.message}\n=== END REQUEST ===",
+        EDIT_FORMAT_INSTRUCTIONS,
     ]
     text = "\n\n".join(parts)
     if len(text) > MAX_PROMPT_CHARS:
@@ -154,7 +242,15 @@ def _store_revise_result(
     output_kind = output_kind_for(prompt.prompt_kind)
     if output_kind is None:
         return
-    document = clean_document(result.text)
+    answer = parse_revise_answer(result.text)
+    if isinstance(answer, RewriteAnswer):
+        document = clean_document(answer.document)
+    else:
+        stored = latest_document(conn, output_kind)
+        if stored is None:
+            raise PromptRejected(f"There is no {output_kind} document anymore to edit.")
+        _, current = stored
+        document = clean_document(apply_edits(current, answer.edits))
     if output_kind == "full_cv_history":
         hashes = [file.sha256 for file in usable_files(conn, EVIDENCE_KINDS)]
     elif output_kind == "questionnaire_analysis":
