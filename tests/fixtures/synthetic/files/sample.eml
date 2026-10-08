@@ -1,0 +1,28 @@
+From: hiring@example.com
+To: candidate@example.com
+Subject: Interview availability
+Date: Tue, 06 Oct 2026 09:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============6869460577555580316=="
+
+--===============6869460577555580316==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Hi,
+
+Are you free Thursday at 2pm for a call?
+
+Best,
+Sam
+
+--===============6869460577555580316==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<p>Hi,</p><p>Are you free <b>Thursday at 2pm</b> for a call?</p><script>alert=
+('should be stripped')</script><p>Best,<br>Sam</p>
+
+--===============6869460577555580316==--

@@ -5,10 +5,10 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from sqlite3 import Connection
-from typing import Annotated
+from typing import Annotated, Final
 from urllib.parse import unquote
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel
 
 from localjobtracker.claude_job_queue import ClaudeJobQueue
@@ -20,6 +20,7 @@ from localjobtracker.claude_jobs import (
     prompt_exchange,
     recover_interrupted,
 )
+from localjobtracker.file_preview import UnsupportedPreview, preview_for
 from localjobtracker.job_applications import JobApplication, list_job_applications
 from localjobtracker.profile_files import (
     ProfileFile,
@@ -52,6 +53,15 @@ from localjobtracker.storage import connect
 CHECK_PROMPT = "Reply with the single word OK."
 
 TOKEN_HEADER = "X-Launch-Token"
+
+# The content type the browser is told for each file_preview.Preview.kind (D-107). The frontend
+# picks how to render a preview from this header, not from the file's own extension.
+PREVIEW_MEDIA_TYPES: Final[dict[str, str]] = {
+    "pdf": "application/pdf",
+    "text": "text/plain; charset=utf-8",
+    "markdown": "text/markdown; charset=utf-8",
+    "html": "text/html; charset=utf-8",
+}
 
 
 class SettingsEdit(BaseModel):
@@ -230,6 +240,26 @@ def create_app(
         if text is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         return text
+
+    @app.get("/profile/files/{file_id}/preview", dependencies=[Depends(require_token)])
+    def profile_file_preview(
+        file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> Response:
+        path = profile_file_path(conn, db_path.parent, file_id)
+        if path is None or not path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            preview = preview_for(path.name, path.read_bytes())
+        except UnsupportedPreview as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+            ) from error
+        content = (
+            preview.content
+            if isinstance(preview.content, bytes)
+            else preview.content.encode("utf-8")
+        )
+        return Response(content=content, media_type=PREVIEW_MEDIA_TYPES[preview.kind])
 
     @app.get(
         "/profile/outputs",

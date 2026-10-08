@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Local job application tracker API"
 requires-python = ">=3.12"
 dependencies = [
+    "bleach>=6.4.0",
+    "dxpdf>=0.8.1",
+    "extract-msg>=0.56.1",
     "fastapi>=0.115",
     "pypdf>=6.19.0",
     "python-docx>=1.2.0",
@@ -17,6 +20,7 @@ dev = [
     "mypy>=1.13",
     "pytest>=8.3",
     "ruff>=0.8",
+    "types-bleach>=6.4.0.20260728",
 ]
 
 [build-system]
@@ -33,6 +37,12 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.mypy]
 strict = true
 files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+# No stub package exists for dxpdf (D-107: chosen for docx preview, verified by a real
+# conversion against tests/fixtures/synthetic/profile/cv_en.docx).
+module = "dxpdf"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
