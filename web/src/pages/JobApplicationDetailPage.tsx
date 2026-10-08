@@ -6,7 +6,7 @@ import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { EmailSummary, JobApplicationDetail, StatusHistoryEntry } from '@/lib/types'
+import type { JobApplicationDetail, JobApplicationFile, StatusHistoryEntry } from '@/lib/types'
 
 // The statuses that count as forward progress (D-44). Rejected and Withdrawn are end states,
 // reached from wherever the application was, not a further step in this sequence.
@@ -306,18 +306,18 @@ function ApplicationHistory({ application }: { application: JobApplicationDetail
           <Field label="Due date">{application.due_date ?? EMPTY}</Field>
         </div>
 
-        <EmailsColumn emails={application.emails} />
+        <EmailsColumn files={application.files.filter((file) => EMAIL_KINDS.has(file.kind))} />
       </div>
     </Section>
   )
 }
 
-// Email history (D-57, D-111): every filed .eml/.msg for this application, newest first.
-// Preview is disabled for the same reason Files' Open is (D-109): there is no job-file table
-// yet for FilePreview's second case to read from. Clicking an email will open that overlay
-// once Phase 3's file-links migration (and Phase 6's "Add email") land.
-function EmailsColumn({ emails }: { emails: EmailSummary[] }) {
-  const sorted = [...emails].sort((a, b) => b.date.localeCompare(a.date))
+// Email history (D-57, D-111): the same `files` array Additional files reads, filtered to the
+// eml/msg kinds and sorted newest first — not a second list, so an email can only show here if
+// it is also filed there (D-112). Preview is disabled for the same reason Files' Open is
+// (D-109): there is no job-file table yet for FilePreview's second case to read from.
+function EmailsColumn({ files }: { files: JobApplicationFile[] }) {
+  const sorted = [...files].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
 
   return (
     <div className="flex w-full flex-col gap-2 sm:w-56 sm:shrink-0">
@@ -328,16 +328,18 @@ function EmailsColumn({ emails }: { emails: EmailSummary[] }) {
         <p className="text-sm text-muted-foreground">No emails yet.</p>
       ) : (
         <ul className="flex max-h-48 flex-col divide-y divide-border overflow-y-auto rounded border border-border">
-          {sorted.map((email) => (
+          {sorted.map((file) => (
             <li
-              key={email.id}
+              key={file.name}
               className="group/file flex items-center justify-between gap-2 px-3 py-2 text-sm"
             >
               <div className="flex min-w-0 flex-col">
-                <span className="truncate">{email.subject}</span>
-                <span className="font-mono text-[11px] text-muted-foreground">
-                  {email.date.slice(0, 10)}
-                </span>
+                <span className="truncate">{file.name.replace(/\.(eml|msg)$/i, '')}</span>
+                {file.date && (
+                  <span className="font-mono text-[11px] text-muted-foreground">
+                    {file.date.slice(0, 10)}
+                  </span>
+                )}
               </div>
               <div className="shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover/file:opacity-100">
                 <Button
@@ -420,6 +422,9 @@ function StatusTimeline({
 // read "Not done yet.", matching the Flags wording above, until then.
 const CV_KINDS = new Set(['master_cv', 'tailored_cv'])
 const COVER_LETTER_KINDS = new Set(['cover_letter'])
+// The Emails column (D-111) is this same set read out of `files`, not a second list, so an
+// email can only show there if it is also a file in Additional files (D-112).
+const EMAIL_KINDS = new Set(['eml', 'msg'])
 
 function Files({ files }: { files: JobApplicationDetail['files'] }) {
   const listing = files.filter((file) => file.kind === 'listing')

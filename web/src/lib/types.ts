@@ -18,16 +18,10 @@ export type StatusHistoryEntry = {
 export type JobApplicationFile = {
   name: string
   kind: string
-}
-
-// One filed email (D-57, D-111), previewed from its .eml/.msg file the same way a listed file
-// is (FilePreview, D-107) — once a job application's own files have a real table to read from
-// (D-109 notes this still waits on Phase 3's file-links migration).
-export type EmailSummary = {
-  id: string
-  subject: string
-  date: string
-  kind: 'eml' | 'msg'
+  // When this file is an email (kind "eml" or "msg"), the date it was received. The Application
+  // history page's Emails column (D-111) is this same array filtered to those two kinds, sorted
+  // by this field — an email can only show there if it is also listed as a file (D-112).
+  date?: string
 }
 
 // A Job Application's own Claude Jobs (D-49 to D-52), shown beside its status tag (D-56). Idle
@@ -58,7 +52,6 @@ export type JobApplicationDetail = JobApplication & {
   due_date: string | null
   status_history: StatusHistoryEntry[]
   files: JobApplicationFile[]
-  emails: EmailSummary[]
 }
 
 export type RunResult = {
