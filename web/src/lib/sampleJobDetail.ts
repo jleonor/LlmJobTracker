@@ -51,6 +51,14 @@ const SAMPLES_BY_COMPANY: Record<string, SampleDetail> = {
       { name: 'listing.txt', kind: 'listing' },
       { name: 'Positioning breakdown.md', kind: 'positioning_breakdown' },
     ],
+    emails: [
+      {
+        id: 'northwind-1',
+        subject: 'Thanks for applying to Northwind Analytics',
+        date: '2026-10-01T10:35:00Z',
+        kind: 'eml',
+      },
+    ],
   },
   'Contoso Health': {
     queue_status: 'idle',
@@ -80,6 +88,7 @@ const SAMPLES_BY_COMPANY: Record<string, SampleDetail> = {
       { name: 'listing.txt', kind: 'listing' },
       { name: 'Positioning breakdown.md', kind: 'positioning_breakdown' },
     ],
+    emails: [],
   },
   'Fabrikam Logistics': {
     queue_status: 'processing',
@@ -118,6 +127,26 @@ const SAMPLES_BY_COMPANY: Record<string, SampleDetail> = {
       { name: 'listing.txt', kind: 'listing' },
       { name: 'Positioning breakdown.md', kind: 'positioning_breakdown' },
     ],
+    emails: [
+      {
+        id: 'fabrikam-3',
+        subject: 'Interview confirmation — Operations Analyst',
+        date: '2026-10-03T15:00:00Z',
+        kind: 'eml',
+      },
+      {
+        id: 'fabrikam-2',
+        subject: 'Next step: a short assessment',
+        date: '2026-09-29T11:10:00Z',
+        kind: 'msg',
+      },
+      {
+        id: 'fabrikam-1',
+        subject: 'Your application to Fabrikam Logistics',
+        date: '2026-09-22T14:05:00Z',
+        kind: 'eml',
+      },
+    ],
   },
   'Litware Finance': {
     queue_status: 'queued',
@@ -136,6 +165,7 @@ const SAMPLES_BY_COMPANY: Record<string, SampleDetail> = {
     due_date: null,
     status_history: [{ status: 'Identified', changed_at: '2026-10-04T07:45:00Z' }],
     files: [],
+    emails: [],
   },
   'Adatum Retail': {
     queue_status: 'idle',
@@ -170,6 +200,20 @@ const SAMPLES_BY_COMPANY: Record<string, SampleDetail> = {
       { name: 'listing.txt', kind: 'listing' },
       { name: 'Positioning breakdown.md', kind: 'positioning_breakdown' },
     ],
+    emails: [
+      {
+        id: 'adatum-2',
+        subject: 'Update on your application',
+        date: '2026-09-25T13:05:00Z',
+        kind: 'eml',
+      },
+      {
+        id: 'adatum-1',
+        subject: 'We received your application — Insights Lead',
+        date: '2026-09-12T09:10:00Z',
+        kind: 'eml',
+      },
+    ],
   },
   'Tailspin Energy': {
     queue_status: 'failed',
@@ -199,6 +243,14 @@ const SAMPLES_BY_COMPANY: Record<string, SampleDetail> = {
       { name: 'listing.txt', kind: 'listing' },
       { name: 'Positioning breakdown.md', kind: 'positioning_breakdown' },
     ],
+    emails: [
+      {
+        id: 'tailspin-1',
+        subject: 'Thanks for your application — Commercial Analyst',
+        date: '2026-10-01T09:05:00Z',
+        kind: 'msg',
+      },
+    ],
   },
 }
 
@@ -219,6 +271,7 @@ const FALLBACK_DETAIL: SampleDetail = {
   due_date: null,
   status_history: [],
   files: [],
+  emails: [],
 }
 
 // Merges a table row with its seed detail fields, by company (the seed fixture has one role per

@@ -6,7 +6,7 @@ import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { JobApplicationDetail, StatusHistoryEntry } from '@/lib/types'
+import type { EmailSummary, JobApplicationDetail, StatusHistoryEntry } from '@/lib/types'
 
 // The statuses that count as forward progress (D-44). Rejected and Withdrawn are end states,
 // reached from wherever the application was, not a further step in this sequence.
@@ -298,15 +298,62 @@ function ApplicationHistory({ application }: { application: JobApplicationDetail
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
         <StatusTimeline history={application.status_history} currentStatus={application.status} />
 
-        <div className="flex flex-1 flex-col gap-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
           <Field label="Notes">
             {application.notes ?? <span className="text-muted-foreground">No notes.</span>}
           </Field>
           <Field label="Next action">{application.next_action ?? EMPTY}</Field>
           <Field label="Due date">{application.due_date ?? EMPTY}</Field>
         </div>
+
+        <EmailsColumn emails={application.emails} />
       </div>
     </Section>
+  )
+}
+
+// Email history (D-57, D-111): every filed .eml/.msg for this application, newest first.
+// Preview is disabled for the same reason Files' Open is (D-109): there is no job-file table
+// yet for FilePreview's second case to read from. Clicking an email will open that overlay
+// once Phase 3's file-links migration (and Phase 6's "Add email") land.
+function EmailsColumn({ emails }: { emails: EmailSummary[] }) {
+  const sorted = [...emails].sort((a, b) => b.date.localeCompare(a.date))
+
+  return (
+    <div className="flex w-full flex-col gap-2 sm:w-56 sm:shrink-0">
+      <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+        Emails
+      </span>
+      {sorted.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No emails yet.</p>
+      ) : (
+        <ul className="flex max-h-48 flex-col divide-y divide-border overflow-y-auto rounded border border-border">
+          {sorted.map((email) => (
+            <li
+              key={email.id}
+              className="group/file flex items-center justify-between gap-2 px-3 py-2 text-sm"
+            >
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate">{email.subject}</span>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  {email.date.slice(0, 10)}
+                </span>
+              </div>
+              <div className="shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover/file:opacity-100">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled
+                  title="Previewing emails comes once the job's own files are wired up"
+                >
+                  Preview
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 

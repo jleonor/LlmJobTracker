@@ -20,6 +20,16 @@ export type JobApplicationFile = {
   kind: string
 }
 
+// One filed email (D-57, D-111), previewed from its .eml/.msg file the same way a listed file
+// is (FilePreview, D-107) — once a job application's own files have a real table to read from
+// (D-109 notes this still waits on Phase 3's file-links migration).
+export type EmailSummary = {
+  id: string
+  subject: string
+  date: string
+  kind: 'eml' | 'msg'
+}
+
 // A Job Application's own Claude Jobs (D-49 to D-52), shown beside its status tag (D-56). Idle
 // means nothing is queued for this application; the rest mirror CLAUDE_JOB_STATUSES.
 export type QueueStatus = 'idle' | 'queued' | 'processing' | 'paused' | 'cancelled' | 'done' | 'failed'
@@ -48,6 +58,7 @@ export type JobApplicationDetail = JobApplication & {
   due_date: string | null
   status_history: StatusHistoryEntry[]
   files: JobApplicationFile[]
+  emails: EmailSummary[]
 }
 
 export type RunResult = {
