@@ -174,8 +174,8 @@ export function ProfilePage({
               Leave these out and the analysis makes them. Upload one to use yours instead.
             </p>
           </div>
-          <ProfileOutputs onChanged={reload} refreshKey={finishedAnalysis} analysis={analysis ?? null} />
           <div className="flex flex-col divide-y divide-border rounded border border-border bg-card">
+            <ProfileOutputs onChanged={reload} refreshKey={finishedAnalysis} analysis={analysis ?? null} />
             {OPTIONAL_SECTIONS.map((section) => (
               <UploadSection
                 key={section.kind}
@@ -287,6 +287,13 @@ function UploadSection({ kind, title, hint, collapsible, files, onUploaded }: Se
   }
 
   const headingId = `${kind}-heading`
+  // A multi-file kind (collapsible, D-91) can always take another upload; a single-file kind
+  // (D-88, D-92, D-84) only needs the button until it has its one file — uploading a second
+  // would just replace it, so the button would have nothing left to do.
+  const showUpload = collapsible || files.length === 0
+  // Revise (LLM) only makes sense once there is something to revise, generated or uploaded
+  // alike (D-102) — not applicable to the plain uploads above the LLM Generated Profile kinds.
+  const showRevise = outputKind !== undefined && files.length > 0
 
   return (
     <section
@@ -300,21 +307,14 @@ function UploadSection({ kind, title, hint, collapsible, files, onUploaded }: Se
           </h2>
           <p className="text-xs text-muted-foreground">{hint}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover/section:opacity-100">
           {/* Revise (LLM) lets the user give extra input to redo this generated document; it only
               applies to the LLM Generated Profile kinds (own_*), not the plain uploads above
               (D-102). The Job Application page's matching buttons aren't wired yet (D-103). */}
-          {outputKind && (
-            <div className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/section:opacity-100">
-              <Button
-                variant="outline"
-                disabled={files.length === 0}
-                title={files.length === 0 ? 'Run the analysis first' : undefined}
-                onClick={() => setReviseOpen(true)}
-              >
-                Revise (LLM)
-              </Button>
-            </div>
+          {showRevise && (
+            <Button variant="outline" onClick={() => setReviseOpen(true)}>
+              Revise (LLM)
+            </Button>
           )}
           <input
             ref={input}
@@ -326,13 +326,11 @@ function UploadSection({ kind, title, hint, collapsible, files, onUploaded }: Se
             aria-label={`Choose files for ${title}`}
             onChange={(event) => void handleChosen(event.target.files)}
           />
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={() => input.current?.click()}
-          >
-            {busy ? 'Uploading...' : 'Upload'}
-          </Button>
+          {showUpload && (
+            <Button variant="outline" disabled={busy} onClick={() => input.current?.click()}>
+              {busy ? 'Uploading...' : 'Upload'}
+            </Button>
+          )}
         </div>
       </div>
 

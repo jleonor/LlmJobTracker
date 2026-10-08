@@ -5,11 +5,12 @@ import { Button } from '@/components/ui/button'
 import { ApiError, startProfileAnalysis } from '@/lib/api'
 import type { ClaudeJob } from '@/lib/types'
 
-// Profile analysis sits at the top of the "LLM Files" group (D-58), above the three documents
-// it writes, which are read and reopened as files under their own upload sections below (D-84,
-// D-86); nothing about their content is shown here. Running the analysis opens the overlay
-// (brainstorm #2) instead of showing a terminal inline on the page; "View last run" reopens it
-// later, whether the job is still going in the background or already finished.
+// Profile analysis is the first row in the "LLM Files" group (D-58), sharing its box and
+// divider with the three documents it writes below, which are read and reopened as files under
+// their own upload sections (D-84, D-86); nothing about their content is shown here. Running
+// the analysis opens the overlay (brainstorm #2) instead of showing a terminal inline on the
+// page; "View last run" reopens it later, whether the job is still going in the background or
+// already finished.
 export function ProfileOutputs({
   onChanged,
   refreshKey,
@@ -47,7 +48,7 @@ export function ProfileOutputs({
   }
 
   return (
-    <section aria-labelledby="outputs-heading" className="flex flex-col gap-4 rounded border border-border bg-card p-4">
+    <section aria-labelledby="outputs-heading" className="flex flex-col gap-4 p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 id="outputs-heading" className="text-sm font-semibold">
