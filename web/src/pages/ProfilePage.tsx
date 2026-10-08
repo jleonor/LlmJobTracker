@@ -183,7 +183,7 @@ export function ProfilePage({
         </>
       )}
 
-      <ProfileOutputs onChanged={reload} refreshKey={finishedAnalysis} />
+      <ProfileOutputs onChanged={reload} refreshKey={finishedAnalysis} analysis={analysis ?? null} />
     </section>
   )
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { ClaudeJob, ClaudeJobPrompt } from '@/lib/types'
 
-import { analysisLines } from './AnalysisTerminal'
+import { splitPromptBlocks, traceLines } from './RunTrace'
 
 function prompt(overrides: Partial<ClaudeJobPrompt>): ClaudeJobPrompt {
   return {
@@ -38,9 +38,9 @@ function job(status: string, prompts: ClaudeJobPrompt[]): ClaudeJob {
   }
 }
 
-describe('analysisLines', () => {
+describe('traceLines', () => {
   it('reports a finished prompt with its model, time and cost', () => {
-    const lines = analysisLines(
+    const lines = traceLines(
       job('running', [
         prompt({
           prompt_kind: 'full_cv_history',
@@ -59,7 +59,7 @@ describe('analysisLines', () => {
   })
 
   it('says when a prompt was skipped because it is already in place', () => {
-    const lines = analysisLines(
+    const lines = traceLines(
       job('done', [
         prompt({
           prompt_kind: 'strategy',
@@ -72,7 +72,7 @@ describe('analysisLines', () => {
   })
 
   it('shows the real reason when a prompt was skipped for using the own file', () => {
-    const lines = analysisLines(
+    const lines = traceLines(
       job('done', [
         prompt({
           prompt_kind: 'questionnaire_analysis',
@@ -85,14 +85,14 @@ describe('analysisLines', () => {
   })
 
   it('shows a failure with its reason', () => {
-    const lines = analysisLines(
+    const lines = traceLines(
       job('failed', [prompt({ status: 'failed', error: 'The answer was not JSON.' })]),
     )
     expect(lines.some((line) => line.tone === 'error' && line.text.includes('not JSON'))).toBe(true)
   })
 
   it('shows how long a prompt has been running', () => {
-    const lines = analysisLines(
+    const lines = traceLines(
       job('processing', [
         prompt({ prompt_kind: 'full_cv_history', status: 'running', started_at: '2026-10-06T09:00:00Z' }),
       ]),
@@ -100,11 +100,68 @@ describe('analysisLines', () => {
     )
     expect(lines.map((line) => line.text)).toContain('Career history: still running, 3:05 so far')
   })
+
+  it('labels a revise prompt by the document it is about', () => {
+    const lines = traceLines(
+      job('processing', [
+        prompt({
+          prompt_kind: 'revise_own_full_cv_history',
+          status: 'done',
+          finished_at: '2026-10-06T09:00:14Z',
+        }),
+      ]),
+    )
+    expect(lines.map((line) => line.text)).toContain('Career history: done')
+  })
+
+  it('shows the elapsed time only until text starts streaming in', () => {
+    const lines = traceLines(
+      job('processing', [
+        prompt({
+          prompt_kind: 'full_cv_history',
+          status: 'running',
+          started_at: '2026-10-06T09:00:00Z',
+          live_text: 'Some text so far',
+        }),
+      ]),
+      Date.parse('2026-10-06T09:03:05Z'),
+    )
+    expect(lines.map((line) => line.text)).not.toContain('Career history: still running, 3:05 so far')
+  })
+})
+
+describe('splitPromptBlocks', () => {
+  it('pulls a file block out of the surrounding instructions', () => {
+    const text =
+      'Use only the files below.\n\n' +
+      '=== FILE 1 | master_cv | cv.pdf ===\nAlex Sample\nAnalyst\n=== END FILE 1 ===\n\n' +
+      'Write the history now.'
+    const segments = splitPromptBlocks(text)
+    expect(segments).toEqual([
+      { kind: 'text', text: 'Use only the files below.\n\n' },
+      { kind: 'block', header: 'FILE 1 | master_cv | cv.pdf', body: 'Alex Sample\nAnalyst' },
+      { kind: 'text', text: '\nWrite the history now.' },
+    ])
+  })
+
+  it('pulls out a document block the same way', () => {
+    const text = '=== CAREER HISTORY ===\n# History\n\nSome text.\n=== END CAREER HISTORY ===\n'
+    const segments = splitPromptBlocks(text)
+    expect(segments).toEqual([
+      { kind: 'block', header: 'CAREER HISTORY', body: '# History\n\nSome text.' },
+    ])
+  })
+
+  it('returns one text segment when there are no blocks', () => {
+    expect(splitPromptBlocks('Just plain instructions.')).toEqual([
+      { kind: 'text', text: 'Just plain instructions.' },
+    ])
+  })
 })
 
 describe('answer received', () => {
   it('logs the answer before its check result', () => {
-    const lines = analysisLines(
+    const lines = traceLines(
       job('failed', [
         prompt({
           prompt_kind: 'full_cv_history',

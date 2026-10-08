@@ -1,13 +1,24 @@
 import { useEffect, useState } from 'react'
 
-import { AnalysisTerminal } from '@/components/app/AnalysisTerminal'
+import { RunTrace } from '@/components/app/RunTrace'
 import { Button } from '@/components/ui/button'
 import { ApiError, startProfileAnalysis } from '@/lib/api'
+import type { ClaudeJob } from '@/lib/types'
 
 // Profile analysis on the Profile page (D-58). The three documents (career history,
 // questionnaire analysis, strategy) are read and reopened as files under their own upload
 // sections above (D-84, D-86); nothing about their content is shown here.
-export function ProfileOutputs({ onChanged, refreshKey }: { onChanged: () => void; refreshKey: number | null }) {
+export function ProfileOutputs({
+  onChanged,
+  refreshKey,
+  analysis,
+}: {
+  onChanged: () => void
+  refreshKey: number | null
+  // The latest profile_analysis Claude Job, read once by the Profile page's own queue poll
+  // (ProfilePage.tsx) rather than a second poll here.
+  analysis: ClaudeJob | null
+}) {
   const [starting, setStarting] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   // Bumped on each click; AnalysisTerminal reacts by hiding the lines it has so far. 0 means
@@ -62,7 +73,7 @@ export function ProfileOutputs({ onChanged, refreshKey }: { onChanged: () => voi
 
       {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
 
-      <AnalysisTerminal clearSignal={clearSignal} />
+      <RunTrace job={analysis} clearSignal={clearSignal} />
     </section>
   )
 }
