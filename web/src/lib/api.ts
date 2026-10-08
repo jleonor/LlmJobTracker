@@ -6,6 +6,7 @@ import type {
   ProfileFileKind,
   ProfileOutput,
   PromptExchange,
+  ReviseTurn,
   RunResult,
   Settings,
 } from '@/lib/types'
@@ -99,6 +100,20 @@ export function startProfileAnalysis(): Promise<ClaudeJob> {
 // right-hand panes (D-84, D-86).
 export function fetchProfileOutputs(): Promise<ProfileOutput[]> {
   return request<ProfileOutput[]>('/api/profile/outputs')
+}
+
+// A Revise (LLM) conversation's turns so far, oldest first (D-106).
+export function fetchReviseTurns(outputKind: string): Promise<ReviseTurn[]> {
+  return request<ReviseTurn[]>(`/api/profile/revise/${outputKind}/turns`)
+}
+
+// Sends one chat message, which queues a new Claude Job for it (D-106).
+export function postReviseTurn(outputKind: string, message: string): Promise<ReviseTurn> {
+  return request<ReviseTurn>(`/api/profile/revise/${outputKind}/turns`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  })
 }
 
 export function fetchClaudeJobs(): Promise<ClaudeJob[]> {

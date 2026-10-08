@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
 
+import { MarkdownDocument } from '@/components/app/MarkdownDocument'
 import { RunTrace } from '@/components/app/RunTrace'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -89,9 +89,7 @@ function DocumentPane({ title, output }: { title: string; output: ProfileOutput 
       </h3>
       <div className="min-h-32 overflow-y-auto p-3">
         {output ? (
-          <article className="prose prose-sm dark:prose-invert max-w-none">
-            <ReactMarkdown>{output.document}</ReactMarkdown>
-          </article>
+          <MarkdownDocument text={output.document} />
         ) : (
           <p className="text-sm text-muted-foreground">Not written yet.</p>
         )}

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { FilePreview } from '@/components/app/FilePreview'
 import { ProfileOutputs } from '@/components/app/ProfileOutputs'
+import { ReviseOverlay } from '@/components/app/ReviseOverlay'
 import {
   ApiError,
   deleteProfileFile,
@@ -246,11 +247,20 @@ type SectionProps = {
   onUploaded: () => void
 }
 
+// own_* upload kind -> the document kind it mirrors (profile_pipeline.py's OWN_KINDS, reversed).
+const OUTPUT_KIND_FOR_OWN: Partial<Record<ProfileFileKind, string>> = {
+  own_full_cv_history: 'full_cv_history',
+  own_questionnaire_analysis: 'questionnaire_analysis',
+  own_strategy: 'strategy',
+}
+
 function UploadSection({ kind, title, hint, collapsible, files, onUploaded }: SectionProps) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
   const [collapsed, setCollapsed] = useState(collapsible)
+  const [reviseOpen, setReviseOpen] = useState(false)
+  const outputKind = OUTPUT_KIND_FOR_OWN[kind]
 
   async function handleChosen(chosen: FileList | null) {
     if (!chosen || chosen.length === 0) return
@@ -287,11 +297,16 @@ function UploadSection({ kind, title, hint, collapsible, files, onUploaded }: Se
         </div>
         <div className="flex items-center gap-2">
           {/* Revise (LLM) lets the user give extra input to redo this generated document; it only
-              applies to the LLM Generated Profile kinds (own_*), not the plain uploads above. Not
-              wired yet — the job page's matching buttons aren't either (D-102). */}
-          {kind.startsWith('own_') && (
+              applies to the LLM Generated Profile kinds (own_*), not the plain uploads above
+              (D-102). The Job Application page's matching buttons aren't wired yet (D-103). */}
+          {outputKind && (
             <div className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/section:opacity-100">
-              <Button variant="outline" disabled title="Revising with the LLM comes in a later phase">
+              <Button
+                variant="outline"
+                disabled={files.length === 0}
+                title={files.length === 0 ? 'Run the analysis first' : undefined}
+                onClick={() => setReviseOpen(true)}
+              >
                 Revise (LLM)
               </Button>
             </div>
@@ -345,6 +360,14 @@ function UploadSection({ kind, title, hint, collapsible, files, onUploaded }: Se
             <li key={message}>{message}</li>
           ))}
         </ul>
+      )}
+      {outputKind && (
+        <ReviseOverlay
+          outputKind={outputKind}
+          open={reviseOpen}
+          onOpenChange={setReviseOpen}
+          onChanged={onUploaded}
+        />
       )}
     </section>
   )

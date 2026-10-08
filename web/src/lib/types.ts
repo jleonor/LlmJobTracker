@@ -139,6 +139,14 @@ export type PromptExchange = {
   error: string | null
 }
 
+// One Revise (LLM) chat turn and the Claude Job it queued (D-106).
+export type ReviseTurn = {
+  id: number
+  message: string
+  created_at: string
+  job: ClaudeJob
+}
+
 // What GET /profile/files/{id}/preview (or a future job-file equivalent) returns, read from the
 // response's content type (D-107, D-109). "pdf" carries a Blob so the caller can build an object
 // URL for an <iframe>; everything else is decoded text.

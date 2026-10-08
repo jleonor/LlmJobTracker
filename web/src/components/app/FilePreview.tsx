@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
 
+import { MarkdownDocument } from '@/components/app/MarkdownDocument'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ApiError, fetchProfileFilePreview } from '@/lib/api'
 import type { FilePreviewData } from '@/lib/types'
@@ -115,9 +115,7 @@ function Rendered({
   if (data.kind === 'markdown') {
     return (
       <div className="h-full overflow-auto p-4">
-        <article className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown>{data.text}</ReactMarkdown>
-        </article>
+        <MarkdownDocument text={data.text} />
       </div>
     )
   }
