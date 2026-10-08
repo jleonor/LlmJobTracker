@@ -281,7 +281,15 @@ function UploadSection({ kind, title, hint, collapsible, files, onUploaded }: Se
           </h2>
           <p className="text-xs text-muted-foreground">{hint}</p>
         </div>
-        <div>
+        <div className="flex items-center gap-2">
+          {/* Revise (LLM) lets the user give extra input to redo this generated document; it only
+              applies to the LLM Generated Profile kinds (own_*), not the plain uploads above. Not
+              wired yet — the job page's matching buttons aren't either (D-102). */}
+          {kind.startsWith('own_') && (
+            <Button variant="outline" disabled title="Revising with the LLM comes in a later phase">
+              Revise (LLM)
+            </Button>
+          )}
           <input
             ref={input}
             type="file"

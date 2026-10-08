@@ -41,6 +41,8 @@ export type JobApplicationDetail = JobApplication & {
   // `files`, not a structured field here (D-99).
   fit: string[]
   gaps: string[]
+  // Points the LLM flagged as unclear while scoring, which answering would sharpen (D-102).
+  unclear: string[]
   notes: string | null
   next_action: string | null
   due_date: string | null

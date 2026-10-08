@@ -23,6 +23,9 @@
       "No direct retail or e-commerce experience; the listing lists it as a plus, not a requirement.",
       "The listing doesn't say which BI tool is in use — confirm before the interview."
     ],
+    "unclear": [
+      "Which BI tool the team actually uses (Power BI or Tableau) is not stated in the listing."
+    ],
     "notes": "Recruiter mentioned a short take-home exercise may follow the first screen.",
     "match_score": 78.5,
     "queue_status": "idle",
@@ -58,6 +61,9 @@
     "gaps": [
       "No healthcare or regulated-industry background, which the listing prefers.",
       "Contract length (6 months) is shorter than the roles usually targeted."
+    ],
+    "unclear": [
+      "Not stated whether the contract could extend or convert to a permanent role."
     ],
     "notes": null,
     "match_score": 64.0,
@@ -95,6 +101,7 @@
     "gaps": [
       "No direct WMS experience; the listing mentions a WMS migration as a current project."
     ],
+    "unclear": [],
     "notes": "Panel interview is with the ops director and two analysts. Ask about the WMS migration mentioned in the listing.",
     "match_score": 81.0,
     "queue_status": "processing",
@@ -124,6 +131,7 @@
     "requirements": [],
     "fit": [],
     "gaps": [],
+    "unclear": [],
     "notes": null,
     "match_score": null,
     "queue_status": "queued",
@@ -155,6 +163,9 @@
     "gaps": [
       "No formal people-management experience, and the role leads a small team.",
       "Roadmap ownership experience so far has been in a supporting role, not the lead."
+    ],
+    "unclear": [
+      "Unclear how many direct reports the team lead role would actually have."
     ],
     "notes": "Rejected after the first screen: they wanted more hands-on people-management experience than this role has had so far.",
     "match_score": 55.0,
@@ -191,6 +202,9 @@
     ],
     "gaps": [
       "No energy-sector experience, though the listing says this is a plus, not required."
+    ],
+    "unclear": [
+      "Not clear whether the 3-day schedule is fixed or can flex week to week."
     ],
     "notes": "Confirm part-time hours are still 3 days/week before the next step.",
     "match_score": 70.0,

@@ -80,12 +80,46 @@ function Flags({ application }: { application: JobApplicationDetail }) {
   )
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  actions,
+  children,
+}: {
+  title: string
+  actions?: ReactNode
+  children: ReactNode
+}) {
   return (
     <section className="flex flex-col gap-3 rounded border border-border bg-card p-4">
-      <h2 className="text-sm font-semibold">{title}</h2>
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        {actions}
+      </div>
       {children}
     </section>
+  )
+}
+
+// Edit and Revise (LLM) aren't wired to anything yet: this is still the seed-data design pass
+// (Phase 3 step list), and both need real backend support (inline editing, a Claude Job that
+// takes extra user input) that comes later. The buttons are here so the page's shape is right.
+const SECTION_ACTIONS: { label: string; title: string }[] = [
+  { label: 'Edit', title: 'Editing comes in a later phase' },
+  { label: 'Revise (LLM)', title: 'Revising with the LLM comes in a later phase' },
+]
+const SUBSECTION_ACTIONS: { label: string; title: string }[] = [
+  { label: 'Revise (LLM)', title: 'Revising with the LLM comes in a later phase' },
+]
+
+function ActionButtons({ buttons }: { buttons: { label: string; title: string }[] }) {
+  return (
+    <div className="flex shrink-0 gap-2">
+      {buttons.map(({ label, title }) => (
+        <Button key={label} variant="outline" size="sm" disabled title={title}>
+          {label}
+        </Button>
+      ))}
+    </div>
   )
 }
 
@@ -102,7 +136,7 @@ const EMPTY = <span className="text-muted-foreground">Not set</span>
 
 function JobDetails({ application }: { application: JobApplicationDetail }) {
   return (
-    <Section title="Job details">
+    <Section title="Job details" actions={<ActionButtons buttons={SECTION_ACTIONS} />}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Field label="URL">
           {application.portal_name ? (
@@ -148,23 +182,33 @@ function JobDetails({ application }: { application: JobApplicationDetail }) {
 
 // D-98: fit bullets, gap bullets and the match score only. The per-requirement weights, matches
 // and reasoning behind the score are the breakdown document in Files, not shown here (D-99).
+// Unclear (D-102) surfaces what the LLM would want answered to sharpen the score.
 function PositioningAnalysis({ application }: { application: JobApplicationDetail }) {
   if (application.match_score === null) {
     return (
-      <Section title="Positioning analysis">
+      <Section title="Positioning analysis" actions={<ActionButtons buttons={SECTION_ACTIONS} />}>
         <p className="text-sm text-muted-foreground">Not run yet.</p>
       </Section>
     )
   }
 
   return (
-    <Section title="Positioning analysis">
+    <Section title="Positioning analysis" actions={<ActionButtons buttons={SECTION_ACTIONS} />}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         <div className="flex shrink-0 flex-col items-center gap-1 self-center sm:self-start">
           <MatchScoreRing score={application.match_score} />
           <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
             Match score
           </span>
+          <Button
+            variant="link"
+            size="sm"
+            disabled
+            title="Opens the positioning breakdown document once file opening is wired up"
+            className="h-auto p-0 text-xs"
+          >
+            Check reasoning
+          </Button>
         </div>
         <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Fit">
@@ -191,6 +235,18 @@ function PositioningAnalysis({ application }: { application: JobApplicationDetai
           </Field>
         </div>
       </div>
+
+      <Field label="Unclear">
+        {application.unclear.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5">
+            {application.unclear.map((point) => (
+              <li key={point}>{point}</li>
+            ))}
+          </ul>
+        ) : (
+          <span className="text-muted-foreground">Nothing unclear.</span>
+        )}
+      </Field>
     </Section>
   )
 }
@@ -233,7 +289,7 @@ function MatchScoreRing({ score }: { score: number }) {
 
 function ApplicationHistory({ application }: { application: JobApplicationDetail }) {
   return (
-    <Section title="Application history">
+    <Section title="Application history" actions={<ActionButtons buttons={SECTION_ACTIONS} />}>
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
         <StatusTimeline history={application.status_history} currentStatus={application.status} />
 
@@ -345,7 +401,12 @@ function FileGroup({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{title}</h3>
+      <div className="flex items-center justify-between gap-4">
+        <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          {title}
+        </h3>
+        <ActionButtons buttons={SUBSECTION_ACTIONS} />
+      </div>
       {files.length === 0 ? (
         <p className="text-sm text-muted-foreground">{empty}</p>
       ) : (
@@ -353,14 +414,24 @@ function FileGroup({
           {files.map((file) => (
             <li key={file.name} className="flex items-center justify-between gap-4 px-3 py-2 text-sm">
               <span>{file.name}</span>
-              {showKind && (
-                <Badge
+              <div className="flex shrink-0 items-center gap-2">
+                {showKind && (
+                  <Badge
+                    variant="outline"
+                    className="rounded-sm font-mono text-[11px] font-normal text-muted-foreground"
+                  >
+                    {file.kind}
+                  </Badge>
+                )}
+                <Button
                   variant="outline"
-                  className="rounded-sm font-mono text-[11px] font-normal text-muted-foreground"
+                  size="sm"
+                  disabled
+                  title="Opening files comes in a later phase"
                 >
-                  {file.kind}
-                </Badge>
-              )}
+                  Open
+                </Button>
+              </div>
             </li>
           ))}
         </ul>
