@@ -198,8 +198,8 @@ function PositioningAnalysis({ application }: { application: JobApplicationDetai
 
   return (
     <Section title="Positioning analysis" actions={<ActionButtons buttons={SECTION_ACTIONS} />}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="flex shrink-0 flex-col items-center gap-1 self-center sm:self-start">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr_1fr]">
+        <div className="row-span-2 flex shrink-0 flex-col items-center gap-1 self-center sm:self-start">
           <MatchScoreRing score={application.match_score} />
           <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
             Match score
@@ -214,43 +214,44 @@ function PositioningAnalysis({ application }: { application: JobApplicationDetai
             Check reasoning
           </Button>
         </div>
-        <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Fit">
-            {application.fit.length > 0 ? (
+
+        <Field label="Fit">
+          {application.fit.length > 0 ? (
+            <ul className="list-disc space-y-1 pl-5">
+              {application.fit.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
+          ) : (
+            <span className="text-muted-foreground">No fit points yet.</span>
+          )}
+        </Field>
+        <Field label="Gaps">
+          {application.gaps.length > 0 ? (
+            <ul className="list-disc space-y-1 pl-5">
+              {application.gaps.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
+          ) : (
+            <span className="text-muted-foreground">No gaps noted.</span>
+          )}
+        </Field>
+
+        <div className="sm:col-span-2">
+          <Field label="Unclear">
+            {application.unclear.length > 0 ? (
               <ul className="list-disc space-y-1 pl-5">
-                {application.fit.map((point) => (
+                {application.unclear.map((point) => (
                   <li key={point}>{point}</li>
                 ))}
               </ul>
             ) : (
-              <span className="text-muted-foreground">No fit points yet.</span>
-            )}
-          </Field>
-          <Field label="Gaps">
-            {application.gaps.length > 0 ? (
-              <ul className="list-disc space-y-1 pl-5">
-                {application.gaps.map((point) => (
-                  <li key={point}>{point}</li>
-                ))}
-              </ul>
-            ) : (
-              <span className="text-muted-foreground">No gaps noted.</span>
+              <span className="text-muted-foreground">Nothing unclear.</span>
             )}
           </Field>
         </div>
       </div>
-
-      <Field label="Unclear">
-        {application.unclear.length > 0 ? (
-          <ul className="list-disc space-y-1 pl-5">
-            {application.unclear.map((point) => (
-              <li key={point}>{point}</li>
-            ))}
-          </ul>
-        ) : (
-          <span className="text-muted-foreground">Nothing unclear.</span>
-        )}
-      </Field>
     </Section>
   )
 }
@@ -384,10 +385,12 @@ function Files({ files }: { files: JobApplicationDetail['files'] }) {
 
   return (
     <Section title="Files">
-      <FileGroup title="Listing" files={listing} empty="No listing file yet." />
-      <FileGroup title="CV" files={cv} empty="Not done yet." />
-      <FileGroup title="Cover letter" files={coverLetter} empty="Not done yet." />
-      <FileGroup title="Additional files" files={additional} empty="No additional files." showKind />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <FileGroup title="Listing" files={listing} empty="No listing file yet." />
+        <FileGroup title="CV" files={cv} empty="Not done yet." />
+        <FileGroup title="Cover letter" files={coverLetter} empty="Not done yet." />
+        <FileGroup title="Additional files" files={additional} empty="No additional files." showKind />
+      </div>
     </Section>
   )
 }
