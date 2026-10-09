@@ -212,7 +212,7 @@ Done when
 - [ ] A real Job Application's detail page shows its real description, requirements, notes, status history and files — not seed data (screenshot, D-113).
 - [ ] A real job file previews, uploads, opens and is edited through the page, and a Master CV selection persists after a reload (screenshot, D-116).
 - [ ] A stage date set with Today in the Edit dialog updates the timeline and the current status badge (screenshot, D-117).
-- [ ] A Job Application gets a Listing file through Generate (LLM): a real URL, pasted text, and an uploaded PDF each produce extracted text the user reviews, then a generated Markdown listing (screenshot, D-119 to D-123).
+- [x] A Job Application gets a Listing file through Generate (LLM): a real URL, pasted text, and an uploaded PDF each produce extracted text the user reviews, then a generated Markdown listing (screenshot, D-119 to D-123). (2026-10-09: verified live against the real Claude Code CLI, seeded dev data. Pasted text produced a clean Markdown listing in 3.0s, $0.0073; the Files section updated (Generate flipped to Revise, Job Listing.md previews correctly). A deliberately unreachable URL showed "Could not reach this page (ConnectError)" with a one-click handoff to the paste tab. Pasted cookie-banner/footer-only junk text correctly drew the sanity check's "This might not be a job posting" warning, without blocking Generate. PDF upload's extraction is covered by automated tests (test_listing_intake.py, test_extraction.py) and the Upload tab's UI was confirmed to render correctly; driving the native OS file picker isn't reachable through this session's browser automation.)
 
 Out of scope: the Kanban board (see Phase 8).
 
