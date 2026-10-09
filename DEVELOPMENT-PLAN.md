@@ -155,6 +155,12 @@ Step list, continued (added 2026-10-09, D-116): Preview, Upload, Open and Edit b
 17. Frontend: Positioning analysis gains a Strategy field between the fit/gap row and Unclear. `FilePreview.tsx` gains the `{table: 'job_file', applicationId, id}` source case. Each file row in Files gets Preview and Open buttons (mirroring the Profile page's `FileRow`); each Files subsection's Upload button opens a file picker and calls the new upload endpoint. Job details, Positioning analysis and Application history's Edit buttons open an inline form for their section's fields and save through the new PATCH. The Master CV dropdown lists the Profile page's master CVs and calls the new selection endpoint.
 18. Checks: `scripts/check.py` output; screenshots of a Preview, an Upload, an Edit save and a Master CV selection against the real imported applications.
 
+Step list, continued (added 2026-10-09, D-117): Application history's Edit dialog can only edit notes/next action/due date, not the status timeline itself — real applications (especially the hand-imported ones) need their stage dates entered or corrected by hand. Appended here rather than reopening earlier steps, following D-104's pattern.
+
+19. Backend: `PUT /job-applications/{id}/status-history`, replacing the application's entire `status_history` with at most one row per status and recomputing `status` as the furthest-reached main status (or the later end state). Rejects an empty entry list.
+20. Frontend: Application history's Edit dialog gains a Stages section, one date field per status (five main plus Rejected/Withdrawn) with a Today button and a clear button, saved through the new endpoint alongside the existing notes/next action/due date PATCH.
+21. Checks: `scripts/check.py` output; a screenshot of the Stages editor setting a date with Today and the timeline/status badge updating after save.
+
 Done when
 - [ ] The Job Application page, built on seed data, matches the D-56 layout (screenshot, compared against the job-detail mockups).
 - [ ] The dry-run report matches the spreadsheet: row counts, the 8 changed rows, and three spot-checked rows.
@@ -166,6 +172,7 @@ Done when
 - [ ] Migrations apply and roll back.
 - [ ] A real Job Application's detail page shows its real description, requirements, notes, status history and files — not seed data (screenshot, D-113).
 - [ ] A real job file previews, uploads, opens and is edited through the page, and a Master CV selection persists after a reload (screenshot, D-116).
+- [ ] A stage date set with Today in the Edit dialog updates the timeline and the current status badge (screenshot, D-117).
 
 Out of scope: the Kanban board (see Phase 8).
 

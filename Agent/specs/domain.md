@@ -46,7 +46,11 @@ Table `status_history` (D-45). One row per change: `job_application_id`, `status
 "Last updated" is the newest row's date. Only a forward move in the D-44 order counts as
 progress; a backward move or a correction is still recorded as a row, just not as progress. A
 Job Application can have more than one row for the same status (a correction), and the history
-is never edited in place, only appended to.
+is never edited in place, only appended to — except through Application history's stage editor
+(D-117), which replaces the whole table for one application with at most one row per status, a
+narrower editing model purpose-built for backfilling real dates by hand. The application's
+current `status` is recomputed from the furthest-reached main status (or the later end state)
+whenever the editor saves.
 
 ## Requirement (positioning, Phase 5)
 

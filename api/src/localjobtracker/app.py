@@ -27,9 +27,12 @@ from localjobtracker.job_applications import (
     JobApplicationDetail,
     JobApplicationEdit,
     MasterCvSelection,
+    NoStatusEntries,
+    StatusHistoryEdit,
     UnknownField,
     get_job_application_detail,
     list_job_applications,
+    replace_status_history,
     set_master_cv,
     update_job_application,
 )
@@ -231,6 +234,32 @@ def create_app(
                 )
         detail = set_master_cv(conn, application_id, selection.profile_file_id)
         assert detail is not None
+        return detail
+
+    @app.put(
+        "/job-applications/{application_id}/status-history",
+        response_model=JobApplicationDetail,
+        dependencies=[Depends(require_token)],
+    )
+    def edit_status_history(
+        application_id: int,
+        edit: StatusHistoryEdit,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> JobApplicationDetail:
+        try:
+            detail = replace_status_history(
+                conn, application_id, [(entry.status, entry.changed_at) for entry in edit.entries]
+            )
+        except NoStatusEntries as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="At least one stage needs a date."
+            ) from error
+        except sqlite3.IntegrityError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        if detail is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         return detail
 
     @app.post(

@@ -297,3 +297,110 @@ def test_deleting_the_chosen_profile_file_clears_the_reference(
     detail = client.get(f"/job-applications/{app_id}").json()
     assert detail["master_cv_profile_file_id"] is None
     assert detail["master_cv_name"] is None
+
+
+# --- Status history ------------------------------------------------------------------------
+
+
+def test_replacing_stage_dates_sets_the_furthest_reached_as_current(
+    client: TestClient, db_path: Path
+) -> None:
+    app_id = add_application(db_path)
+
+    response = client.put(
+        f"/job-applications/{app_id}/status-history",
+        json={
+            "entries": [
+                {"status": "Identified", "changed_at": "2026-09-01T00:00:00Z"},
+                {"status": "Applied", "changed_at": "2026-09-05T00:00:00Z"},
+                {"status": "Screening", "changed_at": "2026-09-10T00:00:00Z"},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "Screening"
+    assert [h["status"] for h in body["status_history"]] == ["Identified", "Applied", "Screening"]
+    assert body["last_updated"] == "2026-09-10T00:00:00Z"
+
+
+def test_an_end_state_takes_priority_over_main_stages(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+
+    response = client.put(
+        f"/job-applications/{app_id}/status-history",
+        json={
+            "entries": [
+                {"status": "Identified", "changed_at": "2026-09-01T00:00:00Z"},
+                {"status": "Applied", "changed_at": "2026-09-05T00:00:00Z"},
+                {"status": "Rejected", "changed_at": "2026-09-12T00:00:00Z"},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "Rejected"
+
+
+def test_the_later_end_state_wins_when_both_are_dated(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+
+    response = client.put(
+        f"/job-applications/{app_id}/status-history",
+        json={
+            "entries": [
+                {"status": "Rejected", "changed_at": "2026-09-12T00:00:00Z"},
+                {"status": "Withdrawn", "changed_at": "2026-09-20T00:00:00Z"},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "Withdrawn"
+
+
+def test_replace_fully_replaces_the_previous_stage_dates(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+    client.put(
+        f"/job-applications/{app_id}/status-history",
+        json={
+            "entries": [
+                {"status": "Identified", "changed_at": "2026-09-01T00:00:00Z"},
+                {"status": "Applied", "changed_at": "2026-09-05T00:00:00Z"},
+            ]
+        },
+    )
+
+    response = client.put(
+        f"/job-applications/{app_id}/status-history",
+        json={"entries": [{"status": "Identified", "changed_at": "2026-09-01T00:00:00Z"}]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "Identified"
+    assert [h["status"] for h in body["status_history"]] == ["Identified"]
+
+
+def test_an_empty_entry_list_is_rejected(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+    response = client.put(f"/job-applications/{app_id}/status-history", json={"entries": []})
+    assert response.status_code == 400
+
+
+def test_an_unknown_status_value_is_rejected(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+    response = client.put(
+        f"/job-applications/{app_id}/status-history",
+        json={"entries": [{"status": "Maybe later", "changed_at": "2026-09-01T00:00:00Z"}]},
+    )
+    assert response.status_code == 400
+
+
+def test_status_history_for_an_unknown_application_is_not_found(client: TestClient) -> None:
+    response = client.put(
+        "/job-applications/999/status-history",
+        json={"entries": [{"status": "Identified", "changed_at": "2026-09-01T00:00:00Z"}]},
+    )
+    assert response.status_code == 404

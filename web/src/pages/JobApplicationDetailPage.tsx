@@ -23,6 +23,7 @@ import {
   fetchProfileFiles,
   openJobFile,
   patchJobApplication,
+  replaceStatusHistory,
   setMasterCv,
   uploadJobFile,
 } from '@/lib/api'
@@ -39,6 +40,22 @@ import type {
 // reached from wherever the application was, not a further step in this sequence.
 const MAIN_STATUSES = ['Identified', 'Applied', 'Screening', 'Interview', 'Offer'] as const
 const END_STATUSES = ['Rejected', 'Withdrawn'] as const
+// D-117: every stage the Edit dialog's date editor offers, main statuses first.
+const ALL_STATUSES = [...MAIN_STATUSES, ...END_STATUSES]
+
+function todayDateOnly(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+// status_history.changed_at is stored as a full ISO timestamp (e.g. "2026-10-01T09:00:00Z");
+// <input type="date"> only works in "YYYY-MM-DD", so the editor converts both ways.
+function dateOnly(changedAt: string): string {
+  return changedAt.slice(0, 10)
+}
+
+function toChangedAt(dateValue: string): string {
+  return `${dateValue}T00:00:00Z`
+}
 const WORK_MODES = ['Onsite', 'Hybrid', 'Remote', 'Unknown'] as const
 const CONTRACT_TYPES = ['Full-Time', 'Part-Time', 'Contract/Short Term', 'Other', 'Unknown'] as const
 // Select.Value resolves labels from this map even while the popup is closed (see MasterCvField's
@@ -735,6 +752,9 @@ function ApplicationHistoryEditDialog({
   const [notes, setNotes] = useState('')
   const [nextAction, setNextAction] = useState('')
   const [dueDate, setDueDate] = useState('')
+  // One optional date-only string per status (D-117), keyed by status name. A blank value means
+  // that stage has no date - unreached, or cleared.
+  const [stageDates, setStageDates] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -743,11 +763,24 @@ function ApplicationHistoryEditDialog({
     setNotes(application.notes ?? '')
     setNextAction(application.next_action ?? '')
     setDueDate(application.due_date ?? '')
+    const dates: Record<string, string> = {}
+    for (const entry of application.status_history) dates[entry.status] = dateOnly(entry.changed_at)
+    setStageDates(dates)
     setError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  function setStageDate(status: string, value: string) {
+    setStageDates((current) => ({ ...current, [status]: value }))
+  }
+
   async function save() {
+    const entries = ALL_STATUSES.filter((status) => stageDates[status])
+      .map((status) => ({ status, changed_at: toChangedAt(stageDates[status]) }))
+    if (entries.length === 0) {
+      setError('At least one stage needs a date.')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -756,6 +789,7 @@ function ApplicationHistoryEditDialog({
         next_action: nextAction.trim() || null,
         due_date: dueDate.trim() || null,
       })
+      await replaceStatusHistory(application.id, entries)
       onOpenChange(false)
       onSaved()
     } catch (failure) {
@@ -780,6 +814,39 @@ function ApplicationHistoryEditDialog({
           </FormField>
           <FormField label="Due date">
             <Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+          </FormField>
+          <FormField label="Stages">
+            <div className="flex flex-col gap-2">
+              {ALL_STATUSES.map((status) => (
+                <div key={status} className="flex items-center gap-2">
+                  <span className="w-24 shrink-0 text-xs text-foreground">{status}</span>
+                  <Input
+                    type="date"
+                    className="flex-1"
+                    value={stageDates[status] ?? ''}
+                    onChange={(event) => setStageDate(status, event.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setStageDate(status, todayDateOnly())}
+                  >
+                    Today
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={!stageDates[status]}
+                    aria-label={`Clear the ${status} date`}
+                    onClick={() => setStageDate(status, '')}
+                  >
+                    ×
+                  </Button>
+                </div>
+              ))}
+            </div>
           </FormField>
           {error && (
             <p role="alert" className="text-xs text-destructive">

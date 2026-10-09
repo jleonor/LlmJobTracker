@@ -13,6 +13,10 @@ from pydantic import BaseModel
 from localjobtracker.job_files import JobApplicationFile, list_job_files
 
 DEFAULT_STATUS = "Identified"
+# D-44: forward order. A Job Application's current status (D-117) is the furthest of these it has
+# a status_history date for, unless an end state applies.
+MAIN_STATUSES = ("Identified", "Applied", "Screening", "Interview", "Offer")
+END_STATUSES = ("Rejected", "Withdrawn")
 
 # Columns a PATCH may touch, grouped the way the job page's three Edit forms are (D-116). fit,
 # gaps and unclear are stored as JSON; the rest are plain columns. match_score and status are not
@@ -116,6 +120,13 @@ class MasterCvSelection(BaseModel):
     to clear the selection."""
 
     profile_file_id: int | None
+
+
+class StatusHistoryEdit(BaseModel):
+    """D-117: the full set of stage dates from Application history's Edit form — at most one
+    entry per status, replacing whatever status_history held before."""
+
+    entries: list[StatusHistoryEntry]
 
 
 def _now() -> str:
@@ -302,5 +313,52 @@ def set_master_cv(
         conn.execute(
             "UPDATE job_applications SET master_cv_profile_file_id = ? WHERE id = ?",
             (profile_file_id, application_id),
+        )
+    return get_job_application_detail(conn, application_id)
+
+
+class NoStatusEntries(Exception):
+    """Raised when a status-history replace (D-117) is given no entries at all — a Job
+    Application must always have some current status."""
+
+
+def _derive_current_status(entries: list[tuple[str, str]]) -> str:
+    """The furthest-reached main status, or the later of the two end states if either is given
+    a date — matching the progress rule D-44 already uses (and StatusTimeline mirrors client
+    side): reaching further counts, regardless of which has the most recent date."""
+    end_entries = [entry for entry in entries if entry[0] in END_STATUSES]
+    if end_entries:
+        return max(end_entries, key=lambda entry: entry[1])[0]
+    by_status = dict(entries)
+    furthest = -1
+    current = DEFAULT_STATUS
+    for index, status in enumerate(MAIN_STATUSES):
+        if status in by_status and index > furthest:
+            furthest = index
+            current = status
+    return current
+
+
+def replace_status_history(
+    conn: sqlite3.Connection, application_id: int, entries: list[tuple[str, str]]
+) -> JobApplicationDetail | None:
+    """Replace every status_history row for this application with `entries` (D-117's stage
+    editor): at most one row per status, not D-45's append-only multiple-rows-per-status model —
+    the editor shows and edits one date per stage. Recomputes the application's current `status`
+    to match (`_derive_current_status`).
+    """
+    if get_job_application_detail(conn, application_id) is None:
+        return None
+    if not entries:
+        raise NoStatusEntries()
+    current_status = _derive_current_status(entries)
+    with conn:
+        conn.execute("DELETE FROM status_history WHERE job_application_id = ?", (application_id,))
+        conn.executemany(
+            "INSERT INTO status_history (job_application_id, status, changed_at) VALUES (?, ?, ?)",
+            [(application_id, status, changed_at) for status, changed_at in entries],
+        )
+        conn.execute(
+            "UPDATE job_applications SET status = ? WHERE id = ?", (current_status, application_id)
         )
     return get_job_application_detail(conn, application_id)

@@ -12,6 +12,7 @@ import type {
   ReviseTurn,
   RunResult,
   Settings,
+  StatusHistoryEntry,
 } from '@/lib/types'
 
 export class ApiError extends Error {
@@ -84,6 +85,20 @@ export function setMasterCv(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ profile_file_id: profileFileId }),
+  })
+}
+
+// Replaces every stage date on Application history's timeline (D-117) — at most one entry per
+// status, unlike status_history's append-only model elsewhere; the editor shows and edits one
+// date per stage. The application's current status is recomputed server-side to match.
+export function replaceStatusHistory(
+  id: number,
+  entries: StatusHistoryEntry[],
+): Promise<JobApplicationDetailData> {
+  return request<JobApplicationDetailData>(`/api/job-applications/${id}/status-history`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries }),
   })
 }
 
