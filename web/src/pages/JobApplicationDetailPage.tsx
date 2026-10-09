@@ -14,9 +14,10 @@ const MAIN_STATUSES = ['Identified', 'Applied', 'Screening', 'Interview', 'Offer
 const END_STATUSES = ['Rejected', 'Withdrawn'] as const
 
 // The Job Application page's layout (D-56, D-98, planning/product-model.md), Phase 3's slice:
-// flags, header, job details, positioning analysis, application history, files. The tailored CV,
-// cover letter and the positioning breakdown document stay "not done yet" (D-48) until Phase 5
-// builds them; the fit/gap bullets and match score here are seed data too, not a real run.
+// flags, header, job details, positioning analysis, application history, files. Job details,
+// application history and files read real stored data (D-113); the tailored CV, cover letter
+// and the positioning breakdown document stay "not done yet" (D-48), and the fit/gap bullets and
+// match score stay empty, until Phase 5 actually runs positioning.
 export function JobApplicationDetailPage({
   application,
   onBack,

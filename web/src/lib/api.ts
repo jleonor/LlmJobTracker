@@ -2,6 +2,7 @@ import type {
   ClaudeJob,
   FilePreviewData,
   JobApplication,
+  JobApplicationDetailData,
   ProfileFile,
   ProfileFileKind,
   ProfileOutput,
@@ -51,6 +52,12 @@ async function errorMessage(response: Response): Promise<string> {
 
 export function fetchJobApplications(): Promise<JobApplication[]> {
   return request<JobApplication[]>('/api/job-applications')
+}
+
+// The job page's full record for one application (D-113): everything GET /job-applications
+// leaves out of the table row (job details, status history, files).
+export function fetchJobApplicationDetail(id: number): Promise<JobApplicationDetailData> {
+  return request<JobApplicationDetailData>(`/api/job-applications/${id}`)
 }
 
 export function runClaudeCheck(): Promise<RunResult> {

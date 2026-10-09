@@ -28,18 +28,27 @@ export type JobApplicationFile = {
 // means nothing is queued for this application; the rest mirror CLAUDE_JOB_STATUSES.
 export type QueueStatus = 'idle' | 'queued' | 'processing' | 'paused' | 'cancelled' | 'done' | 'failed'
 
-// The Job Application page's fields beyond the table row (D-56, D-98, planning/product-model.md).
-// Phase 3 design pass only: no detail endpoint exists yet, so this is seed data
-// (lib/sampleJobDetail.ts), not an API response. The migration and dry-run import that back
-// this for real come later in the phase's step list.
-export type JobApplicationDetail = JobApplication & {
-  queue_status: QueueStatus
+// What GET /job-applications/{id} returns (D-113): the table row's fields plus everything else
+// actually stored for one Job Application. Field names match the API.
+export type JobApplicationDetailData = JobApplication & {
   portal_name: string | null
   portal_url: string | null
   work_mode: string
   contract_type: string
   description: string | null
   requirements: string[]
+  notes: string | null
+  next_action: string | null
+  due_date: string | null
+  status_history: StatusHistoryEntry[]
+  files: JobApplicationFile[]
+}
+
+// The Job Application page's full shape (D-56, D-98, planning/product-model.md). Extends the API
+// response with the fields nothing computes yet (D-48, Phase 5): the queue badge, and positioning's
+// fit/gap/unclear bullets. JobApplicationsPage.tsx fills these in with "not run" defaults.
+export type JobApplicationDetail = JobApplicationDetailData & {
+  queue_status: QueueStatus
   // Positioning analysis (D-98): fit and gap bullets. The per-requirement weights, matches and
   // reasoning behind match_score are not shown inline — they are the breakdown document in
   // `files`, not a structured field here (D-99).
@@ -47,11 +56,6 @@ export type JobApplicationDetail = JobApplication & {
   gaps: string[]
   // Points the LLM flagged as unclear while scoring, which answering would sharpen (D-102).
   unclear: string[]
-  notes: string | null
-  next_action: string | null
-  due_date: string | null
-  status_history: StatusHistoryEntry[]
-  files: JobApplicationFile[]
 }
 
 export type RunResult = {

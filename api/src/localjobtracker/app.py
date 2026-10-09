@@ -21,7 +21,12 @@ from localjobtracker.claude_jobs import (
     recover_interrupted,
 )
 from localjobtracker.file_preview import UnsupportedPreview, preview_for
-from localjobtracker.job_applications import JobApplication, list_job_applications
+from localjobtracker.job_applications import (
+    JobApplication,
+    JobApplicationDetail,
+    get_job_application_detail,
+    list_job_applications,
+)
 from localjobtracker.profile_files import (
     ProfileFile,
     ProfileFileText,
@@ -151,6 +156,19 @@ def create_app(
         conn: Annotated[Connection, Depends(get_db)],
     ) -> list[JobApplication]:
         return list_job_applications(conn)
+
+    @app.get(
+        "/job-applications/{application_id}",
+        response_model=JobApplicationDetail,
+        dependencies=[Depends(require_token)],
+    )
+    def job_application_detail(
+        application_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> JobApplicationDetail:
+        detail = get_job_application_detail(conn, application_id)
+        if detail is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return detail
 
     @app.post("/runs/check", response_model=RunResult, dependencies=[Depends(require_token)])
     def run_check() -> RunResult:

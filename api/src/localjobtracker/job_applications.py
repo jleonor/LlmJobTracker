@@ -10,6 +10,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from localjobtracker.job_files import list_job_files
+
 DEFAULT_STATUS = "Identified"
 
 
@@ -24,6 +26,41 @@ class JobApplication(BaseModel):
     status: str
     last_updated: str
     match_score: float | None
+
+
+class StatusHistoryEntry(BaseModel):
+    status: str
+    changed_at: str
+
+
+class JobApplicationFile(BaseModel):
+    kind: str
+    name: str
+    date: str | None
+
+
+class JobApplicationDetail(BaseModel):
+    """One Job Application's full record, for the job page (D-56, D-113)."""
+
+    id: int
+    company: str
+    role_title: str
+    lane: str | None
+    location: str | None
+    status: str
+    last_updated: str
+    match_score: float | None
+    portal_name: str | None
+    portal_url: str | None
+    work_mode: str
+    contract_type: str
+    description: str | None
+    requirements: list[str]
+    notes: str | None
+    next_action: str | None
+    due_date: str | None
+    status_history: list[StatusHistoryEntry]
+    files: list[JobApplicationFile]
 
 
 def _now() -> str:
@@ -101,3 +138,61 @@ def insert_job_application(
 
 def count_job_applications(conn: sqlite3.Connection) -> int:
     return int(conn.execute("SELECT COUNT(*) FROM job_applications").fetchone()[0])
+
+
+def get_job_application_detail(
+    conn: sqlite3.Connection, application_id: int
+) -> JobApplicationDetail | None:
+    """The job page's full record for one application (D-113), or None if it doesn't exist.
+
+    Positioning fields (fit, gaps, unclear, match_score's breakdown) are Phase 5's (D-48); this
+    returns only what is actually stored today.
+    """
+    row = conn.execute(
+        """
+        SELECT
+            a.id, a.company, a.role_title, a.lane, a.location, a.work_mode, a.contract_type,
+            a.portal_name, a.portal_url, a.status, a.match_score, a.next_action, a.due_date,
+            a.description, a.requirements, a.notes,
+            COALESCE(
+                (SELECT MAX(h.changed_at) FROM status_history h WHERE h.job_application_id = a.id),
+                a.created_at
+            ) AS last_updated
+        FROM job_applications a
+        WHERE a.id = ?
+        """,
+        (application_id,),
+    ).fetchone()
+    if row is None:
+        return None
+
+    history = conn.execute(
+        "SELECT status, changed_at FROM status_history "
+        "WHERE job_application_id = ? ORDER BY changed_at",
+        (application_id,),
+    ).fetchall()
+    files = list_job_files(conn, application_id)
+
+    return JobApplicationDetail(
+        id=row["id"],
+        company=row["company"],
+        role_title=row["role_title"],
+        lane=row["lane"],
+        location=row["location"],
+        status=row["status"],
+        last_updated=row["last_updated"],
+        match_score=row["match_score"],
+        portal_name=row["portal_name"],
+        portal_url=row["portal_url"],
+        work_mode=row["work_mode"],
+        contract_type=row["contract_type"],
+        description=row["description"],
+        requirements=json.loads(row["requirements"]),
+        notes=row["notes"],
+        next_action=row["next_action"],
+        due_date=row["due_date"],
+        status_history=[
+            StatusHistoryEntry(status=h["status"], changed_at=h["changed_at"]) for h in history
+        ],
+        files=[JobApplicationFile(kind=f["kind"], name=f["name"], date=f["date"]) for f in files],
+    )

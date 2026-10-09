@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from localjobtracker import seed
 from localjobtracker.app import create_app
 from localjobtracker.job_applications import count_job_applications, insert_job_application
+from localjobtracker.job_files import insert_job_file
 from localjobtracker.runner import FakeRunner
 from localjobtracker.storage import connect
 
@@ -175,3 +176,78 @@ def test_insert_rejects_an_unknown_status(db_path: Path) -> None:
 def test_list_without_token_is_rejected(db_path: Path, token: str) -> None:
     with TestClient(create_app(token, db_path, FakeRunner())) as bare:
         assert bare.get("/job-applications").status_code == 401
+
+
+def test_detail_returns_404_for_an_unknown_id(client: TestClient) -> None:
+    response = client.get("/job-applications/999")
+    assert response.status_code == 404
+
+
+def test_detail_includes_description_requirements_notes_and_history(
+    db_path: Path, client: TestClient
+) -> None:
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(
+            conn,
+            {
+                "company": "Solo Co",
+                "role_title": "Analyst",
+                "description": "What the role is.",
+                "requirements": ["Python", "SQL"],
+                "notes": "Keep an eye on the deadline.",
+            },
+            history=[
+                ("Identified", "2026-09-28T09:00:00Z"),
+                ("Applied", "2026-10-01T10:30:00Z"),
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    detail = client.get(f"/job-applications/{app_id}").json()
+    assert detail["description"] == "What the role is."
+    assert detail["requirements"] == ["Python", "SQL"]
+    assert detail["notes"] == "Keep an eye on the deadline."
+    assert detail["status"] == "Applied"
+    assert detail["status_history"] == [
+        {"status": "Identified", "changed_at": "2026-09-28T09:00:00Z"},
+        {"status": "Applied", "changed_at": "2026-10-01T10:30:00Z"},
+    ]
+    assert detail["files"] == []
+
+
+def test_detail_includes_job_files(db_path: Path, client: TestClient) -> None:
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(conn, {"company": "Solo Co", "role_title": "Analyst"})
+        insert_job_file(conn, app_id, kind="listing", name="Job Listing.pdf", stored_path="x/x.pdf")
+        insert_job_file(
+            conn,
+            app_id,
+            kind="eml",
+            name="Confirmation.eml",
+            stored_path="x/x.eml",
+            date="2026-10-01T12:03:00Z",
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    detail = client.get(f"/job-applications/{app_id}").json()
+    assert detail["files"] == [
+        {"kind": "listing", "name": "Job Listing.pdf", "date": None},
+        {"kind": "eml", "name": "Confirmation.eml", "date": "2026-10-01T12:03:00Z"},
+    ]
+
+
+def test_detail_without_token_is_rejected(db_path: Path, token: str) -> None:
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(conn, {"company": "Solo Co", "role_title": "Analyst"})
+        conn.commit()
+    finally:
+        conn.close()
+    with TestClient(create_app(token, db_path, FakeRunner())) as bare:
+        assert bare.get(f"/job-applications/{app_id}").status_code == 401

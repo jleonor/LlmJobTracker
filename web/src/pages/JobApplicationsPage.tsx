@@ -4,15 +4,27 @@ import { RunnerCheck } from '@/components/app/RunnerCheck'
 import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { ApiError, fetchJobApplications } from '@/lib/api'
-import { sampleDetailFor } from '@/lib/sampleJobDetail'
-import type { JobApplication } from '@/lib/types'
+import { ApiError, fetchJobApplicationDetail, fetchJobApplications } from '@/lib/api'
+import type { JobApplication, JobApplicationDetail, JobApplicationDetailData } from '@/lib/types'
 import { JobApplicationDetailPage } from '@/pages/JobApplicationDetailPage'
 
 type State =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
   | { kind: 'ready'; applications: JobApplication[] }
+
+// Keyed by id so a stale result from the previous selection can't render as if it were current
+// (and so showing "loading" needs no setState call of its own at the top of the effect below).
+type DetailState =
+  | { kind: 'error'; id: number; message: string }
+  | { kind: 'ready'; id: number; detail: JobApplicationDetail }
+
+// The queue badge and positioning's fit/gap/unclear bullets aren't computed by anything yet
+// (D-48, Phase 5), so the page shows them as "not run" rather than leaving the API response short
+// of the shape JobApplicationDetailPage expects.
+function withNotRunDefaults(data: JobApplicationDetailData): JobApplicationDetail {
+  return { ...data, queue_status: 'idle', fit: [], gaps: [], unclear: [] }
+}
 
 const HEAD = 'font-mono text-[10px] uppercase tracking-wider'
 
@@ -30,9 +42,8 @@ const COLUMNS = [
 
 export function JobApplicationsPage() {
   const [state, setState] = useState<State>({ kind: 'loading' })
-  // Design pass only (Phase 3 step list): the detail page shows seed data by company, since
-  // there is no detail endpoint yet. Selecting by id keeps this ready to swap for a real fetch.
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [detailState, setDetailState] = useState<DetailState | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -50,16 +61,38 @@ export function JobApplicationsPage() {
     }
   }, [])
 
-  if (state.kind === 'ready' && selectedId !== null) {
-    const selected = state.applications.find((app) => app.id === selectedId)
-    if (selected) {
-      return (
-        <JobApplicationDetailPage
-          application={sampleDetailFor(selected)}
-          onBack={() => setSelectedId(null)}
-        />
-      )
+  useEffect(() => {
+    if (selectedId === null) return
+    let cancelled = false
+    fetchJobApplicationDetail(selectedId)
+      .then((data) => {
+        if (!cancelled) setDetailState({ kind: 'ready', id: selectedId, detail: withNotRunDefaults(data) })
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        const message = error instanceof ApiError ? error.message : 'Could not load this application.'
+        setDetailState({ kind: 'error', id: selectedId, message })
+      })
+    return () => {
+      cancelled = true
     }
+  }, [selectedId])
+
+  if (selectedId !== null) {
+    const current = detailState?.id === selectedId ? detailState : null
+    return (
+      <>
+        {current === null && <p className="text-sm text-muted-foreground">Loading application...</p>}
+        {current?.kind === 'error' && (
+          <div role="alert" className="rounded border border-destructive/50 p-4 text-sm text-destructive">
+            {current.message}
+          </div>
+        )}
+        {current?.kind === 'ready' && (
+          <JobApplicationDetailPage application={current.detail} onBack={() => setSelectedId(null)} />
+        )}
+      </>
+    )
   }
 
   return (
