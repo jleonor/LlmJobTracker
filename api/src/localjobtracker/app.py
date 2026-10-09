@@ -37,6 +37,11 @@ from localjobtracker.job_applications import (
     update_job_application,
 )
 from localjobtracker.job_files import JobApplicationFile, JobFileUploadError, store_job_file
+from localjobtracker.job_pipeline import (
+    make_pipeline,
+    submit_check_job_listing_text,
+    submit_generate_job_listing,
+)
 from localjobtracker.listing_intake import (
     ListingExtraction,
     ListingFetchError,
@@ -65,7 +70,7 @@ from localjobtracker.profile_pipeline import (
     list_latest_outputs,
     submit_profile_analysis,
 )
-from localjobtracker.revise_pipeline import make_pipeline, submit_revise_turn
+from localjobtracker.revise_pipeline import submit_revise_turn
 from localjobtracker.revise_turns import ReviseTurn, turn_for_job, turns_for_kind
 from localjobtracker.runner import Runner, RunResult
 from localjobtracker.settings import Settings, get_settings, save_settings
@@ -98,6 +103,15 @@ class ListingPasteRequest(BaseModel):
     text: str
 
 
+class ListingCheckRequest(BaseModel):
+    text: str
+
+
+class ListingGenerateRequest(BaseModel):
+    method: str
+    text: str
+
+
 class ReviseTurnCreate(BaseModel):
     message: str
 
@@ -119,11 +133,11 @@ def create_app(
     `run_worker` starts the Claude Jobs worker with the app. Tests leave it off and step the
     queue themselves (ClaudeJobQueue.process_next), so the results are repeatable.
     """
-    render, on_result = make_pipeline(db_path.parent)
-    queue = ClaudeJobQueue(db_path, runner, on_result=on_result, render=render)
     # A Job Application's own files live under files/<company>/<role_title>/ (files.md),
     # alongside but separate from profile/ (db_path.parent is the data folder itself).
     files_root = db_path.parent / "files"
+    render, on_result = make_pipeline(db_path.parent, files_root)
+    queue = ClaudeJobQueue(db_path, runner, on_result=on_result, render=render)
 
     # A stopped worker can leave jobs half done. Put them back in the queue (D-62).
     startup_conn = connect(db_path)
@@ -378,6 +392,50 @@ def create_app(
             raise HTTPException(status_code=error.status, detail=error.message) from error
         finally:
             conn.close()
+
+    @app.post(
+        "/job-applications/{application_id}/listing/check",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def check_listing_text(
+        application_id: int,
+        body: ListingCheckRequest,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> ClaudeJob:
+        if get_job_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            job_id = submit_check_job_listing_text(conn, queue, application_id, body.text)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        return _job_or_404(conn, job_id)
+
+    @app.post(
+        "/job-applications/{application_id}/listing/generate",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def generate_listing(
+        application_id: int,
+        body: ListingGenerateRequest,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> ClaudeJob:
+        if get_job_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            job_id = submit_generate_job_listing(
+                conn, queue, application_id, body.method, body.text
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        return _job_or_404(conn, job_id)
 
     @app.post("/runs/check", response_model=RunResult, dependencies=[Depends(require_token)])
     def run_check() -> RunResult:

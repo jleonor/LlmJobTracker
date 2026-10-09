@@ -113,6 +113,29 @@ def list_job_files(conn: sqlite3.Connection, job_application_id: int) -> list[sq
     ).fetchall()
 
 
+def clear_job_files_of_kind(
+    conn: sqlite3.Connection, files_root: Path, application_id: int, kind: str
+) -> None:
+    """Remove every file of this kind for one application (mirrors profile_files._clear_kind).
+
+    Used by a Generate (LLM) step whose kind holds at most one current file (D-115: Listing,
+    Tailored CV, Cover letter) before it writes the new one.
+    """
+    rows = conn.execute(
+        "SELECT id, stored_path FROM job_files WHERE job_application_id = ? AND kind = ?",
+        (application_id, kind),
+    ).fetchall()
+    if not rows:
+        return
+    with conn:
+        conn.execute(
+            "DELETE FROM job_files WHERE job_application_id = ? AND kind = ?",
+            (application_id, kind),
+        )
+    for row in rows:
+        (files_root / str(row["stored_path"])).unlink(missing_ok=True)
+
+
 def job_file_text(conn: sqlite3.Connection, file_id: int) -> JobFileText | None:
     """The extracted text for one of a Job Application's own files (D-122), for a later prompt
     to read as context (job-llm-steps.md) — mirrors profile_files.profile_file_text."""

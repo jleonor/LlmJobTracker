@@ -208,3 +208,64 @@ def test_extract_from_upload_does_not_save_anything(client: TestClient, db_path:
     )
     detail = client.get(f"/job-applications/{app_id}").json()
     assert detail["files"] == []
+
+
+# --- Check and Generate routes (steps 26-27) --------------------------------------------------
+
+
+def test_check_route_queues_and_runs_the_sanity_check(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+    created = client.post(
+        f"/job-applications/{app_id}/listing/check", json={"text": "Senior Data Analyst..."}
+    )
+    assert created.status_code == 201
+    job = created.json()
+    assert job["kind"] == "check_job_listing_text"
+    assert job["job_application_id"] == app_id
+    assert job["status"] == "queued"
+
+    client.app.state.queue.process_next()  # type: ignore[attr-defined]
+    done = client.get("/claude-jobs").json()[0]
+    assert done["id"] == job["id"]
+    assert done["status"] == "done"
+
+
+def test_check_route_rejects_empty_text(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+    response = client.post(f"/job-applications/{app_id}/listing/check", json={"text": "  "})
+    assert response.status_code == 400
+
+
+def test_check_route_for_an_unknown_application_is_not_found(client: TestClient) -> None:
+    response = client.post(
+        "/job-applications/999/listing/check", json={"text": "Senior Data Analyst"}
+    )
+    assert response.status_code == 404
+
+
+def test_generate_route_queues_and_stores_the_listing_file(
+    client: TestClient, db_path: Path
+) -> None:
+    app_id = add_application(db_path)
+    created = client.post(
+        f"/job-applications/{app_id}/listing/generate",
+        json={"method": "paste", "text": "Senior Data Analyst..."},
+    )
+    assert created.status_code == 201
+    job = created.json()
+    assert job["kind"] == "generate_job_listing"
+
+    client.app.state.queue.process_next()  # type: ignore[attr-defined]
+    detail = client.get(f"/job-applications/{app_id}").json()
+    assert len(detail["files"]) == 1
+    assert detail["files"][0]["kind"] == "listing"
+    assert detail["files"][0]["name"] == "Job Listing.md"
+
+
+def test_generate_route_rejects_an_unknown_method(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+    response = client.post(
+        f"/job-applications/{app_id}/listing/generate",
+        json={"method": "telepathy", "text": "Senior Data Analyst..."},
+    )
+    assert response.status_code == 400
