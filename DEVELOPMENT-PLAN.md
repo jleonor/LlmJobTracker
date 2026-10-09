@@ -142,6 +142,12 @@ Step list (drafted 2026-10-07, awaiting approval; reordered per D-97 so the job 
 10. File preview: `.docx` to a temporary PDF deleted after viewing, `.eml`/`.msg` rendered as HTML or text, "Open in Word" via the system handler. `Agent/skills/`: convert-docx-to-pdf, read-docx — check how the runner actually loads them, not assumed.
 11. Checks: `scripts/check.py` output; personal-data scan; screenshots of the job page on seed data, the dry-run report, table filters/search, inline edit, each preview type, and migration rollback.
 
+Step list, continued (added 2026-10-09, D-113): step 5's migration and the hand-picked real-job import (`import_real_jobs.py`) put real `description`/`requirements`/`notes` and `job_files` rows in the database, but the job detail page (step 3) still shows seed data (`sampleJobDetail.ts`) for every application, real or synthetic — the real rows fall through to an empty fallback. Appended here rather than reopening steps 1-11, following D-104's pattern.
+
+12. Backend: `GET /job-applications/{id}`, returning the full row (including `description`, `requirements`, `notes`) plus its `status_history` and `job_files` rows. 404 for an unknown id. Positioning fields (`fit`, `gaps`, `unclear`, `match_score`) are not computed here (D-48) — the endpoint returns what is actually stored, which for now means those stay null/empty for every row.
+13. Frontend: `JobApplicationsPage.tsx` fetches the detail by id from the new endpoint instead of calling `sampleDetailFor`. `sampleJobDetail.ts` and the "seed data" comments in `types.ts`/`JobApplicationDetailPage.tsx` are retired once nothing depends on them.
+14. Checks: `scripts/check.py` output; a screenshot of one of the 4 real imported applications' detail page showing its real description, requirements, notes, status history and files.
+
 Done when
 - [ ] The Job Application page, built on seed data, matches the D-56 layout (screenshot, compared against the job-detail mockups).
 - [ ] The dry-run report matches the spreadsheet: row counts, the 8 changed rows, and three spot-checked rows.
@@ -151,6 +157,7 @@ Done when
 - [ ] Each status change writes a history row. "Last updated" matches the newest row, and the job page timeline shows the dates reached (screenshot).
 - [ ] The table shows the D-46 columns, and the queue badge reflects the queue state.
 - [ ] Migrations apply and roll back.
+- [ ] A real Job Application's detail page shows its real description, requirements, notes, status history and files — not seed data (screenshot, D-113).
 
 Out of scope: the Kanban board (see Phase 8).
 
