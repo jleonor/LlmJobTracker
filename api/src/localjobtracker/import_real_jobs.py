@@ -28,14 +28,16 @@ fixing a mistake in a later row.
 """
 
 import argparse
+import hashlib
 import json
 import shutil
 import sqlite3
 from pathlib import Path
 from typing import Any
 
+from localjobtracker.extraction import extract
 from localjobtracker.job_applications import insert_job_application
-from localjobtracker.job_files import insert_job_file, managed_folder
+from localjobtracker.job_files import EXTRACTED_KINDS, insert_job_file, managed_folder
 from localjobtracker.migrations import migrate
 from localjobtracker.storage import connect, data_dir, database_path
 
@@ -80,13 +82,28 @@ def import_job(conn: sqlite3.Connection, files_root: Path, job: dict[str, Any]) 
         source = Path(file_entry["source"])
         destination = folder / source.name
         shutil.copyfile(source, destination)
+        kind = file_entry["kind"]
+        sha256 = extraction_status = extraction_message = extracted_text = None
+        if kind in EXTRACTED_KINDS:
+            content = destination.read_bytes()
+            sha256 = hashlib.sha256(content).hexdigest()
+            result = extract(destination)
+            extraction_status, extraction_message, extracted_text = (
+                result.status,
+                result.message,
+                result.text,
+            )
         insert_job_file(
             conn,
             app_id,
-            kind=file_entry["kind"],
+            kind=kind,
             name=source.name,
             stored_path=str(destination.relative_to(files_root)),
             date=file_entry.get("date"),
+            sha256=sha256,
+            extraction_status=extraction_status,
+            extraction_message=extraction_message,
+            extracted_text=extracted_text,
         )
     conn.commit()
     print(f"imported: {company} - {role_title} ({len(job.get('files', []))} file(s))")
