@@ -1,6 +1,7 @@
 """FastAPI application factory. Every route requires the per-launch token."""
 
 import secrets
+import sqlite3
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -24,9 +25,15 @@ from localjobtracker.file_preview import UnsupportedPreview, preview_for
 from localjobtracker.job_applications import (
     JobApplication,
     JobApplicationDetail,
+    JobApplicationEdit,
+    MasterCvSelection,
+    UnknownField,
     get_job_application_detail,
     list_job_applications,
+    set_master_cv,
+    update_job_application,
 )
+from localjobtracker.job_files import JobApplicationFile, JobFileUploadError, store_job_file
 from localjobtracker.profile_files import (
     ProfileFile,
     ProfileFileText,
@@ -96,6 +103,9 @@ def create_app(
     """
     render, on_result = make_pipeline(db_path.parent)
     queue = ClaudeJobQueue(db_path, runner, on_result=on_result, render=render)
+    # A Job Application's own files live under files/<company>/<role_title>/ (files.md),
+    # alongside but separate from profile/ (db_path.parent is the data folder itself).
+    files_root = db_path.parent / "files"
 
     # A stopped worker can leave jobs half done. Put them back in the queue (D-62).
     startup_conn = connect(db_path)
@@ -169,6 +179,110 @@ def create_app(
         if detail is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         return detail
+
+    @app.patch(
+        "/job-applications/{application_id}",
+        response_model=JobApplicationDetail,
+        dependencies=[Depends(require_token)],
+    )
+    def edit_job_application(
+        application_id: int,
+        edit: JobApplicationEdit,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> JobApplicationDetail:
+        if get_job_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            detail = update_job_application(
+                conn, application_id, edit.model_dump(exclude_unset=True)
+            )
+        except UnknownField as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown field: {error}."
+            ) from error
+        except sqlite3.IntegrityError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        assert detail is not None  # the 404 check above already confirmed the row exists
+        return detail
+
+    @app.post(
+        "/job-applications/{application_id}/master-cv",
+        response_model=JobApplicationDetail,
+        dependencies=[Depends(require_token)],
+    )
+    def choose_master_cv(
+        application_id: int,
+        selection: MasterCvSelection,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> JobApplicationDetail:
+        if get_job_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        if selection.profile_file_id is not None:
+            row = conn.execute(
+                "SELECT kind FROM profile_files WHERE id = ?", (selection.profile_file_id,)
+            ).fetchone()
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such file.")
+            if row["kind"] != "master_cv":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="That file isn't a master CV."
+                )
+        detail = set_master_cv(conn, application_id, selection.profile_file_id)
+        assert detail is not None
+        return detail
+
+    @app.post(
+        "/job-applications/{application_id}/files/{kind}",
+        response_model=JobApplicationFile,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    async def upload_job_file(
+        application_id: int, kind: str, request: Request
+    ) -> JobApplicationFile:
+        name = unquote(request.headers.get("X-File-Name", ""))
+        content = await request.body()
+        conn = connect(db_path)
+        try:
+            return store_job_file(conn, files_root, application_id, kind, name, content)
+        except JobFileUploadError as error:
+            raise HTTPException(status_code=error.status, detail=error.message) from error
+        finally:
+            conn.close()
+
+    @app.post(
+        "/job-applications/{application_id}/files/{file_id}/open",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_token)],
+    )
+    def open_job_file(
+        application_id: int, file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> None:
+        path = _job_file_or_404(conn, files_root, application_id, file_id)
+        open_in_default_app(path)
+
+    @app.get(
+        "/job-applications/{application_id}/files/{file_id}/preview",
+        dependencies=[Depends(require_token)],
+    )
+    def job_file_preview(
+        application_id: int, file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> Response:
+        path = _job_file_or_404(conn, files_root, application_id, file_id)
+        try:
+            preview = preview_for(path.name, path.read_bytes())
+        except UnsupportedPreview as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+            ) from error
+        content = (
+            preview.content
+            if isinstance(preview.content, bytes)
+            else preview.content.encode("utf-8")
+        )
+        return Response(content=content, media_type=PREVIEW_MEDIA_TYPES[preview.kind])
 
     @app.post("/runs/check", response_model=RunResult, dependencies=[Depends(require_token)])
     def run_check() -> RunResult:
@@ -369,6 +483,20 @@ def _job_or_404(conn: Connection, job_id: int) -> ClaudeJob:
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     return job
+
+
+def _job_file_or_404(conn: Connection, files_root: Path, application_id: int, file_id: int) -> Path:
+    """The on-disk path for one of a Job Application's own files, checking it actually belongs
+    to that application (not just that the id exists) before handing back a path to read."""
+    row = conn.execute(
+        "SELECT job_application_id, stored_path FROM job_files WHERE id = ?", (file_id,)
+    ).fetchone()
+    if row is None or row["job_application_id"] != application_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    path = files_root / str(row["stored_path"])
+    if not path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return path
 
 
 def _with_live_text(queue: ClaudeJobQueue, job: ClaudeJob) -> ClaudeJob:

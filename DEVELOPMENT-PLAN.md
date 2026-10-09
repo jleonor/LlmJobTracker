@@ -148,6 +148,13 @@ Step list, continued (added 2026-10-09, D-113): step 5's migration and the hand-
 13. Frontend: `JobApplicationsPage.tsx` fetches the detail by id from the new endpoint instead of calling `sampleDetailFor`. `sampleJobDetail.ts` and the "seed data" comments in `types.ts`/`JobApplicationDetailPage.tsx` are retired once nothing depends on them.
 14. Checks: `scripts/check.py` output; a screenshot of one of the 4 real imported applications' detail page showing its real description, requirements, notes, status history and files.
 
+Step list, continued (added 2026-10-09, D-116): Preview, Upload, Open and Edit become real, and the Master CV selector becomes functional, for the Job Application page's Files, Job details, Positioning analysis and Application history sections. Appended here rather than reopening earlier steps, following D-104's pattern.
+
+15. Migration 16: `job_applications.master_cv_profile_file_id` (references `profile_files(id)`, `ON DELETE SET NULL`), and manual positioning fields `fit`/`gaps`/`unclear` (JSON) and `strategy` (text). Tests: applies and rolls back, and the FK clears to null when the referenced profile file is deleted.
+16. Backend: `PATCH /job-applications/{id}` (Job details, Application history and the manual positioning fields, partial — only the fields a request sends are written); `POST /job-applications/{id}/master-cv` (set or clear the reference, validated against `profile_files.kind = 'master_cv'`); `POST /job-applications/{id}/files/{kind}` (upload, keeps the file's own name rather than a content hash), `GET /job-applications/{id}/files/{file_id}/preview` and `POST /job-applications/{id}/files/{file_id}/open` (both reuse the Profile page's own logic, `file_preview.py` and `open_in_default_app`).
+17. Frontend: Positioning analysis gains a Strategy field between the fit/gap row and Unclear. `FilePreview.tsx` gains the `{table: 'job_file', applicationId, id}` source case. Each file row in Files gets Preview and Open buttons (mirroring the Profile page's `FileRow`); each Files subsection's Upload button opens a file picker and calls the new upload endpoint. Job details, Positioning analysis and Application history's Edit buttons open an inline form for their section's fields and save through the new PATCH. The Master CV dropdown lists the Profile page's master CVs and calls the new selection endpoint.
+18. Checks: `scripts/check.py` output; screenshots of a Preview, an Upload, an Edit save and a Master CV selection against the real imported applications.
+
 Done when
 - [ ] The Job Application page, built on seed data, matches the D-56 layout (screenshot, compared against the job-detail mockups).
 - [ ] The dry-run report matches the spreadsheet: row counts, the 8 changed rows, and three spot-checked rows.
@@ -158,6 +165,7 @@ Done when
 - [ ] The table shows the D-46 columns, and the queue badge reflects the queue state.
 - [ ] Migrations apply and roll back.
 - [ ] A real Job Application's detail page shows its real description, requirements, notes, status history and files — not seed data (screenshot, D-113).
+- [ ] A real job file previews, uploads, opens and is edited through the page, and a Master CV selection persists after a reload (screenshot, D-116).
 
 Out of scope: the Kanban board (see Phase 8).
 

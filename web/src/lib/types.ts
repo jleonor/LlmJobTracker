@@ -16,6 +16,7 @@ export type StatusHistoryEntry = {
 }
 
 export type JobApplicationFile = {
+  id: number
   name: string
   kind: string
   // When this file is an email (kind "eml" or "msg"), the date it was received. The Application
@@ -28,8 +29,8 @@ export type JobApplicationFile = {
 // means nothing is queued for this application; the rest mirror CLAUDE_JOB_STATUSES.
 export type QueueStatus = 'idle' | 'queued' | 'processing' | 'paused' | 'cancelled' | 'done' | 'failed'
 
-// What GET /job-applications/{id} returns (D-113): the table row's fields plus everything else
-// actually stored for one Job Application. Field names match the API.
+// What GET /job-applications/{id} returns (D-113, D-116): the table row's fields plus everything
+// else actually stored for one Job Application. Field names match the API.
 export type JobApplicationDetailData = JobApplication & {
   portal_name: string | null
   portal_url: string | null
@@ -42,20 +43,47 @@ export type JobApplicationDetailData = JobApplication & {
   due_date: string | null
   status_history: StatusHistoryEntry[]
   files: JobApplicationFile[]
-}
-
-// The Job Application page's full shape (D-56, D-98, planning/product-model.md). Extends the API
-// response with the fields nothing computes yet (D-48, Phase 5): the queue badge, and positioning's
-// fit/gap/unclear bullets. JobApplicationsPage.tsx fills these in with "not run" defaults.
-export type JobApplicationDetail = JobApplicationDetailData & {
-  queue_status: QueueStatus
-  // Positioning analysis (D-98): fit and gap bullets. The per-requirement weights, matches and
-  // reasoning behind match_score are not shown inline — they are the breakdown document in
-  // `files`, not a structured field here (D-99).
+  // D-116: a reference to one of the Profile page's master CVs (profile_files.id), not a copied
+  // job file — it has no preview or open of its own, the Profile page is where that happens.
+  // master_cv_name is the chosen file's display name, joined in server-side for convenience.
+  master_cv_profile_file_id: number | null
+  master_cv_name: string | null
+  // Positioning analysis (D-98, D-116): fit and gap bullets, a prose strategy, and points the
+  // LLM (or, for now, the user) flagged as unclear (D-102). The per-requirement weights, matches
+  // and reasoning behind match_score are not shown inline — they are the breakdown document in
+  // `files`, not a structured field here (D-99). match_score itself stays code-computed (D-47),
+  // not part of this manually-editable set.
   fit: string[]
   gaps: string[]
-  // Points the LLM flagged as unclear while scoring, which answering would sharpen (D-102).
+  strategy: string | null
   unclear: string[]
+}
+
+// A PATCH /job-applications/{id} body (D-116): only the fields a form actually sends are
+// written server-side, so a field left out here leaves that column untouched, not cleared.
+// Matches the API's JobApplicationEdit.
+export type JobApplicationEdit = Partial<{
+  portal_name: string | null
+  portal_url: string | null
+  location: string | null
+  work_mode: string
+  contract_type: string
+  description: string | null
+  requirements: string[]
+  notes: string | null
+  next_action: string | null
+  due_date: string | null
+  fit: string[]
+  gaps: string[]
+  strategy: string | null
+  unclear: string[]
+}>
+
+// The Job Application page's full shape (D-56, D-98, planning/product-model.md). Extends the API
+// response with the one thing nothing computes yet: the queue badge. JobApplicationsPage.tsx
+// fills it in with a "not run" default.
+export type JobApplicationDetail = JobApplicationDetailData & {
+  queue_status: QueueStatus
 }
 
 export type RunResult = {

@@ -2,17 +2,20 @@ import { useEffect, useState } from 'react'
 
 import { MarkdownDocument } from '@/components/app/MarkdownDocument'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ApiError, fetchProfileFilePreview } from '@/lib/api'
+import { ApiError, fetchJobFilePreview, fetchProfileFilePreview } from '@/lib/api'
 import type { FilePreviewData } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-// Where a previewed file's bytes come from. Profile files are the only real source today
-// (D-109); a job application's own files get a second case once that table exists
-// (planning/files.md), reusing this same overlay rather than a new one.
-export type PreviewSource = { table: 'profile_file'; id: number }
+// Where a previewed file's bytes come from. Profile files were the only source through D-109; a
+// Job Application's own files (D-116) are the second, needing the owning application's id too
+// since the route is nested under it.
+export type PreviewSource =
+  | { table: 'profile_file'; id: number }
+  | { table: 'job_file'; applicationId: number; id: number }
 
 async function load(source: PreviewSource): Promise<FilePreviewData> {
   if (source.table === 'profile_file') return fetchProfileFilePreview(source.id)
+  if (source.table === 'job_file') return fetchJobFilePreview(source.applicationId, source.id)
   throw new Error(`Unknown preview source: ${JSON.stringify(source)}`)
 }
 
@@ -65,7 +68,7 @@ export function FilePreview({
     // `source` is a plain object literal from the caller; comparing its fields, not identity,
     // avoids re-fetching on every render while still refetching when the target file changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, source.table, source.table === 'profile_file' ? source.id : null])
+  }, [open, source.table, source.id, source.table === 'job_file' ? source.applicationId : null])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

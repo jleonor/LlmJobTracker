@@ -19,11 +19,11 @@ type DetailState =
   | { kind: 'error'; id: number; message: string }
   | { kind: 'ready'; id: number; detail: JobApplicationDetail }
 
-// The queue badge and positioning's fit/gap/unclear bullets aren't computed by anything yet
-// (D-48, Phase 5), so the page shows them as "not run" rather than leaving the API response short
-// of the shape JobApplicationDetailPage expects.
+// Nothing computes the queue state yet (Phase 2's Claude Jobs queue isn't linked up here), so
+// the page shows it as idle rather than leaving the API response short of the shape
+// JobApplicationDetailPage expects.
 function withNotRunDefaults(data: JobApplicationDetailData): JobApplicationDetail {
-  return { ...data, queue_status: 'idle', fit: [], gaps: [], unclear: [] }
+  return { ...data, queue_status: 'idle' }
 }
 
 const HEAD = 'font-mono text-[10px] uppercase tracking-wider'
@@ -78,6 +78,30 @@ export function JobApplicationsPage() {
     }
   }, [selectedId])
 
+  // Re-reads the detail after an Edit, Upload or Master CV change on the page (D-116), instead
+  // of each of those updating local state themselves.
+  function reloadDetail() {
+    if (selectedId === null) return
+    fetchJobApplicationDetail(selectedId)
+      .then((data) => setDetailState({ kind: 'ready', id: selectedId, detail: withNotRunDefaults(data) }))
+      .catch((error: unknown) => {
+        const message = error instanceof ApiError ? error.message : 'Could not load this application.'
+        setDetailState({ kind: 'error', id: selectedId, message })
+      })
+  }
+
+  // A detail-page edit (location, status-adjacent fields later) can change what the table shows,
+  // so going back re-reads the list rather than leaving it stale until a full page reload.
+  function backToList() {
+    setSelectedId(null)
+    fetchJobApplications()
+      .then((applications) => setState({ kind: 'ready', applications }))
+      .catch((error: unknown) => {
+        const message = error instanceof ApiError ? error.message : 'Could not load applications.'
+        setState({ kind: 'error', message })
+      })
+  }
+
   if (selectedId !== null) {
     const current = detailState?.id === selectedId ? detailState : null
     return (
@@ -89,7 +113,11 @@ export function JobApplicationsPage() {
           </div>
         )}
         {current?.kind === 'ready' && (
-          <JobApplicationDetailPage application={current.detail} onBack={() => setSelectedId(null)} />
+          <JobApplicationDetailPage
+            application={current.detail}
+            onBack={backToList}
+            onChanged={reloadDetail}
+          />
         )}
       </>
     )

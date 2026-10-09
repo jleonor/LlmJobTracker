@@ -29,6 +29,16 @@ One tracker row for one listing (D-46, D-56). Table `job_applications`.
   either).
 - `notes`: free text, the user's own, never generated.
 - `next_action`, `due_date`: free text / date, edited on the Job Application page (D-56).
+- `master_cv_profile_file_id`: nullable, references `profile_files(id)` ON DELETE SET NULL
+  (D-116). Which Profile page master CV this application uses — a reference, not a copied file:
+  no bytes are duplicated, and the master CV is previewed and opened from the Profile page, not
+  here. Deleting the referenced profile file clears this back to null rather than touching the
+  Job Application itself.
+- `fit`, `gaps`, `unclear`: JSON arrays of short strings, same shallow shape as `requirements`.
+  `strategy`: free text. Manually editable through Positioning analysis's Edit button (D-116) —
+  this supersedes the Requirement section below, which had these three living only in the
+  positioning breakdown document's prose. They start empty/null and are filled in by hand until
+  Phase 5's Revise/Generate (LLM) buttons compute them for real.
 
 ## Status history
 
@@ -43,5 +53,7 @@ is never edited in place, only appended to.
 Not a table. Per D-99, the per-requirement breakdown (weight 0–10, match 0–10, reasoning) lives
 in the positioning breakdown document — a file (`files.md`), read as prose, not queried as rows.
 `match_score` is the one number code computes from that document's table (D-47) and stores on
-the Job Application itself. The page's `fit`/`gaps`/`unclear` bullets (D-98, D-102) are part of
-that same document's prose, not separate columns.
+the Job Application itself, and stays code-computed, not manually edited (D-47, D-116). The
+page's `fit`/`gaps`/`strategy`/`unclear` fields are now columns on `job_applications` itself
+(D-116, superseding this file's original "part of that same document's prose" description),
+manually editable until Phase 5 computes them for real.

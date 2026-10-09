@@ -3,6 +3,8 @@ import type {
   FilePreviewData,
   JobApplication,
   JobApplicationDetailData,
+  JobApplicationEdit,
+  JobApplicationFile,
   ProfileFile,
   ProfileFileKind,
   ProfileOutput,
@@ -58,6 +60,98 @@ export function fetchJobApplications(): Promise<JobApplication[]> {
 // leaves out of the table row (job details, status history, files).
 export function fetchJobApplicationDetail(id: number): Promise<JobApplicationDetailData> {
   return request<JobApplicationDetailData>(`/api/job-applications/${id}`)
+}
+
+// Saves one of the job page's Edit forms (D-116). Only the fields `edit` sets are written.
+export function patchJobApplication(
+  id: number,
+  edit: JobApplicationEdit,
+): Promise<JobApplicationDetailData> {
+  return request<JobApplicationDetailData>(`/api/job-applications/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(edit),
+  })
+}
+
+// Sets or clears the Master CV selector (D-116) — a reference to a Profile page master CV, not
+// a copy.
+export function setMasterCv(
+  id: number,
+  profileFileId: number | null,
+): Promise<JobApplicationDetailData> {
+  return request<JobApplicationDetailData>(`/api/job-applications/${id}/master-cv`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profile_file_id: profileFileId }),
+  })
+}
+
+// Sends the file's bytes to a Job Application's own files (D-116), the same way
+// uploadProfileFile does.
+export async function uploadJobFile(
+  applicationId: number,
+  kind: string,
+  file: File,
+): Promise<JobApplicationFile> {
+  let response: Response
+  try {
+    response = await fetch(`/api/job-applications/${applicationId}/files/${kind}`, {
+      method: 'POST',
+      headers: { 'X-File-Name': encodeURIComponent(file.name) },
+      body: file,
+    })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+  return (await response.json()) as JobApplicationFile
+}
+
+// Opens one of a Job Application's own files in the program the system uses for it (D-116), the
+// same way openProfileFile does. The API answers 204 with no body.
+export async function openJobFile(applicationId: number, fileId: number): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`/api/job-applications/${applicationId}/files/${fileId}/open`, {
+      method: 'POST',
+    })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+}
+
+// Reads the preview the API built for one of a Job Application's own files (D-116), the same
+// way fetchProfileFilePreview does.
+export async function fetchJobFilePreview(
+  applicationId: number,
+  fileId: number,
+): Promise<FilePreviewData> {
+  let response: Response
+  try {
+    response = await fetch(`/api/job-applications/${applicationId}/files/${fileId}/preview`)
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+  const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.includes('application/pdf')) {
+    return { kind: 'pdf', blob: await response.blob() }
+  }
+  if (contentType.includes('text/markdown')) {
+    return { kind: 'markdown', text: await response.text() }
+  }
+  if (contentType.includes('text/html')) {
+    return { kind: 'html', text: await response.text() }
+  }
+  return { kind: 'text', text: await response.text() }
 }
 
 export function runClaudeCheck(): Promise<RunResult> {

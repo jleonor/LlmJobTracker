@@ -703,6 +703,25 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE job_applications DROP COLUMN description",
         ),
     ),
+    Migration(
+        version=16,
+        name="add master_cv_profile_file_id and manual positioning fields (D-116)",
+        up=(
+            "ALTER TABLE job_applications ADD COLUMN master_cv_profile_file_id INTEGER "
+            "REFERENCES profile_files(id) ON DELETE SET NULL",
+            "ALTER TABLE job_applications ADD COLUMN fit TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE job_applications ADD COLUMN gaps TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE job_applications ADD COLUMN strategy TEXT",
+            "ALTER TABLE job_applications ADD COLUMN unclear TEXT NOT NULL DEFAULT '[]'",
+        ),
+        down=(
+            "ALTER TABLE job_applications DROP COLUMN unclear",
+            "ALTER TABLE job_applications DROP COLUMN strategy",
+            "ALTER TABLE job_applications DROP COLUMN gaps",
+            "ALTER TABLE job_applications DROP COLUMN fit",
+            "ALTER TABLE job_applications DROP COLUMN master_cv_profile_file_id",
+        ),
+    ),
 )
 
 _LEDGER = """
