@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 
 import { FilePreview } from '@/components/app/FilePreview'
 import { GenerateListingOverlay } from '@/components/app/GenerateListingOverlay'
+import { GenerateSectionOverlay } from '@/components/app/GenerateSectionOverlay'
 import { QueueStatusBadge } from '@/components/app/QueueStatusBadge'
 import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +23,10 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   ApiError,
   fetchProfileFiles,
+  fetchProfileOutputs,
+  generateApplicationHistory,
+  generateJobDetails,
+  generatePositioning,
   openJobFile,
   patchJobApplication,
   replaceStatusHistory,
@@ -204,15 +209,37 @@ function UploadButton({ busy, onClick }: { busy: boolean; onClick: () => void })
 }
 
 // A section's header actions (Job details, Positioning analysis, Application history): Edit,
-// then Revise or Generate depending on whether the section has anything to revise yet. No Upload
-// here - that's a Files thing only (D-114).
-function SectionActions({ hasData, onEdit }: { hasData: boolean; onEdit: () => void }) {
+// then Revise or Generate depending on whether the section has anything to revise yet (D-114).
+// All three are real (steps 30-33) - generateDisabled/generateTitle mirror the backend's own
+// gate (D-128), so a greyed-out button explains what's missing, the same pattern LlmButton's
+// always-disabled title already used. No Upload here - that's a Files thing only (D-114).
+function SectionActions({
+  hasData,
+  onEdit,
+  onGenerate,
+  generateDisabled,
+  generateTitle,
+}: {
+  hasData: boolean
+  onEdit: () => void
+  onGenerate: () => void
+  generateDisabled?: boolean
+  generateTitle?: string
+}) {
   return (
     <div className="flex shrink-0 gap-2">
       <Button variant="outline" size="sm" onClick={onEdit}>
         Edit
       </Button>
-      <LlmButton hasData={hasData} />
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={generateDisabled}
+        title={generateDisabled ? generateTitle : undefined}
+        onClick={onGenerate}
+      >
+        {llmLabel(hasData)}
+      </Button>
     </div>
   )
 }
@@ -249,11 +276,23 @@ function JobDetails({
   onChanged: () => void
 }) {
   const [editOpen, setEditOpen] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(false)
   const hasData = application.description !== null || application.requirements.length > 0
+  const hasListing = application.files.some(
+    (file) => file.kind === 'listing' && file.extraction_status === 'ok',
+  )
   return (
     <Section
       title="Job details"
-      actions={<SectionActions hasData={hasData} onEdit={() => setEditOpen(true)} />}
+      actions={
+        <SectionActions
+          hasData={hasData}
+          onEdit={() => setEditOpen(true)}
+          onGenerate={() => setGenerateOpen(true)}
+          generateDisabled={!hasListing}
+          generateTitle="Add a listing file with readable text first."
+        />
+      }
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Field label="URL">
@@ -300,6 +339,14 @@ function JobDetails({
         open={editOpen}
         onOpenChange={setEditOpen}
         onSaved={onChanged}
+      />
+      <GenerateSectionOverlay
+        title="Job details"
+        hasData={hasData}
+        open={generateOpen}
+        onOpenChange={setGenerateOpen}
+        onSubmit={() => generateJobDetails(application.id)}
+        onChanged={onChanged}
       />
     </Section>
   )
@@ -469,8 +516,48 @@ function PositioningAnalysis({
   onChanged: () => void
 }) {
   const [editOpen, setEditOpen] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const [breakdownPreviewOpen, setBreakdownPreviewOpen] = useState(false)
+  const [profileDocsReady, setProfileDocsReady] = useState<boolean | null>(null)
   const hasData = hasPositioningData(application)
-  const actions = <SectionActions hasData={hasData} onEdit={() => setEditOpen(true)} />
+
+  // Positioning analysis's own gate (job-llm-steps.md §3, D-128): the three LLM profile
+  // documents, a Master CV selected, Job details filled, and the listing file's text readable.
+  // The first of these needs its own fetch - everything else is already on `application`.
+  useEffect(() => {
+    let cancelled = false
+    fetchProfileOutputs()
+      .then((outputs) => {
+        if (!cancelled) setProfileDocsReady(outputs.length === 3)
+      })
+      .catch(() => {
+        if (!cancelled) setProfileDocsReady(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  const hasListing = application.files.some(
+    (file) => file.kind === 'listing' && file.extraction_status === 'ok',
+  )
+  const hasJobDetails = application.description !== null && application.requirements.length > 0
+  const ready =
+    profileDocsReady === true &&
+    application.master_cv_profile_file_id !== null &&
+    hasJobDetails &&
+    hasListing
+
+  const breakdownFile = application.files.find((file) => file.kind === 'positioning_breakdown')
+
+  const actions = (
+    <SectionActions
+      hasData={hasData}
+      onEdit={() => setEditOpen(true)}
+      onGenerate={() => setGenerateOpen(true)}
+      generateDisabled={!ready}
+      generateTitle="Positioning analysis needs the career history, questionnaire analysis and strategy, a selected Master CV, and Job details filled in first."
+    />
+  )
   const dialog = (
     <PositioningEditDialog
       application={application}
@@ -479,12 +566,23 @@ function PositioningAnalysis({
       onSaved={onChanged}
     />
   )
+  const generateOverlay = (
+    <GenerateSectionOverlay
+      title="Positioning analysis"
+      hasData={hasData}
+      open={generateOpen}
+      onOpenChange={setGenerateOpen}
+      onSubmit={() => generatePositioning(application.id)}
+      onChanged={onChanged}
+    />
+  )
 
   if (!hasData) {
     return (
       <Section title="Positioning analysis" actions={actions}>
         <p className="text-sm text-muted-foreground">Not run yet.</p>
         {dialog}
+        {generateOverlay}
       </Section>
     )
   }
@@ -511,12 +609,21 @@ function PositioningAnalysis({
             <Button
               variant="link"
               size="sm"
-              disabled
-              title="Opens the positioning breakdown document once file opening is wired up"
+              disabled={!breakdownFile}
+              title={breakdownFile ? undefined : 'No positioning breakdown document yet.'}
+              onClick={() => setBreakdownPreviewOpen(true)}
               className="h-auto p-0 text-xs"
             >
               Check reasoning
             </Button>
+            {breakdownFile && (
+              <FilePreview
+                source={{ table: 'job_file', applicationId: application.id, id: breakdownFile.id }}
+                name={breakdownFile.name}
+                open={breakdownPreviewOpen}
+                onOpenChange={setBreakdownPreviewOpen}
+              />
+            )}
           </div>
 
           <Field label="Fit">
@@ -560,6 +667,7 @@ function PositioningAnalysis({
         </Field>
       </div>
       {dialog}
+      {generateOverlay}
     </Section>
   )
 }
@@ -704,13 +812,24 @@ function ApplicationHistory({
   onChanged: () => void
 }) {
   const [editOpen, setEditOpen] = useState(false)
-  // Always true in practice: every application starts with an Identified row (DEFAULT_STATUS), so
-  // this section never actually shows "Generate (LLM)" today — the check is here for consistency.
-  const hasData = application.status_history.length > 0
+  const [generateOpen, setGenerateOpen] = useState(false)
+  // Generate (LLM) never touches notes (D-127) or status_history directly - next_action/due_date
+  // are the fields it actually writes, so whether either has a value is what "has data" means
+  // here, the same way Job details' own hasData tracks description/requirements.
+  const hasData = application.next_action !== null || application.due_date !== null
+  const ready = application.description !== null && application.requirements.length > 0
   return (
     <Section
       title="Application history"
-      actions={<SectionActions hasData={hasData} onEdit={() => setEditOpen(true)} />}
+      actions={
+        <SectionActions
+          hasData={hasData}
+          onEdit={() => setEditOpen(true)}
+          onGenerate={() => setGenerateOpen(true)}
+          generateDisabled={!ready}
+          generateTitle="Fill in Job details first."
+        />
+      }
     >
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         <StatusTimeline history={application.status_history} currentStatus={application.status} />
@@ -734,6 +853,14 @@ function ApplicationHistory({
         open={editOpen}
         onOpenChange={setEditOpen}
         onSaved={onChanged}
+      />
+      <GenerateSectionOverlay
+        title="Application history"
+        hasData={hasData}
+        open={generateOpen}
+        onOpenChange={setGenerateOpen}
+        onSubmit={() => generateApplicationHistory(application.id)}
+        onChanged={onChanged}
       />
     </Section>
   )
@@ -1010,6 +1137,9 @@ function Files({
       file.kind !== 'listing' &&
       file.kind !== 'master_cv' &&
       file.kind !== TAILORED_CV_KIND &&
+      // The positioning breakdown document has its own access point (Positioning analysis's
+      // "Check reasoning" link, D-102) - it isn't a loose file to also list here.
+      file.kind !== 'positioning_breakdown' &&
       !COVER_LETTER_KINDS.has(file.kind) &&
       !EMAIL_KINDS.has(file.kind),
   )

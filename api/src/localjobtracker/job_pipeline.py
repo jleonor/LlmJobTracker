@@ -479,14 +479,21 @@ def _normalize_for_match(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-_DESCRIPTION_BLOCK = re.compile(r"=== DESCRIPTION ===\n(.*?)\n=== END DESCRIPTION ===", re.DOTALL)
-_JOB_REQUIREMENT_BLOCK = re.compile(
-    r"=== REQUIREMENT ===\n(.*?)\n=== END REQUIREMENT ===", re.DOTALL
-)
-_WORK_MODE_BLOCK = re.compile(r"=== WORK MODE ===\n(.*?)\n=== END WORK MODE ===", re.DOTALL)
-_CONTRACT_TYPE_BLOCK = re.compile(
-    r"=== CONTRACT TYPE ===\n(.*?)\n=== END CONTRACT TYPE ===", re.DOTALL
-)
+def _block_pattern(name: str) -> re.Pattern[str]:
+    """A `=== NAME ===\\n...\\n=== END NAME ===` block - tolerant of a missing closing tag, since
+    a real answer sometimes drops it even when instructed to include one (observed live: a
+    well-formed REQUIREMENT block with no `=== END REQUIREMENT ===`). Also ends at the next
+    `=== ` marker or the end of the text, whichever comes first. No `\\n` is required right
+    before `=== END NAME ===` (an empty block has none - the opening line's own `\\n` already
+    sits right against it); a captured trailing newline either way is harmless, since every
+    caller strips the result."""
+    return re.compile(rf"=== {name} ===\n(.*?)(?:=== END {name} ===|(?=\n=== )|\Z)", re.DOTALL)
+
+
+_DESCRIPTION_BLOCK = _block_pattern("DESCRIPTION")
+_JOB_REQUIREMENT_BLOCK = _block_pattern("REQUIREMENT")
+_WORK_MODE_BLOCK = _block_pattern("WORK MODE")
+_CONTRACT_TYPE_BLOCK = _block_pattern("CONTRACT TYPE")
 
 
 @dataclass(frozen=True)
@@ -531,16 +538,14 @@ _POSITIONING_REQUIREMENT_BLOCK = re.compile(
     r"TEXT:\s*(.*?)\n"
     r"WEIGHT:\s*(.*?)\n"
     r"MATCH:\s*(.*?)\n"
-    r"REASONING:\s*(.*?)\n"
-    r"=== END REQUIREMENT ===",
+    r"REASONING:\s*(.*?)"
+    r"(?:=== END REQUIREMENT ===|(?=\n=== )|\Z)",
     re.DOTALL,
 )
-_FIT_BLOCK = re.compile(r"=== FIT ===\n(.*?)\n=== END FIT ===", re.DOTALL)
-_GAPS_BLOCK = re.compile(r"=== GAPS ===\n(.*?)\n=== END GAPS ===", re.DOTALL)
-_JOB_STRATEGY_BLOCK = re.compile(
-    r"=== JOB STRATEGY ===\n(.*?)\n=== END JOB STRATEGY ===", re.DOTALL
-)
-_UNCLEAR_BLOCK = re.compile(r"=== UNCLEAR ===\n(.*?)\n=== END UNCLEAR ===", re.DOTALL)
+_FIT_BLOCK = _block_pattern("FIT")
+_GAPS_BLOCK = _block_pattern("GAPS")
+_JOB_STRATEGY_BLOCK = _block_pattern("JOB STRATEGY")
+_UNCLEAR_BLOCK = _block_pattern("UNCLEAR")
 
 
 @dataclass(frozen=True)
@@ -653,9 +658,9 @@ def render_breakdown_document(scores: list[RequirementScore], match_score: float
     return "\n".join(lines)
 
 
-_NOTES_BLOCK = re.compile(r"=== NOTES ===\n(.*?)\n=== END NOTES ===", re.DOTALL)
-_NEXT_ACTION_BLOCK = re.compile(r"=== NEXT ACTION ===\n(.*?)\n=== END NEXT ACTION ===", re.DOTALL)
-_DUE_DATE_BLOCK = re.compile(r"=== DUE DATE ===\n(.*?)\n=== END DUE DATE ===", re.DOTALL)
+_NOTES_BLOCK = _block_pattern("NOTES")
+_NEXT_ACTION_BLOCK = _block_pattern("NEXT ACTION")
+_DUE_DATE_BLOCK = _block_pattern("DUE DATE")
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 

@@ -231,6 +231,22 @@ export function generateListing(
   })
 }
 
+// Steps 30-32 of job-llm-steps.md: each reads current stored data, so the request body is empty.
+
+export function generateJobDetails(id: number): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/job-applications/${id}/job-details/generate`, { method: 'POST' })
+}
+
+export function generatePositioning(id: number): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/job-applications/${id}/positioning/generate`, { method: 'POST' })
+}
+
+export function generateApplicationHistory(id: number): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/job-applications/${id}/application-history/generate`, {
+    method: 'POST',
+  })
+}
+
 export function runClaudeCheck(): Promise<RunResult> {
   return request<RunResult>('/api/runs/check', { method: 'POST' })
 }

@@ -279,6 +279,63 @@ def test_parse_positioning_answer_reads_scores_and_sections() -> None:
     assert answer.unclear == ["Which BI tool the team actually uses"]
 
 
+def test_parse_positioning_answer_tolerates_a_missing_end_requirement_tag() -> None:
+    # Regression test: a real Claude Sonnet 5 run (2026-10-09, live-verified against the actual
+    # CLI) returned otherwise well-formed REQUIREMENT blocks with no "=== END REQUIREMENT ==="
+    # line at all - just a blank line before the next block. The synthetic GOOD_POSITIONING_ANSWER
+    # above always included the tag, so this shape never hit the parser until live verification.
+    text = (
+        "=== REQUIREMENT ===\n"
+        "TEXT: Strong SQL\n"
+        "WEIGHT: 8\n"
+        "MATCH: 9\n"
+        "REASONING: Five years of SQL-heavy analyst work.\n"
+        "\n"
+        "=== REQUIREMENT ===\n"
+        "TEXT: 4+ years experience\n"
+        "WEIGHT: 6\n"
+        "MATCH: 10\n"
+        "REASONING: Five years in analytics roles.\n"
+        "\n"
+        "=== FIT ===\n"
+        "- Strong SQL background\n"
+        "\n"
+        "=== GAPS ===\n"
+        "\n"
+        "=== JOB STRATEGY ===\n"
+        "Lead with SQL.\n"
+        "\n"
+        "=== UNCLEAR ===\n"
+    )
+    answer = parse_positioning_answer(text, REQUIREMENTS)
+    assert [score.text for score in answer.scores] == REQUIREMENTS
+    assert answer.scores[0].reasoning == "Five years of SQL-heavy analyst work."
+    assert answer.scores[1].reasoning == "Five years in analytics roles."
+    assert answer.fit == ["Strong SQL background"]
+    assert answer.gaps == []
+    assert answer.strategy == "Lead with SQL."
+    assert answer.unclear == []
+
+
+def test_parse_job_details_answer_tolerates_adjacent_blocks_with_no_end_tags() -> None:
+    text = (
+        "=== DESCRIPTION ===\n"
+        "Acme Inc is hiring a Senior Data Analyst.\n"
+        "=== REQUIREMENT ===\n"
+        "4+ years in analytics\n"
+        "=== REQUIREMENT ===\n"
+        "Strong SQL\n"
+        "=== WORK MODE ===\n"
+        "Remote\n"
+    )
+    answer = parse_job_details_answer(text, LISTING_TEXT)
+    assert answer.description == "Acme Inc is hiring a Senior Data Analyst."
+    assert answer.requirements == ["4+ years in analytics", "Strong SQL"]
+    assert answer.work_mode == "Remote"
+    # No CONTRACT TYPE block at all, not even an empty one.
+    assert answer.contract_type == "Unknown"
+
+
 def test_compute_match_score_matches_a_hand_calculation() -> None:
     answer = parse_positioning_answer(GOOD_POSITIONING_ANSWER, REQUIREMENTS)
     # (8*9 + 6*10) / (10*(8+6)) * 100 = (72+60)/140*100 = 94.285714...
