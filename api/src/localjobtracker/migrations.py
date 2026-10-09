@@ -722,6 +722,24 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE job_applications DROP COLUMN master_cv_profile_file_id",
         ),
     ),
+    Migration(
+        version=17,
+        name="add extraction columns to job_files (D-122, Agent/specs/job-llm-steps.md)",
+        up=(
+            "ALTER TABLE job_files ADD COLUMN sha256 TEXT",
+            "ALTER TABLE job_files ADD COLUMN extraction_status TEXT CHECK ("
+            f"extraction_status IS NULL OR extraction_status IN ({_in_list(EXTRACTION_STATUSES)})"
+            ")",
+            "ALTER TABLE job_files ADD COLUMN extraction_message TEXT",
+            "ALTER TABLE job_files ADD COLUMN extracted_text TEXT",
+        ),
+        down=(
+            "ALTER TABLE job_files DROP COLUMN extracted_text",
+            "ALTER TABLE job_files DROP COLUMN extraction_message",
+            "ALTER TABLE job_files DROP COLUMN extraction_status",
+            "ALTER TABLE job_files DROP COLUMN sha256",
+        ),
+    ),
 )
 
 _LEDGER = """
