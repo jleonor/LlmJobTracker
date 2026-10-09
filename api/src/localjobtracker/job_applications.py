@@ -260,7 +260,14 @@ def get_job_application_detail(
             StatusHistoryEntry(status=h["status"], changed_at=h["changed_at"]) for h in history
         ],
         files=[
-            JobApplicationFile(id=f["id"], kind=f["kind"], name=f["name"], date=f["date"])
+            JobApplicationFile(
+                id=f["id"],
+                kind=f["kind"],
+                name=f["name"],
+                date=f["date"],
+                extraction_status=f["extraction_status"],
+                extraction_message=f["extraction_message"],
+            )
             for f in files
         ],
         master_cv_profile_file_id=row["master_cv_profile_file_id"],

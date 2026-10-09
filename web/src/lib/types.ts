@@ -23,6 +23,10 @@ export type JobApplicationFile = {
   // history page's Emails column (D-111) is this same array filtered to those two kinds, sorted
   // by this field — an email can only show there if it is also listed as a file (D-112).
   date?: string
+  // Set only for the listing (D-122, job-llm-steps.md): whether its text could be read, for
+  // Job details and Positioning analysis to use as context. Null for every other kind today.
+  extraction_status?: string | null
+  extraction_message?: string | null
 }
 
 // A Job Application's own Claude Jobs (D-49 to D-52), shown beside its status tag (D-56). Idle

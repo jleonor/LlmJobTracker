@@ -10,14 +10,22 @@ from typing import Final
 
 from pydantic import BaseModel
 
+from localjobtracker.extraction import extract
 from localjobtracker.migrations import JOB_FILE_KINDS
 
 # Characters Windows rejects in a file or folder name (files.md).
 _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*]')
 
 MAX_UPLOAD_BYTES: Final = 25 * 1024 * 1024
-# Unlike profile_files.ALLOWED_EXTENSIONS, this also takes .eml/.msg (D-116's Emails subsection).
-ALLOWED_EXTENSIONS: Final = frozenset({".pdf", ".docx", ".txt", ".md", ".eml", ".msg"})
+# Unlike profile_files.ALLOWED_EXTENSIONS, this also takes .eml/.msg (D-116's Emails subsection)
+# and .html/.htm (a saved listing page, D-122, job-llm-steps.md).
+ALLOWED_EXTENSIONS: Final = frozenset(
+    {".pdf", ".docx", ".txt", ".md", ".eml", ".msg", ".html", ".htm"}
+)
+# Only the listing is read back as prompt input today (job-llm-steps.md, Job details and
+# Positioning analysis). Extracting every kind would mean extracting .eml/.msg too, which
+# file_preview.py already parses for its own purpose at preview time, not at upload time.
+EXTRACTED_KINDS: Final = frozenset({"listing"})
 
 
 class JobFileUploadError(Exception):
@@ -34,6 +42,11 @@ class JobApplicationFile(BaseModel):
     kind: str
     name: str
     date: str | None
+    # Set only for an extracted kind (EXTRACTED_KINDS); null for everything else, the same as a
+    # file that has never been read. Mirrors profile_files.ProfileFile's own two fields; the
+    # extracted text itself is read server-side (job_file_text below), not served here.
+    extraction_status: str | None = None
+    extraction_message: str | None = None
 
 
 def sanitize_path_part(value: str) -> str:
@@ -46,6 +59,13 @@ def managed_folder(files_root: Path, company: str, role_title: str) -> Path:
     return files_root / sanitize_path_part(company) / sanitize_path_part(role_title)
 
 
+class JobFileText(BaseModel):
+    id: int
+    extraction_status: str | None
+    extraction_message: str | None
+    text: str
+
+
 def insert_job_file(
     conn: sqlite3.Connection,
     job_application_id: int,
@@ -54,14 +74,30 @@ def insert_job_file(
     name: str,
     stored_path: str,
     date: str | None = None,
+    sha256: str | None = None,
+    extraction_status: str | None = None,
+    extraction_message: str | None = None,
+    extracted_text: str | None = None,
 ) -> int:
     """Record one file already copied into the managed folder. Returns its id."""
     cursor = conn.execute(
         """
-        INSERT INTO job_files (job_application_id, kind, name, stored_path, date)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO job_files (
+            job_application_id, kind, name, stored_path, date,
+            sha256, extraction_status, extraction_message, extracted_text
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (job_application_id, kind, name, stored_path, date),
+        (
+            job_application_id,
+            kind,
+            name,
+            stored_path,
+            date,
+            sha256,
+            extraction_status,
+            extraction_message,
+            extracted_text,
+        ),
     )
     file_id = cursor.lastrowid
     if file_id is None:
@@ -71,10 +107,28 @@ def insert_job_file(
 
 def list_job_files(conn: sqlite3.Connection, job_application_id: int) -> list[sqlite3.Row]:
     return conn.execute(
-        "SELECT id, kind, name, stored_path, date FROM job_files "
-        "WHERE job_application_id = ? ORDER BY id",
+        "SELECT id, kind, name, stored_path, date, extraction_status, extraction_message "
+        "FROM job_files WHERE job_application_id = ? ORDER BY id",
         (job_application_id,),
     ).fetchall()
+
+
+def job_file_text(conn: sqlite3.Connection, file_id: int) -> JobFileText | None:
+    """The extracted text for one of a Job Application's own files (D-122), for a later prompt
+    to read as context (job-llm-steps.md) — mirrors profile_files.profile_file_text."""
+    row = conn.execute(
+        "SELECT id, extraction_status, extraction_message, extracted_text "
+        "FROM job_files WHERE id = ?",
+        (file_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return JobFileText(
+        id=row["id"],
+        extraction_status=row["extraction_status"],
+        extraction_message=row["extraction_message"],
+        text=row["extracted_text"] or "",
+    )
 
 
 def _safe_name(name: str) -> str:
@@ -101,7 +155,8 @@ def store_job_file(
     Unlike profile_files.store_profile_file, the file keeps its own readable name on disk
     (files.md: "the folder holds real, openable files with readable names... not generated ids"),
     not a content hash — a clash with an existing name gets a short suffix instead of overwriting.
-    No text extraction (D-109): a Job Application's own files aren't read by Claude yet.
+    Only an EXTRACTED_KINDS upload (the listing) is read for its text (D-122): a Job
+    Application's other files aren't prompt input yet (D-109).
     """
     if kind not in JOB_FILE_KINDS:
         raise JobFileUploadError(400, f"Unknown file kind: {kind}.")
@@ -114,7 +169,7 @@ def store_job_file(
     name = _safe_name(original_name)
     extension = Path(name).suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
-        raise JobFileUploadError(415, "Use a PDF, DOCX, TXT, MD, EML or MSG file.")
+        raise JobFileUploadError(415, "Use a PDF, DOCX, TXT, MD, HTML, EML or MSG file.")
     if not content:
         raise JobFileUploadError(400, "The file is empty.")
     if len(content) > MAX_UPLOAD_BYTES:
@@ -129,12 +184,34 @@ def store_job_file(
         target = folder / name
     target.write_bytes(content)
 
+    extraction_status = extraction_message = extracted_text = None
+    sha256 = None
+    if kind in EXTRACTED_KINDS:
+        sha256 = hashlib.sha256(content).hexdigest()
+        result = extract(target)
+        extraction_status, extraction_message, extracted_text = (
+            result.status,
+            result.message,
+            result.text,
+        )
+
     file_id = insert_job_file(
         conn,
         application_id,
         kind=kind,
         name=name,
         stored_path=target.relative_to(files_root).as_posix(),
+        sha256=sha256,
+        extraction_status=extraction_status,
+        extraction_message=extraction_message,
+        extracted_text=extracted_text,
     )
     conn.commit()
-    return JobApplicationFile(id=file_id, kind=kind, name=name, date=None)
+    return JobApplicationFile(
+        id=file_id,
+        kind=kind,
+        name=name,
+        date=None,
+        extraction_status=extraction_status,
+        extraction_message=extraction_message,
+    )

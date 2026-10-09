@@ -9,6 +9,9 @@ from localjobtracker.extraction import extract
 from localjobtracker.runner import FakeRunner
 
 FIXTURES = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "profile"
+LISTING_FIXTURES = (
+    Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "job_listing"
+)
 
 
 def test_pdf_with_a_text_layer_is_read() -> None:
@@ -59,6 +62,43 @@ def test_unsupported_extension_is_reported(tmp_path: Path) -> None:
     image = tmp_path / "scan.png"
     image.write_bytes(b"\x89PNG")
     assert extract(image).status == "unsupported"
+
+
+def test_html_listing_drops_navigation_and_keeps_the_posting() -> None:
+    result = extract(LISTING_FIXTURES / "listing.html")
+    assert result.status == "ok"
+    assert result.message is None
+    assert "Senior Data Analyst" in result.text
+    assert "4+ years in an analytics or data science role" in result.text
+    assert "Accept all" not in result.text
+    assert "Subscribe to our newsletter" not in result.text
+
+
+def test_html_with_only_navigation_and_boilerplate_is_reported_not_read() -> None:
+    result = extract(LISTING_FIXTURES / "junk_only.html")
+    assert result.status == "no_text"
+    assert result.text == ""
+    assert "could be found" in (result.message or "")
+
+
+def test_pdf_listing_fixture_is_read() -> None:
+    result = extract(LISTING_FIXTURES / "listing.pdf")
+    assert result.status == "ok"
+    assert "Senior Data Analyst" in result.text
+    assert "Requirements" in result.text
+
+
+def test_docx_listing_fixture_is_read() -> None:
+    result = extract(LISTING_FIXTURES / "listing.docx")
+    assert result.status == "ok"
+    assert "Senior Data Analyst" in result.text
+    assert "Strong SQL and at least one scripting language" in result.text
+
+
+def test_txt_listing_fixture_is_read() -> None:
+    result = extract(LISTING_FIXTURES / "listing.txt")
+    assert result.status == "ok"
+    assert "Senior Data Analyst" in result.text
 
 
 @pytest.fixture

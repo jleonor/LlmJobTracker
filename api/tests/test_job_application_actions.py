@@ -7,11 +7,15 @@ from fastapi.testclient import TestClient
 import localjobtracker.app as app_module
 from localjobtracker.app import TOKEN_HEADER, create_app
 from localjobtracker.job_applications import insert_job_application
+from localjobtracker.job_files import job_file_text
 from localjobtracker.runner import FakeRunner
 from localjobtracker.storage import connect
 
 TOKEN = "test-token"
 FIXTURES = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "profile"
+LISTING_FIXTURES = (
+    Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "job_listing"
+)
 
 
 @pytest.fixture
@@ -62,6 +66,57 @@ def test_upload_stores_the_file_under_the_managed_folder(client: TestClient, db_
 
     detail = client.get(f"/job-applications/{app_id}").json()
     assert [f["id"] for f in detail["files"]] == [body["id"]]
+
+
+def test_an_uploaded_listing_is_extracted_but_other_kinds_are_not(
+    client: TestClient, db_path: Path
+) -> None:
+    app_id = add_application(db_path, "Acme Inc", "Analyst")
+
+    listing = client.post(
+        f"/job-applications/{app_id}/files/listing",
+        headers={"X-File-Name": "listing.html"},
+        content=(LISTING_FIXTURES / "listing.html").read_bytes(),
+    ).json()
+    assert listing["extraction_status"] == "ok"
+    assert listing["extraction_message"] is None
+
+    other = client.post(
+        f"/job-applications/{app_id}/files/other",
+        headers={"X-File-Name": "notes.txt"},
+        content=b"Reminder: follow up Friday.",
+    ).json()
+    assert other["extraction_status"] is None
+
+    conn = connect(db_path)
+    try:
+        text = job_file_text(conn, listing["id"])
+        assert text is not None
+        assert "Senior Data Analyst" in text.text
+        assert "Accept all" not in text.text
+        assert job_file_text(conn, other["id"]) is not None
+        assert job_file_text(conn, other["id"]).text == ""  # type: ignore[union-attr]
+    finally:
+        conn.close()
+
+    detail = client.get(f"/job-applications/{app_id}").json()
+    by_id = {f["id"]: f for f in detail["files"]}
+    assert by_id[listing["id"]]["extraction_status"] == "ok"
+    assert by_id[other["id"]]["extraction_status"] is None
+
+
+def test_an_unreadable_listing_upload_is_kept_and_reported(
+    client: TestClient, db_path: Path
+) -> None:
+    app_id = add_application(db_path)
+    response = client.post(
+        f"/job-applications/{app_id}/files/listing",
+        headers={"X-File-Name": "scan.pdf"},
+        content=b"%PDF-1.4 not a real pdf",
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["extraction_status"] in ("failed", "no_text")
 
 
 def test_a_second_upload_with_the_same_name_does_not_overwrite_the_first(

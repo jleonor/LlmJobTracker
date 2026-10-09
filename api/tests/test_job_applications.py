@@ -237,8 +237,20 @@ def test_detail_includes_job_files(db_path: Path, client: TestClient) -> None:
 
     detail = client.get(f"/job-applications/{app_id}").json()
     assert [{k: v for k, v in f.items() if k != "id"} for f in detail["files"]] == [
-        {"kind": "listing", "name": "Job Listing.pdf", "date": None},
-        {"kind": "eml", "name": "Confirmation.eml", "date": "2026-10-01T12:03:00Z"},
+        {
+            "kind": "listing",
+            "name": "Job Listing.pdf",
+            "date": None,
+            "extraction_status": None,
+            "extraction_message": None,
+        },
+        {
+            "kind": "eml",
+            "name": "Confirmation.eml",
+            "date": "2026-10-01T12:03:00Z",
+            "extraction_status": None,
+            "extraction_message": None,
+        },
     ]
     assert [f["id"] for f in detail["files"]] == sorted(f["id"] for f in detail["files"])
 

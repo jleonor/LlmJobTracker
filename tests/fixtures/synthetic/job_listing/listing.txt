@@ -1,0 +1,16 @@
+Senior Data Analyst
+
+Fictive Corp is looking for a Senior Data Analyst to join our growing analytics team.
+
+Responsibilities
+- Own weekly reporting for the operations team
+- Build dashboards in SQL and Python
+- Partner with product on experiment design
+
+Requirements
+- 4+ years in an analytics or data science role
+- Strong SQL and at least one scripting language
+- Experience presenting findings to non-technical stakeholders
+
+Benefits
+Health insurance, 401k match, unlimited PTO.

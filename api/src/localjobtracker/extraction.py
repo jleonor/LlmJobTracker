@@ -1,8 +1,10 @@
-"""Text extraction for profile files, by code and never by Claude (D-41, Phase 2 step 6).
+"""Text extraction, by code and never by Claude (D-41, Phase 2 step 6; D-121, job-llm-steps.md).
 
 PDF is read through its text layer (pypdf). DOCX gives paragraph and table text (python-docx).
-TXT and MD are read as text. Nothing is OCR'd. A file with no text layer is reported as
-`no_text`, so it can be caught before any model step uses it.
+TXT and MD are read as text. HTML (a saved page, or a job listing fetched by the app) is reduced
+to its readable content (trafilatura), dropping navigation, cookie banners and footers. Nothing
+is OCR'd. A file with no text layer, or no readable content, is reported as `no_text`, so it can
+be caught before any model step uses it.
 """
 
 import re
@@ -13,6 +15,7 @@ from typing import Final
 
 import docx
 import pypdf
+import trafilatura
 from lxml import etree
 
 # A PDF with fewer characters than this in its text layer is treated as having no text.
@@ -115,16 +118,36 @@ def _docx(path: Path) -> Extraction:
     return Extraction("ok", text, None)
 
 
-def _plain(path: Path) -> Extraction:
-    raw = path.read_bytes()
+def _decode_text(raw: bytes) -> str:
     try:
-        text = raw.decode("utf-8-sig")
+        return raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         # Older French files are often saved as Windows-1252 rather than UTF-8.
-        text = raw.decode("cp1252", errors="replace")
-    text = _clean(text)
+        return raw.decode("cp1252", errors="replace")
+
+
+def _plain(path: Path) -> Extraction:
+    text = _clean(_decode_text(path.read_bytes()))
     if not text:
         return Extraction("no_text", "", "This text file is empty.")
+    return Extraction("ok", text, None)
+
+
+def html_to_text(html: str) -> str:
+    """The readable content of an HTML page, dropping navigation, cookie banners and footers
+    (trafilatura). Shared by a saved HTML file (`_html` below) and a fetched URL's response."""
+    return _clean(trafilatura.extract(html) or "")
+
+
+def _html(path: Path) -> Extraction:
+    text = html_to_text(_decode_text(path.read_bytes()))
+    if len(text) < MIN_TEXT_CHARS:
+        return Extraction(
+            "no_text",
+            "",
+            "No readable content could be found on this page (it may need JavaScript to show "
+            "its content, or the save kept only navigation and boilerplate text).",
+        )
     return Extraction("ok", text, None)
 
 
@@ -137,6 +160,8 @@ def extract(path: Path) -> Extraction:
             return _docx(path)
         if suffix in (".txt", ".md"):
             return _plain(path)
+        if suffix in (".html", ".htm"):
+            return _html(path)
     except Exception as error:
         return Extraction("failed", "", f"Could not read this file ({type(error).__name__}).")
     return Extraction("unsupported", "", "This file type is not supported.")
