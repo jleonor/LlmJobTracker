@@ -105,25 +105,43 @@ function Section({
   )
 }
 
-// Edit and Revise (LLM) aren't wired to anything yet: this is still the seed-data design pass
-// (Phase 3 step list), and both need real backend support (inline editing, a Claude Job that
-// takes extra user input) that comes later. The buttons are here so the page's shape is right.
-const SECTION_ACTIONS: { label: string; title: string }[] = [
-  { label: 'Edit', title: 'Editing comes in a later phase' },
-  { label: 'Revise (LLM)', title: 'Revising with the LLM comes in a later phase' },
-]
-const SUBSECTION_ACTIONS: { label: string; title: string }[] = [
-  { label: 'Revise (LLM)', title: 'Revising with the LLM comes in a later phase' },
-]
+// None of these buttons are wired to anything yet: they all need real backend support (inline
+// editing, a Claude Job, a file upload endpoint) that comes later. They're here so the page's
+// button inventory is right (D-103, revised by D-114).
+const EDIT_TITLE = 'Editing comes in a later phase'
+const UPLOAD_TITLE = 'Uploading comes in a later phase'
+const llmTitle = (hasData: boolean) =>
+  hasData ? 'Revising with the LLM comes in a later phase' : 'Generating with the LLM comes in a later phase'
+const llmLabel = (hasData: boolean) => (hasData ? 'Revise (LLM)' : 'Generate (LLM)')
 
-function ActionButtons({ buttons }: { buttons: { label: string; title: string }[] }) {
+function LlmButton({ hasData }: { hasData: boolean }) {
+  return (
+    <Button variant="outline" size="sm" disabled title={llmTitle(hasData)}>
+      {llmLabel(hasData)}
+    </Button>
+  )
+}
+
+function UploadButton() {
+  return (
+    <Button variant="outline" size="sm" disabled title={UPLOAD_TITLE}>
+      Upload
+    </Button>
+  )
+}
+
+// A section's header actions (Job details, Positioning analysis, Application history): Edit,
+// then Revise or Generate depending on whether the section has anything to revise yet. An empty
+// section also gets Upload beside Generate, for a document the user already has of their own
+// (D-114, matching the Profile page's own_* upload pattern, D-68).
+function SectionActions({ hasData }: { hasData: boolean }) {
   return (
     <div className="flex shrink-0 gap-2">
-      {buttons.map(({ label, title }) => (
-        <Button key={label} variant="outline" size="sm" disabled title={title}>
-          {label}
-        </Button>
-      ))}
+      <Button variant="outline" size="sm" disabled title={EDIT_TITLE}>
+        Edit
+      </Button>
+      <LlmButton hasData={hasData} />
+      {!hasData && <UploadButton />}
     </div>
   )
 }
@@ -140,8 +158,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 const EMPTY = <span className="text-muted-foreground">Not set</span>
 
 function JobDetails({ application }: { application: JobApplicationDetail }) {
+  const hasData = application.description !== null || application.requirements.length > 0
   return (
-    <Section title="Job details" actions={<ActionButtons buttons={SECTION_ACTIONS} />}>
+    <Section title="Job details" actions={<SectionActions hasData={hasData} />}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Field label="URL">
           {application.portal_name ? (
@@ -191,14 +210,14 @@ function JobDetails({ application }: { application: JobApplicationDetail }) {
 function PositioningAnalysis({ application }: { application: JobApplicationDetail }) {
   if (application.match_score === null) {
     return (
-      <Section title="Positioning analysis" actions={<ActionButtons buttons={SECTION_ACTIONS} />}>
+      <Section title="Positioning analysis" actions={<SectionActions hasData={false} />}>
         <p className="text-sm text-muted-foreground">Not run yet.</p>
       </Section>
     )
   }
 
   return (
-    <Section title="Positioning analysis" actions={<ActionButtons buttons={SECTION_ACTIONS} />}>
+    <Section title="Positioning analysis" actions={<SectionActions hasData={true} />}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr_1fr]">
         <div className="row-span-2 flex shrink-0 flex-col items-center gap-1 self-center sm:self-start">
           <MatchScoreRing score={application.match_score} />
@@ -294,8 +313,11 @@ function MatchScoreRing({ score }: { score: number }) {
 }
 
 function ApplicationHistory({ application }: { application: JobApplicationDetail }) {
+  // Always true in practice: every application starts with an Identified row (DEFAULT_STATUS), so
+  // this section never actually shows "Generate (LLM)" today — the check is here for consistency.
+  const hasData = application.status_history.length > 0
   return (
-    <Section title="Application history" actions={<ActionButtons buttons={SECTION_ACTIONS} />}>
+    <Section title="Application history" actions={<SectionActions hasData={hasData} />}>
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         <StatusTimeline history={application.status_history} currentStatus={application.status} />
 
@@ -442,23 +464,36 @@ function Files({ files }: { files: JobApplicationDetail['files'] }) {
         <FileGroup title="Listing" files={listing} empty="No listing file yet." />
         <FileGroup title="CV" files={cv} empty="Not done yet." />
         <FileGroup title="Cover letter" files={coverLetter} empty="Not done yet." />
-        <FileGroup title="Additional files" files={additional} empty="No additional files." showKind />
+        <FileGroup
+          title="Additional files"
+          files={additional}
+          empty="No additional files."
+          showKind
+          generatable={false}
+        />
       </div>
     </Section>
   )
 }
 
+// Listing, CV and Cover letter can be written by the LLM or uploaded, so they get Revise/Generate
+// (LLM) plus Upload when empty (D-114). Additional files is never LLM-written — just a place for
+// whatever else the user files against the application — so it skips the LLM button and always
+// offers Upload, data or not (D-114).
 function FileGroup({
   title,
   files,
   empty,
   showKind = false,
+  generatable = true,
 }: {
   title: string
   files: JobApplicationDetail['files']
   empty: string
   showKind?: boolean
+  generatable?: boolean
 }) {
+  const hasData = files.length > 0
   return (
     <div className="group/subsection flex flex-col gap-2">
       <div className="flex items-center justify-between gap-4">
@@ -466,7 +501,10 @@ function FileGroup({
           {title}
         </h3>
         <div className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/subsection:opacity-100">
-          <ActionButtons buttons={SUBSECTION_ACTIONS} />
+          <div className="flex shrink-0 gap-2">
+            {generatable && <LlmButton hasData={hasData} />}
+            {(!generatable || !hasData) && <UploadButton />}
+          </div>
         </div>
       </div>
       {files.length === 0 ? (
