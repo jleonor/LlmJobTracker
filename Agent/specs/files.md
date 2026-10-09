@@ -25,9 +25,10 @@ One row per file. Columns:
 - `id`: primary key.
 - `job_application_id`: references `job_applications(id) ON DELETE CASCADE`.
 - `kind`: `listing`, `master_cv`, `tailored_cv`, `cover_letter`, `positioning_breakdown`, `eml`,
-  `msg`, or `other` — the same kinds the Job Application page already groups files by (D-56's
-  Files section: Listing, CV, Cover letter, Additional files catch-all) and filters emails out of
-  (`eml`/`msg`, D-111/D-112). `other` covers anything not yet given its own kind.
+  `msg`, or `other` — the same kinds the Job Application page already groups files by (D-115's
+  Files section: Master CV selector, Listing, Tailored CV, Cover letter, Emails, Additional files
+  catch-all) and filters emails out of (`eml`/`msg`, D-111/D-112/D-115). `other` covers anything
+  not yet given its own kind.
 - `name`: the display name, matching the frontend's `JobApplicationFile.name` (D-111's Emails
   column strips a trailing `.eml`/`.msg` for display; the stored name keeps it).
 - `stored_path`: the file's path under the managed folder above, relative to

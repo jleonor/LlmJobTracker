@@ -5,6 +5,13 @@ import { QueueStatusBadge } from '@/components/app/QueueStatusBadge'
 import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { JobApplicationDetail, JobApplicationFile, StatusHistoryEntry } from '@/lib/types'
 
@@ -439,29 +446,42 @@ function StatusTimeline({
   )
 }
 
-// CV and cover letter files don't exist until Phase 5 writes them (D-57); their subsections just
-// read "Not done yet.", matching the Flags wording above, until then.
-const CV_KINDS = new Set(['master_cv', 'tailored_cv'])
+// Tailored CV and cover letter files don't exist until Phase 5 writes them (D-57); their
+// subsections just read "Not done yet.", matching the Flags wording above, until then.
+const TAILORED_CV_KIND = 'tailored_cv'
 const COVER_LETTER_KINDS = new Set(['cover_letter'])
-// The Emails column (D-111) is this same set read out of `files`, not a second list, so an
-// email can only show there if it is also a file in Additional files (D-112).
+// The Emails column in Application history (D-111) and the Emails subsection here read the same
+// set out of the same `files` array, not a second list, so an email can only show in either place
+// because it is also a filed, listed email (D-112, extended by D-115).
 const EMAIL_KINDS = new Set(['eml', 'msg'])
 
 function Files({ files }: { files: JobApplicationDetail['files'] }) {
   const listing = files.filter((file) => file.kind === 'listing')
-  const cv = files.filter((file) => CV_KINDS.has(file.kind))
+  const tailoredCv = files.filter((file) => file.kind === TAILORED_CV_KIND)
   const coverLetter = files.filter((file) => COVER_LETTER_KINDS.has(file.kind))
+  const emails = files.filter((file) => EMAIL_KINDS.has(file.kind))
   const additional = files.filter(
     (file) =>
-      file.kind !== 'listing' && !CV_KINDS.has(file.kind) && !COVER_LETTER_KINDS.has(file.kind),
+      file.kind !== 'listing' &&
+      file.kind !== 'master_cv' &&
+      file.kind !== TAILORED_CV_KIND &&
+      !COVER_LETTER_KINDS.has(file.kind) &&
+      !EMAIL_KINDS.has(file.kind),
   )
 
   return (
     <Section title="Files">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <MasterCvField files={files} />
         <FileGroup title="Listing" files={listing} empty="No listing file yet." />
-        <FileGroup title="CV" files={cv} empty="Not done yet." />
+        <FileGroup title="Tailored CV" files={tailoredCv} empty="Not done yet." />
         <FileGroup title="Cover letter" files={coverLetter} empty="Not done yet." />
+        <FileGroup
+          title="Emails"
+          files={emails}
+          empty="No emails yet."
+          generatable={false}
+        />
         <FileGroup
           title="Additional files"
           files={additional}
@@ -474,10 +494,32 @@ function Files({ files }: { files: JobApplicationDetail['files'] }) {
   )
 }
 
-// Listing, CV and Cover letter can be written by the LLM or uploaded, so they get Revise/Generate
-// (LLM) plus Upload when empty (D-114). Additional files is never LLM-written — just a place for
-// whatever else the user files against the application — so it skips the LLM button and always
-// offers Upload, data or not (D-114).
+// D-57/D-115: which uploaded master CV this application uses, proposed by Claude when the
+// listing is added and changeable by the user — a choice among the Profile page's master CVs,
+// not a document of its own, so it's a selector rather than a FileGroup with Revise/Upload.
+function MasterCvField({ files }: { files: JobApplicationDetail['files'] }) {
+  const selected = files.find((file) => file.kind === 'master_cv')
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+        Master CV
+      </h3>
+      <Select disabled value={selected?.name}>
+        <SelectTrigger className="w-full" title="Choosing a master CV comes in a later phase">
+          <SelectValue placeholder="Not selected" />
+        </SelectTrigger>
+        <SelectContent>
+          {selected && <SelectItem value={selected.name}>{selected.name}</SelectItem>}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+// Listing, Tailored CV and Cover letter can be written by the LLM or uploaded, so they get
+// Revise/Generate (LLM) plus Upload when empty (D-114). Emails and Additional files are never
+// LLM-written — Emails are filed from the user's inbox (Phase 6), Additional files is a catch-all
+// — so both skip the LLM button and always offer Upload, data or not (D-114, D-115).
 function FileGroup({
   title,
   files,
