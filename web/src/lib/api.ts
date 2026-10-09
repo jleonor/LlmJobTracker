@@ -247,6 +247,20 @@ export function generateApplicationHistory(id: number): Promise<ClaudeJob> {
   })
 }
 
+// Steps 36-37 of job-llm-steps.md: Phase 5's primary goal, pulled forward (D-129).
+
+export function generateTailoredCv(id: number): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/job-applications/${id}/tailored-cv/generate`, {
+    method: 'POST',
+  })
+}
+
+export function generateCoverLetter(id: number): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/job-applications/${id}/cover-letter/generate`, {
+    method: 'POST',
+  })
+}
+
 export function runClaudeCheck(): Promise<RunResult> {
   return request<RunResult>('/api/runs/check', { method: 'POST' })
 }

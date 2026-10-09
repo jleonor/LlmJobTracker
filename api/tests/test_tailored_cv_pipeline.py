@@ -142,6 +142,24 @@ def add_master_cv(db_path: Path, app_id: int) -> None:
         conn.close()
 
 
+def add_pdf_master_cv(db_path: Path, app_id: int) -> None:
+    """A Master CV may legitimately be a PDF (profile_files.ALLOWED_EXTENSIONS) - regression
+    test for a real bug found live (2026-10-09): docx_editor can only read a real .docx, and the
+    first live Tailored CV run failed with a cryptic zipfile error against a PDF master."""
+    pdf_fixtures = (
+        Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "profile"
+    )
+    conn = connect(db_path)
+    try:
+        file = store_profile_file(
+            conn, db_path.parent, "master_cv", "cv.pdf", (pdf_fixtures / "cv_en.pdf").read_bytes()
+        )
+        set_master_cv(conn, app_id, file.id)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def add_cover_letter_template(db_path: Path) -> None:
     conn = connect(db_path)
     try:
@@ -293,6 +311,52 @@ def test_tailored_cv_ready_requires_every_input(db_path: Path) -> None:
     conn = connect(db_path)
     try:
         assert tailored_cv_ready(conn, app_id)
+    finally:
+        conn.close()
+
+
+def test_tailored_cv_ready_rejects_a_non_docx_master_cv(db_path: Path) -> None:
+    app_id = add_application(db_path)
+    fill_job_details(db_path, app_id)
+    add_profile_documents(db_path)
+    add_pdf_master_cv(db_path, app_id)
+    add_breakdown(db_path, app_id)
+    conn = connect(db_path)
+    try:
+        assert not tailored_cv_ready(conn, app_id)
+    finally:
+        conn.close()
+
+
+def test_generate_tailored_cv_rejects_a_non_docx_master_cv_with_a_clear_message(
+    db_path: Path,
+) -> None:
+    app_id = add_application(db_path)
+    fill_job_details(db_path, app_id)
+    add_profile_documents(db_path)
+    add_pdf_master_cv(db_path, app_id)
+    add_breakdown(db_path, app_id)
+    queue = make_queue(db_path, FakeRunner(text=GOOD_CV_ANSWER))
+    conn = connect(db_path)
+    try:
+        # The gate already refuses this (previous test), but submit directly to confirm the
+        # defence inside render() itself is also clear, not a raw zipfile error.
+        job_id = queue.submit(
+            conn,
+            "Generate: Tailored CV",
+            "generate_tailored_cv",
+            [("generate_tailored_cv", "")],
+            job_application_id=app_id,
+        )
+    finally:
+        conn.close()
+    run_all(queue)
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+        assert job is not None
+        assert job.status == "failed"
+        assert "must be a .docx file" in (job.error or "")
     finally:
         conn.close()
 

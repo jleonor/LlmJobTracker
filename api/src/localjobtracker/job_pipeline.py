@@ -490,6 +490,18 @@ def _breakdown_text(conn: sqlite3.Connection, application_id: int) -> str:
     return str(breakdown["extracted_text"] or "")
 
 
+def _is_docx(conn: sqlite3.Connection, profile_file_id: int) -> bool:
+    """profile_files' own upload rules allow a master CV or cover letter template to be a PDF,
+    TXT or MD too (D-54's ALLOWED_EXTENSIONS) - but docx_editor only knows how to read/edit a
+    real `.docx`'s structure (D-130). Checked here, and in the two gates below, so a non-docx
+    selection disables the button with a clear reason instead of failing on a cryptic
+    "not a zip file" once the job actually runs."""
+    row = conn.execute(
+        "SELECT original_name FROM profile_files WHERE id = ?", (profile_file_id,)
+    ).fetchone()
+    return row is not None and str(row["original_name"]).lower().endswith(".docx")
+
+
 def _master_cv_bytes(conn: sqlite3.Connection, data_folder: Path, application_id: int) -> bytes:
     row = conn.execute(
         "SELECT master_cv_profile_file_id FROM job_applications WHERE id = ?", (application_id,)
@@ -497,6 +509,10 @@ def _master_cv_bytes(conn: sqlite3.Connection, data_folder: Path, application_id
     master_cv_id = row["master_cv_profile_file_id"] if row is not None else None
     if master_cv_id is None:
         raise PromptRejected("No Master CV is selected for this application.")
+    if not _is_docx(conn, master_cv_id):
+        raise PromptRejected(
+            "The selected Master CV must be a .docx file to generate a tailored copy from."
+        )
     path = profile_file_path(conn, data_folder, master_cv_id)
     if path is None or not path.exists():
         raise PromptRejected("The selected Master CV file could not be found.")
@@ -514,6 +530,8 @@ def _cover_letter_template_bytes(conn: sqlite3.Connection, data_folder: Path) ->
     template_id = _latest_profile_file_id(conn, "cover_letter_template")
     if template_id is None:
         raise PromptRejected("No cover letter template has been uploaded.")
+    if not _is_docx(conn, template_id):
+        raise PromptRejected("The uploaded cover letter template must be a .docx file.")
     path = profile_file_path(conn, data_folder, template_id)
     if path is None or not path.exists():
         raise PromptRejected("The uploaded cover letter template could not be found.")
@@ -610,7 +628,8 @@ def tailored_cv_ready(conn: sqlite3.Connection, application_id: int) -> bool:
     ).fetchone()
     if row is None or not row["description"] or not json.loads(row["requirements"]):
         return False
-    if row["master_cv_profile_file_id"] is None:
+    master_cv_id = row["master_cv_profile_file_id"]
+    if master_cv_id is None or not _is_docx(conn, master_cv_id):
         return False
     if not all(latest_document(conn, kind) is not None for kind in PROFILE_DOCUMENT_KINDS):
         return False
@@ -623,7 +642,8 @@ def cover_letter_ready(conn: sqlite3.Connection, application_id: int) -> bool:
         return False
     if latest_job_file_of_kind(conn, application_id, "tailored_cv") is None:
         return False
-    return _latest_profile_file_id(conn, "cover_letter_template") is not None
+    template_id = _latest_profile_file_id(conn, "cover_letter_template")
+    return template_id is not None and _is_docx(conn, template_id)
 
 
 # Submitting jobs.

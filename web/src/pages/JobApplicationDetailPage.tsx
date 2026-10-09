@@ -25,8 +25,10 @@ import {
   fetchProfileFiles,
   fetchProfileOutputs,
   generateApplicationHistory,
+  generateCoverLetter,
   generateJobDetails,
   generatePositioning,
+  generateTailoredCv,
   openJobFile,
   patchJobApplication,
   replaceStatusHistory,
@@ -141,10 +143,12 @@ function hasPositioningData(application: JobApplicationDetail): boolean {
 }
 
 function Flags({ application }: { application: JobApplicationDetail }) {
+  const hasTailoredCv = application.files.some((file) => file.kind === TAILORED_CV_KIND)
+  const hasCoverLetter = application.files.some((file) => COVER_LETTER_KINDS.has(file.kind))
   const flags = [
     ...(hasPositioningData(application) ? [] : ['Positioning analysis']),
-    'Tailored CV',
-    'Cover letter',
+    ...(hasTailoredCv ? [] : ['Tailored CV']),
+    ...(hasCoverLetter ? [] : ['Cover letter']),
   ]
   return (
     <div className="flex flex-wrap gap-2" aria-label="Not done yet">
@@ -1144,6 +1148,52 @@ function Files({
       !EMAIL_KINDS.has(file.kind),
   )
   const [listingOverlayOpen, setListingOverlayOpen] = useState(false)
+  const [tailoredCvOverlayOpen, setTailoredCvOverlayOpen] = useState(false)
+  const [coverLetterOverlayOpen, setCoverLetterOverlayOpen] = useState(false)
+  const [profileDocsReady, setProfileDocsReady] = useState<boolean | null>(null)
+  const [hasCoverLetterTemplate, setHasCoverLetterTemplate] = useState<boolean | null>(null)
+
+  // Tailored CV's and Cover letter's gates (job-llm-steps.md §5-6, D-128): the pieces not
+  // already on `application` need their own fetch, the same way Positioning analysis's gate does.
+  useEffect(() => {
+    let cancelled = false
+    fetchProfileOutputs()
+      .then((outputs) => {
+        if (!cancelled) setProfileDocsReady(outputs.length === 3)
+      })
+      .catch(() => {
+        if (!cancelled) setProfileDocsReady(false)
+      })
+    fetchProfileFiles()
+      .then((profileFiles) => {
+        if (!cancelled) {
+          setHasCoverLetterTemplate(
+            profileFiles.some(
+              (file) =>
+                file.kind === 'cover_letter_template' &&
+                file.original_name.toLowerCase().endsWith('.docx'),
+            ),
+          )
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setHasCoverLetterTemplate(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const hasBreakdown = files.some((file) => file.kind === 'positioning_breakdown')
+  const hasJobDetails = application.description !== null && application.requirements.length > 0
+  // A Master CV may legitimately be a PDF/TXT/MD upload (D-54's ALLOWED_EXTENSIONS) - only a
+  // real .docx can be read and edited by docx_editor.py (D-130), so the gate checks the name,
+  // not just that something is selected.
+  const hasDocxMasterCv =
+    application.master_cv_profile_file_id !== null &&
+    (application.master_cv_name ?? '').toLowerCase().endsWith('.docx')
+  const tailoredCvReady = profileDocsReady === true && hasDocxMasterCv && hasJobDetails && hasBreakdown
+  const coverLetterReady = tailoredCvReady && tailoredCv.length > 0 && hasCoverLetterTemplate === true
 
   return (
     <Section title="Files">
@@ -1164,6 +1214,9 @@ function Files({
           files={tailoredCv}
           empty="Not done yet."
           uploadKind={() => 'tailored_cv'}
+          onGenerateClick={() => setTailoredCvOverlayOpen(true)}
+          generateDisabled={!tailoredCvReady}
+          generateTitle="Needs a selected Master CV in .docx format, the three LLM profile documents, Job details filled in, and a positioning breakdown document first."
           onChanged={onChanged}
         />
         <FileGroup
@@ -1172,6 +1225,9 @@ function Files({
           files={coverLetter}
           empty="Not done yet."
           uploadKind={() => 'cover_letter'}
+          onGenerateClick={() => setCoverLetterOverlayOpen(true)}
+          generateDisabled={!coverLetterReady}
+          generateTitle="Needs a Tailored CV, Job details filled in, the three LLM profile documents, a positioning breakdown document, and a cover letter template uploaded in .docx format first."
           onChanged={onChanged}
         />
         <FileGroup
@@ -1199,6 +1255,22 @@ function Files({
         currentListing={listing[0] ?? null}
         open={listingOverlayOpen}
         onOpenChange={setListingOverlayOpen}
+        onChanged={onChanged}
+      />
+      <GenerateSectionOverlay
+        title="Tailored CV"
+        hasData={tailoredCv.length > 0}
+        open={tailoredCvOverlayOpen}
+        onOpenChange={setTailoredCvOverlayOpen}
+        onSubmit={() => generateTailoredCv(application.id)}
+        onChanged={onChanged}
+      />
+      <GenerateSectionOverlay
+        title="Cover letter"
+        hasData={coverLetter.length > 0}
+        open={coverLetterOverlayOpen}
+        onOpenChange={setCoverLetterOverlayOpen}
+        onSubmit={() => generateCoverLetter(application.id)}
         onChanged={onChanged}
       />
     </Section>
@@ -1304,6 +1376,8 @@ function FileGroup({
   showKind = false,
   generatable = true,
   onGenerateClick,
+  generateDisabled,
+  generateTitle,
   uploadKind,
   onChanged,
 }: {
@@ -1313,9 +1387,11 @@ function FileGroup({
   empty: string
   showKind?: boolean
   generatable?: boolean
-  // When given, the LLM button is real (today: only Listing, D-121) instead of the disabled
-  // stub every other generatable subsection still shows (Tailored CV, Cover letter - Phase 5).
+  // When given, the LLM button is real (Listing, Tailored CV, Cover letter) instead of the
+  // disabled stub a generatable subsection would otherwise show.
   onGenerateClick?: () => void
+  generateDisabled?: boolean
+  generateTitle?: string
   uploadKind: (file: File) => string
   onChanged: () => void
 }) {
@@ -1350,7 +1426,13 @@ function FileGroup({
           <div className="flex shrink-0 gap-2">
             {generatable &&
               (onGenerateClick ? (
-                <Button variant="outline" size="sm" onClick={onGenerateClick}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={generateDisabled}
+                  title={generateDisabled ? generateTitle : undefined}
+                  onClick={onGenerateClick}
+                >
                   {llmLabel(hasData)}
                 </Button>
               ) : (
