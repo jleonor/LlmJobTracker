@@ -243,6 +243,44 @@ they write (`description`, `requirements`, `work_mode`, `contract_type`, `fit`, 
     Application history, each populated from a real listing and, for Application history,
     synthetic filed emails.
 
+Step list, continued (added 2026-10-09, D-129 to D-131): the last two Generate/Revise (LLM)
+buttons — Tailored CV and Cover letter, Phase 5's primary goal — pulled forward onto this branch.
+Full contracts in `Agent/specs/job-llm-steps.md` §5-6, grounded in a read-only survey of the
+reference folder.
+
+35. `docx_editor.py`: read any `.docx` into numbered blocks (paragraphs and table rows, in
+    document order) and apply `EDIT`/`INSERT AFTER`/`REMOVE`/`ADD ROW AFTER` operations by block
+    id, cloning the referenced block's own formatting for an insert. Every id is validated against
+    the document's current block map before anything is applied; an unknown id rejects the whole
+    set (D-130). Tests against a richer synthetic CV fixture (tagline, summary placeholder, two
+    role sections with bullets, a skills table) covering each operation, an unknown id, and a
+    multi-column table row add.
+36. `generate_tailored_cv` Claude Job (job-llm-steps.md §5): submit/render/on_result in
+    `job_pipeline.py`, gated server-side (Master CV selected, the three LLM profile documents, Job
+    details filled, the positioning breakdown file exists). Builds the prompt from the Master CV's
+    numbered blocks plus the profile documents, Job details and the breakdown document; applies
+    the answer via `docx_editor.py`; logs a page-count comparison against the master (`dxpdf` +
+    `pypdf`, informational only, D-130); stores the result as the `tailored_cv` job file,
+    replacing any existing one. Tests with `FakeRunner`: a good answer (edit + insert + table row
+    add), an answer referencing an unknown block id (rejected).
+37. `generate_cover_letter` Claude Job (job-llm-steps.md §6): same `docx_editor.py` mechanism
+    applied to the cover letter template, gated server-side (Tailored CV exists, Job details
+    filled, the three LLM profile documents, the positioning breakdown file, a cover letter
+    template uploaded). Code checks after assembling the edited text: no colon, em dash, en dash,
+    or sentence-punctuation dash (a bare hyphen is fine only with no surrounding whitespace), and
+    a 200-400 word count band - either failing rejects the whole answer. Tests with `FakeRunner`:
+    a good answer, an answer containing a colon (rejected), an answer that is far too short
+    (rejected).
+38. Frontend: Tailored CV's and Cover letter's `LlmButton`s wired to `GenerateSectionOverlay`
+    (the same one-shot confirm-then-trace pattern as the other four buttons, not a comment
+    thread, D-131), gated client-side to match the backend gate.
+39. Checks: `scripts/check.py` output; personal-data scan; a real Tailored CV and Cover letter
+    generated against the user's own real profile data (dev-seed, not committed), opened and
+    judged by the user for quality (CLAUDE.md rule 4: Claude does not judge generated-document
+    quality), with the tagline/summary/one-role/skills-row pattern and the page-count log spot-
+    checked, and the cover letter's punctuation/length checks confirmed against both a passing
+    and a deliberately-broken answer.
+
 Two further Phase 3 items are now tracked but not yet scheduled as steps (D-124): the real
 spreadsheet dry-run/apply import (originally steps 4, 6, 7 above — `import_real_jobs.py` is an
 explicit stopgap, not this), and verifying `.msg` preview against a real Outlook export rather
@@ -264,6 +302,7 @@ Done when
 - [ ] A stage date set with Today in the Edit dialog updates the timeline and the current status badge (screenshot, D-117).
 - [x] A Job Application gets a Listing file through Generate (LLM): a real URL, pasted text, and an uploaded PDF each produce extracted text the user reviews, then a generated Markdown listing (screenshot, D-119 to D-123). (2026-10-09: verified live against the real Claude Code CLI, seeded dev data. Pasted text produced a clean Markdown listing in 3.0s, $0.0073; the Files section updated (Generate flipped to Revise, Job Listing.md previews correctly). A deliberately unreachable URL showed "Could not reach this page (ConnectError)" with a one-click handoff to the paste tab. Pasted cookie-banner/footer-only junk text correctly drew the sanity check's "This might not be a job posting" warning, without blocking Generate. PDF upload's extraction is covered by automated tests (test_listing_intake.py, test_extraction.py) and the Upload tab's UI was confirmed to render correctly; driving the native OS file picker isn't reachable through this session's browser automation.)
 - [x] Job details, Positioning analysis and Application history each generate for real from a real listing: Job details' requirements are verbatim quotes from the listing (spot-checked), Positioning analysis's match_score matches a hand calculation from the stored breakdown document's weights and matches, Application history proposes a next action and due date from synthetic filed emails without touching notes (screenshot, D-124 to D-128). (2026-10-09: verified live against the real Claude Code CLI, seeded dev data with real profile documents. Job details: description complete and lossless, requirements an exact match to the listing text, work mode correctly inferred. Positioning analysis: match_score 58.1%, hand-verified as Σ(w×m)÷(10×Σw)×100 = (8×4+7×6+6×8)÷(10×21)×100 against the rendered breakdown table (now an actual Markdown table, remark-gfm added). Application history: next_action and due_date correctly derived from a filed synthetic email; notes left untouched, confirming D-127. Live testing surfaced and fixed one real parsing bug: a well-formed answer that omitted "=== END REQUIREMENT ===" tags, now tolerated by every block parser, with a regression test.)
+- [ ] Tailored CV and Cover letter each generate for real as edits of the Master CV / cover letter template: no role, employer or date added or removed on the CV; the cover letter contains no colon, em dash, en dash or sentence-punctuation dash and falls within the word-count band; both open and preview correctly as real `.docx` files (screenshot, D-129 to D-131).
 
 Out of scope: the Kanban board (see Phase 8).
 
@@ -307,27 +346,35 @@ Done when
 
 **Goal:** for one job, the positioning, tailored CV and cover letter are produced and revised by comment.
 
+**Most of this phase's primary goal was pulled forward onto `phase-3-tracker` and built there**
+(D-129 to D-131, Phase 3's "Step list, continued" for steps 35-39): positioning analysis, the
+Tailored CV and the Cover letter all generate for real, each gated and wired through the job
+page's Generate/Revise (LLM) buttons. What's still genuinely this phase's own, not yet built: the
+version-chain/comment-based revision model below (D-131 narrowed what shipped to a one-shot
+regenerate instead), the "Prepare all" button, and clarifying-question storage. The scope below is
+kept as originally written, for the record; see D-129 to D-131 for what narrowed and why.
+
 Scope
 - Job page, top to bottom (D-56): header with title and company; the "not done yet" flags for positioning, tailored CV and cover letter (D-48); job details (portal, description, requirements, location, work mode, contract type); application history (status timeline with achieved statuses dated and the rest greyed out, notes, next action, due date); positioning analysis; files.
 - Positioning runs automatically when a Job Application is added (D-49). Each requirement gets a weight (0 to 10) and a match (0 to 10), each with evidence. Code computes the fit % (D-47). The analysis also gives fit bullets, gap bullets and a job-specific strategy. The match score shows in the table too.
 - Buttons: Re-run positioning, Write tailored CV, Write cover letter, and Prepare all. Each button queues a Claude Job. Positioning comes first in the chain.
 - Files (D-57): Claude proposes a master CV when the listing is added, and the user can change it. Tailored CV and cover letter each have a button to write one.
-- Each output is a new version file. Nothing is overwritten.
-- A comment on any version produces a new version. Comments are kept with the versions.
-- Positioning may ask clarifying questions. Answers go into the job's record. (Storage of answers for reuse is Phase 7.)
-- Every claim cites a verified fact id. Code checks that each cited id exists and is verified.
-- Cover letter checks in code: no colon or dash used as sentence punctuation, and the length limit.
-- CV: a copy of the chosen master (English or French), with edits. The formatting-preservation check compares page count and styles against the master.
-- Create `Agent/specs/steps.md` (positioning, CV and letter contracts) and `Agent/skills/edit-docx/`.
+- Each output is a new version file. Nothing is overwritten. **Narrowed by D-131: what shipped replaces the file in its slot on each run (D-115), not a kept version chain.**
+- A comment on any version produces a new version. Comments are kept with the versions. **Not built (D-131) — left for a later, separate iterative-revision design.**
+- Positioning may ask clarifying questions. Answers go into the job's record. (Storage of answers for reuse is Phase 7.) **Not built — the `unclear` column (D-102/D-116) shows what's unclear; nothing captures an answer to it yet.**
+- ~~Every claim cites a verified fact id. Code checks that each cited id exists and is verified.~~ **Stale (D-131): this described the Fact Sheet/fact-id system D-85/D-86 already replaced with honesty-by-review.**
+- Cover letter checks in code: no colon or dash used as sentence punctuation, and the length limit. **Built (D-130/D-131): no colon/em dash/en dash/sentence-punctuation dash, 200-400 words.**
+- CV: a copy of the chosen master (English or French), with edits. The formatting-preservation check compares page count and styles against the master. **Built (D-130): numbered-block edits via `docx_editor.py`; the check narrowed to a logged page-count comparison, not a gate — see job-llm-steps.md §5.**
+- Create `Agent/specs/steps.md` (positioning, CV and letter contracts) and `Agent/skills/edit-docx/`. **Narrowed (D-131): the contracts live in `job-llm-steps.md` instead; no `Agent/skills/edit-docx/` was needed since editing is plain code (`docx_editor.py`), not a Claude Code skill.**
 
 Done when
-- [ ] On a real listing, you judge the positioning, CV and letter. Quality is your call.
-- [ ] The fit % matches a hand calculation from the stored weights and matches.
-- [ ] The "not done yet" flags clear as each output is written.
-- [ ] A comment produces v2, and v1 is kept.
-- [ ] Every cited fact id exists and is verified (automated check).
-- [ ] Cover letter checks pass on positive and negative samples.
-- [ ] CV formatting checks pass against the master.
+- [ ] On a real listing, you judge the positioning, CV and letter. Quality is your call. (Positioning verified live, D-124 to D-128. CV/letter: see Phase 3's own Done-when item, D-129 to D-131, once steps 35-39 are built and verified.)
+- [x] The fit % matches a hand calculation from the stored weights and matches. (2026-10-09: 58.1% hand-verified, see Phase 3's Done-when list.)
+- [ ] The "not done yet" flags clear as each output is written. (Positioning's flag already clears on `match_score`, D-98's `hasPositioningData`; Tailored CV/Cover letter's flags are unconditional today, D-103 — not yet wired to clear once a file exists.)
+- [ ] A comment produces v2, and v1 is kept. (Not built, D-131 — see above.)
+- [x] ~~Every cited fact id exists and is verified (automated check).~~ N/A — superseded by D-85/D-86; honesty is instruction plus user review everywhere in this app, not a fact-id check.
+- [ ] Cover letter checks pass on positive and negative samples. (D-130's design; not yet built.)
+- [ ] CV formatting checks pass against the master. (D-130's design; not yet built.)
 
 ---
 

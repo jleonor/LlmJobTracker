@@ -7,13 +7,14 @@ Each is one Claude Job, run through the `Runner` with no tools (`--tools ""`), t
 every profile and revise prompt already uses. `revise-steps.md`'s "Out of scope here" note — that
 these buttons stay disabled until their document exists — is what this file starts to close.
 
-Two of the six (Tailored CV, Cover letter) are **not** specified here beyond their gate
-condition: writing an actual `.docx` CV or letter is Phase 5's own goal (docx editing, formatting
-preservation, comment-based versioning, cover-letter punctuation and length checks —
-`Agent/specs/steps.md`, not written yet). Wiring their buttons for real means doing Phase 5's
-work, not a small extension of this one. The other four — Listing, Job details, Positioning
-analysis, Application history — are all Markdown-or-JSON-shaped generation, the same shape the
-Profile page's three documents and Revise (LLM) turns already are, so they belong here.
+All six are specified here (D-129 adds the last two, Tailored CV and Cover letter — Phase 5's
+primary goal, pulled forward onto this branch the same way Listing pulled Phase 4's extraction
+tech forward, D-121). The first four (Listing, Job details, Positioning analysis, Application
+history) are Markdown-or-JSON-shaped generation, the same shape the Profile page's three documents
+and Revise (LLM) turns already are. The last two edit a `.docx` instead of writing Markdown, so
+they get their own numbered-block edit mechanism (§5's `docx_editor.py`) rather than reusing
+D-110's plain-text OLD/NEW — the document being edited has real formatting to preserve, which a
+plain string never did.
 
 ## Common rules (same as `profile-steps.md` and `revise-steps.md`)
 
@@ -420,34 +421,270 @@ their own note from it if they want one.
 Emails are untrusted text (D-38) — this step's prompt treats them the same way Listing's does:
 data between markers, never instructions.
 
-## 5. Tailored CV — Phase 5, not this file
+## 5. Tailored CV (`generate_tailored_cv`)
 
-**Gate (frontend only, so the button's disabled state is informative even before Phase 5
-exists):** Master CV selected, the three LLM profile documents populated, Job details filled, and
+Written from the reference folder's own manual workflow (`Agent Instructions.md`,
+`Writing rules.md`, and a direct comparison of several real master-CV/tailored-CV pairs,
+2026-10-09, D-129) — this is Phase 5's primary goal (`DEVELOPMENT-PLAN.md`), pulled forward onto
+`phase-3-tracker` the same way Listing pulled Phase 4's extraction tech forward (D-121).
+
+**What tailoring actually is, observed directly:** no role, employer or date is ever added,
+removed or reordered. The changes are narrow and consistent: the one-line tagline under the name
+is reworded for the target role; a short professional-summary line is sometimes added beneath the
+contact line when the master has none; **exactly one** historical role — the one closest to the
+target job — gets its bullets substantively rewritten, usually expanded with more specific detail
+pulled from the fuller career history than the compressed master shows (never invented: the
+detail already exists, just compressed out of the master); the skills table occasionally gains
+one row for skills that exist but aren't normally surfaced. This is an **edit** of the master, not
+a rewrite from scratch — which is also the only honest shape it could take: a tailored CV cannot
+truthfully add a bullet the career history doesn't support, so every legitimate change is a
+selection, expansion-from-existing-evidence, or rewording of something already true (D-85).
+
+**Gate:** Master CV selected, the three LLM profile documents populated, Job details filled, and
 the positioning breakdown file exists (not merely `fit`/`gaps`/`strategy` having some value by
-hand — the actual breakdown document, since that is what a CV-writing step would read evidence
+hand — the actual breakdown document, since that is what this step reads gap/evidence detail
 from, per D-99).
 
-Writing the `.docx` itself — copying the Master CV, python-docx edits, the formatting-preservation
-check against the master, `Agent/skills/edit-docx/` — is Phase 5's scope (`DEVELOPMENT-PLAN.md`).
-Nothing here pulls that forward.
+**Inputs:** the selected Master CV's own `.docx` bytes (read fresh, D-116's reference — nothing
+copied in advance); the career history, questionnaire analysis and strategy (full text); Job
+details' `description` and `requirements`; the positioning breakdown document (for which gaps to
+address and which evidence the scoring already surfaced); the writing rules in force (voice,
+D-23).
 
-## 6. Cover letter — Phase 5, not this file
+**The document is represented to Claude as numbered blocks, not raw XML** (`docx_editor.py`,
+D-130): every body paragraph and every table row becomes one block with a stable id (`B1`, `B2`,
+... in document order; `T1R1`, `T1R2`, ... per table, row order), shown as
+`[B3] Senior Data Analyst, Acme Corp, 2020–2023` or `[T1R2] SQL | Advanced`. This mirrors
+`extraction.py`'s existing paragraph/table reading, just keeping each unit addressable instead of
+flattening it to one string.
 
-**Gate (frontend only, same reasoning as above):** the Tailored CV exists, Job details filled,
-the three LLM profile documents populated, the positioning breakdown file exists, writing rules
-are in force (the user's own upload or `Agent/rules/honesty.md`), and a cover letter template is
-uploaded (D-71).
+**Answer**, one block per change, no tools, same delimited convention as every other step here,
+built tolerant of a missing closing tag from the start (D-130, learned from D-129's own
+Positioning fix rather than the hard way again):
 
-The letter's own checks (no colon or dash as sentence punctuation, the length limit,
-`Agent/specs/steps.md`'s contract) are Phase 5's, not written here.
+```
+TASK: generate_tailored_cv
+
+You are tailoring this person's CV for one job, by editing specific blocks of their master CV -
+never by rewriting it from scratch. Use only what the career history, questionnaire analysis and
+strategy below state; do not invent a role, employer, date, or achievement. Keep every block you
+do not explicitly change exactly as it is - do not touch formatting, only the text content of the
+blocks you edit, insert or remove.
+
+What real tailoring looks like: reword the tagline line for this role; add a short professional
+summary beneath the contact block if there is not one already; rewrite the bullets of the ONE
+historical role closest to this job, pulling more specific true detail from the career history
+than the master's compressed version shows; add one skills-table row only if a genuinely relevant
+skill is missing from it. Do not add, remove, or reorder roles, employers, or dates. Do not touch
+any other role's bullets.
+
+=== MASTER CV (numbered blocks) ===
+{blocks}
+=== END MASTER CV ===
+
+=== CAREER HISTORY ===
+{history}
+=== END CAREER HISTORY ===
+
+=== QUESTIONNAIRE ANALYSIS ===
+{analysis}
+=== END QUESTIONNAIRE ANALYSIS ===
+
+=== STRATEGY ===
+{strategy}
+=== END STRATEGY ===
+
+=== JOB DESCRIPTION ===
+{description}
+=== END JOB DESCRIPTION ===
+
+=== POSITIONING BREAKDOWN ===
+{breakdown}
+=== END POSITIONING BREAKDOWN ===
+
+Writing rules that apply to everything you write:
+{rules}
+
+Answer with one block per change, in any order:
+
+=== EDIT ===
+ID: <a block id from above>
+TEXT: <its full replacement text>
+=== END EDIT ===
+
+=== INSERT AFTER ===
+ID: <the block id this new one goes after>
+TEXT: <the new block's text - formatting is cloned from the ID it follows>
+=== END INSERT AFTER ===
+
+=== REMOVE ===
+ID: <a block id to delete entirely>
+=== END REMOVE ===
+
+=== ADD ROW AFTER ===
+ID: <a table row id this new row goes after, e.g. T1R2>
+CELLS: <cell text, in column order, separated by " | ">
+=== END ADD ROW AFTER ===
+
+Give only the blocks you are actually changing - do not re-emit anything you are leaving as is.
+```
+
+**Code checks:** every `ID` referenced must exist in the master's current block map, or the whole
+answer is rejected (naming the bad id) - the same verbatim-or-fail guarantee D-125/D-126 already
+use, applied to structural edits instead of text. At least one operation must be present. `ADD ROW
+AFTER`'s `CELLS` count must match the table's own column count.
+
+**Applying edits preserves formatting by construction, not by comparison:** `EDIT`/`INSERT AFTER`
+keep the target (or cloned) paragraph's own run formatting - the new text replaces the first run's
+text and clears any further runs, a deliberate simplification that loses inline formatting
+*within* a single edited paragraph (for example a bold company name mid-sentence) but never
+touches any paragraph it doesn't edit. `INSERT AFTER`/`ADD ROW AFTER` deep-copy the referenced
+paragraph's or row's XML element and insert the copy as a sibling, so the new block starts out
+styled identically to the one it follows. `REMOVE` deletes the element outright.
+
+**The formatting-preservation check (`DEVELOPMENT-PLAN.md`'s own phrase) is informational, not a
+gate:** after applying edits, the tailored `.docx` and the master are both converted to PDF
+(`dxpdf`, already in use, D-109) purely to count pages (`pypdf`). A page count increase is logged
+in the job's trace, not rejected - genuinely adding true detail can legitimately grow a CV by a
+line, and D-85's review-by-reading already covers the rest. There is no separate "style" diff:
+since every change clones existing formatting by construction, a style drift would mean a bug in
+this code, not a bad answer, so it isn't worth a second runtime check.
+
+**Storage:** the edited `.docx` bytes replace the application's `tailored_cv` job file (D-115: at
+most one current file), the same `write_generated_job_file`-style replace Listing and the
+positioning breakdown already use, adapted for binary content. No new preview code is needed -
+`.docx` preview already works for any job file (D-107/D-109).
+
+## 6. Cover letter (`generate_cover_letter`)
+
+Also written from the reference folder (D-129). The real letters are consistently about
+250-320 words, five to six short paragraphs, one page: a dated letterhead, "Application for
+<role>", "Dear <company/recruiter> Team,", an opening naming the role and a genuine thesis for
+applying, two or three evidence paragraphs grounded in specific real work, one paragraph that
+names an actual gap plainly and pivots to a transferable strength, and a short forward-looking
+close with an available-start date. Checked directly against several real letters: colons, em
+dashes, en dashes and semicolons used as sentence punctuation **never** appear - zero occurrences
+- while hyphens inside compound words (multi-tenant, end-to-end) are unaffected. This matches
+`Writing rules.md` in the reference folder, which is reasonably the ancestor of this app's own
+`writing_rules` profile upload (D-23) - the mechanical no-colon/no-dash/no-semicolon rule is
+already in force for anyone who has uploaded it, not re-specified here as a separate rule.
+
+**Gate:** the Tailored CV exists (ordering, not a content dependency - see Inputs), Job details
+filled, the three LLM profile documents populated, the positioning breakdown file exists, writing
+rules are in force (the user's own upload or `Agent/rules/honesty.md`), and a cover letter
+template is uploaded (D-71).
+
+**Inputs:** the career history, questionnaire analysis and strategy (full text); Job details'
+`description`; the positioning breakdown document (the gap-naming paragraph draws directly on
+it); the cover letter template's own `.docx` bytes (its letterhead and structure - D-71); the
+writing rules in force. The Tailored CV's own content is **not** read here - the reference
+workflow writes the letter from the same underlying research the CV draws from, independently,
+using an old letter only for its *shape*, which the template already captures for this app.
+
+**Represented and edited the same way as the Tailored CV** (`docx_editor.py`, numbered blocks,
+`EDIT`/`INSERT AFTER`/`REMOVE` operations) applied to a copy of the cover letter template rather
+than the master CV - no `ADD ROW AFTER`, since a letter has no table. The letter is structurally
+simpler (a handful of paragraphs: date, salutation, opening, two or three body paragraphs,
+gap-and-pivot paragraph, closing), so in practice most answers are `EDIT`s of the template's own
+placeholder paragraphs rather than insertions.
+
+```
+TASK: generate_cover_letter
+
+You are writing this person's cover letter for one job, by editing specific blocks of their cover
+letter template - never by rewriting it from scratch. Use only what the career history,
+questionnaire analysis and strategy below state; do not invent a project, result, or employer.
+
+Write five to six short paragraphs, about 250 to 320 words in total, one page: an opening naming
+the role and a genuine reason for applying; two or three evidence paragraphs grounded in specific
+real work; one paragraph that names an actual gap between this person's background and the role
+plainly, then pivots to a transferable strength, never glossing over it; a short forward-looking
+closing with an available-start date.
+
+=== COVER LETTER TEMPLATE (numbered blocks) ===
+{blocks}
+=== END COVER LETTER TEMPLATE ===
+
+=== CAREER HISTORY ===
+{history}
+=== END CAREER HISTORY ===
+
+=== QUESTIONNAIRE ANALYSIS ===
+{analysis}
+=== END QUESTIONNAIRE ANALYSIS ===
+
+=== STRATEGY ===
+{strategy}
+=== END STRATEGY ===
+
+=== JOB DESCRIPTION ===
+{description}
+=== END JOB DESCRIPTION ===
+
+=== POSITIONING BREAKDOWN ===
+{breakdown}
+=== END POSITIONING BREAKDOWN ===
+
+Writing rules that apply to everything you write (follow these exactly, including any rule about
+punctuation):
+{rules}
+
+Answer with one block per change, the same EDIT/INSERT AFTER/REMOVE blocks the CV step uses:
+
+=== EDIT ===
+ID: <a block id from above>
+TEXT: <its full replacement text>
+=== END EDIT ===
+
+=== INSERT AFTER ===
+ID: <the block id this new one goes after>
+TEXT: <the new block's text>
+=== END INSERT AFTER ===
+
+=== REMOVE ===
+ID: <a block id to delete entirely>
+=== END REMOVE ===
+```
+
+**Code checks, beyond the shared id-validation above:** the letter's full assembled text (every
+block after edits are applied, joined) must not contain a colon, an em dash, an en dash, or a
+semicolon used as sentence punctuation - a bare ASCII hyphen is allowed only when it has no
+surrounding whitespace (a compound word), so `multi-tenant` passes and `work - and` does not. Word
+count must fall within roughly 200-400 words (a deliberately wider band than the observed
+250-320, since this is a mechanical length guard against a badly broken answer, not a style
+rule the user's own review doesn't already cover more precisely). Either check failing rejects
+the whole answer (`PromptRejected`, naming which rule and, for punctuation, the offending
+snippet) - there is no partial save of a letter that breaks the user's own stated rules.
+
+**Storage:** same replace-in-slot pattern as the Tailored CV, job file kind `cover_letter`.
+
+## Scope narrowed for both of these two (D-129, D-131)
+
+- **One-shot regenerate, not a comment thread.** Phase 5's original scope imagined "a comment on
+  any version produces a new version" - full iterative revision, like the Profile page's
+  `ReviseOverlay`. What ships here instead matches every other button on this page already built
+  (Listing, Job details, Positioning analysis, Application history): click Generate/Revise, it
+  reruns from current inputs and replaces the file in its slot (D-115), through the same
+  `GenerateSectionOverlay` the other three sections use. A true per-comment chat revision for a
+  structured `.docx` (not a plain-text document `ReviseOverlay`'s OLD/NEW mechanism already
+  handles) is a larger, separate design - left for later if wanted, not attempted here.
+- **`Agent/specs/steps.md` is not created separately.** Its planned content (positioning, CV and
+  letter contracts) already lives here, in `job-llm-steps.md`, alongside Listing/Job
+  details/Application history - one file for the whole page's LLM contracts, not two.
+- **The old "every claim cites a verified fact id" line in `DEVELOPMENT-PLAN.md`'s Phase 5 scope
+  is stale.** It describes the Fact Sheet/fact-id verification system D-85/D-86 already replaced
+  with honesty-by-review, for the profile documents these two steps also read. Nothing here
+  reopens that: honesty is instruction plus the user's own read of the finished document, same as
+  everywhere else in this app.
 
 ## Architecture note
 
 Each new kind is wired the same way `revise_pipeline.py` already wires onto `profile_pipeline.py`
 (there is exactly one `ClaudeJobQueue` instance, app-wide; a render/on_result pair is composed by
-hand, not looked up from a registry — see `claude_job_queue.py`). A new `job_pipeline.py` composes
-onto the existing `(render, on_result)` pair the same way, dispatching on `prompt.prompt_kind` for
-`generate_job_listing`, `check_job_listing_text`, `generate_job_details`, `generate_positioning`
-and `generate_application_history`, and delegating anything else to the pair it wraps. This keeps
-the one-queue-instance design (D-51) intact without a fourth hand-chained wrapper file per kind.
+hand, not looked up from a registry — see `claude_job_queue.py`). `job_pipeline.py` composes onto
+the existing `(render, on_result)` pair the same way, dispatching on `prompt.prompt_kind` for
+`generate_job_listing`, `check_job_listing_text`, `generate_job_details`, `generate_positioning`,
+`generate_application_history`, `generate_tailored_cv` and `generate_cover_letter`, and delegating
+anything else to the pair it wraps. This keeps the one-queue-instance design (D-51) intact without
+a per-kind wrapper file. The last two share a new `docx_editor.py` (the numbered-block read and
+the `EDIT`/`INSERT AFTER`/`REMOVE`/`ADD ROW AFTER` apply logic, §5) rather than duplicating it.
