@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { FilePreview } from '@/components/app/FilePreview'
+import { GenerateListingOverlay } from '@/components/app/GenerateListingOverlay'
 import { QueueStatusBadge } from '@/components/app/QueueStatusBadge'
 import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
@@ -1012,6 +1013,7 @@ function Files({
       !COVER_LETTER_KINDS.has(file.kind) &&
       !EMAIL_KINDS.has(file.kind),
   )
+  const [listingOverlayOpen, setListingOverlayOpen] = useState(false)
 
   return (
     <Section title="Files">
@@ -1023,6 +1025,7 @@ function Files({
           files={listing}
           empty="No listing file yet."
           uploadKind={() => 'listing'}
+          onGenerateClick={() => setListingOverlayOpen(true)}
           onChanged={onChanged}
         />
         <FileGroup
@@ -1061,6 +1064,13 @@ function Files({
           onChanged={onChanged}
         />
       </div>
+      <GenerateListingOverlay
+        applicationId={application.id}
+        currentListing={listing[0] ?? null}
+        open={listingOverlayOpen}
+        onOpenChange={setListingOverlayOpen}
+        onChanged={onChanged}
+      />
     </Section>
   )
 }
@@ -1163,6 +1173,7 @@ function FileGroup({
   empty,
   showKind = false,
   generatable = true,
+  onGenerateClick,
   uploadKind,
   onChanged,
 }: {
@@ -1172,6 +1183,9 @@ function FileGroup({
   empty: string
   showKind?: boolean
   generatable?: boolean
+  // When given, the LLM button is real (today: only Listing, D-121) instead of the disabled
+  // stub every other generatable subsection still shows (Tailored CV, Cover letter - Phase 5).
+  onGenerateClick?: () => void
   uploadKind: (file: File) => string
   onChanged: () => void
 }) {
@@ -1204,7 +1218,14 @@ function FileGroup({
         </h3>
         <div className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/subsection:opacity-100">
           <div className="flex shrink-0 gap-2">
-            {generatable && <LlmButton hasData={hasData} />}
+            {generatable &&
+              (onGenerateClick ? (
+                <Button variant="outline" size="sm" onClick={onGenerateClick}>
+                  {llmLabel(hasData)}
+                </Button>
+              ) : (
+                <LlmButton hasData={hasData} />
+              ))}
             <input
               ref={input}
               type="file"

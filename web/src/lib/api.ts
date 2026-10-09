@@ -5,6 +5,7 @@ import type {
   JobApplicationDetailData,
   JobApplicationEdit,
   JobApplicationFile,
+  ListingExtraction,
   ProfileFile,
   ProfileFileKind,
   ProfileOutput,
@@ -167,6 +168,67 @@ export async function fetchJobFilePreview(
     return { kind: 'html', text: await response.text() }
   }
   return { kind: 'text', text: await response.text() }
+}
+
+// The Listing's three extraction routes (D-121, job-llm-steps.md): code-only, nothing saved.
+
+export function extractListingFromUrl(id: number, url: string): Promise<ListingExtraction> {
+  return request<ListingExtraction>(`/api/job-applications/${id}/listing/extract-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  })
+}
+
+export function extractListingFromPaste(id: number, text: string): Promise<ListingExtraction> {
+  return request<ListingExtraction>(`/api/job-applications/${id}/listing/extract-paste`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+}
+
+// Sends the file's bytes, the same way uploadJobFile does - nothing is saved server-side.
+export async function extractListingFromUpload(
+  id: number,
+  file: File,
+): Promise<ListingExtraction> {
+  let response: Response
+  try {
+    response = await fetch(`/api/job-applications/${id}/listing/extract-upload`, {
+      method: 'POST',
+      headers: { 'X-File-Name': encodeURIComponent(file.name) },
+      body: file,
+    })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+  return (await response.json()) as ListingExtraction
+}
+
+// Queues the sanity check that runs automatically once extraction produces text (step 26).
+export function checkListingText(id: number, text: string): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/job-applications/${id}/listing/check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+}
+
+// Queues the Listing's Generate (LLM) step on the reviewed text (step 27).
+export function generateListing(
+  id: number,
+  method: ListingExtraction['method'],
+  text: string,
+): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/job-applications/${id}/listing/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method, text }),
+  })
 }
 
 export function runClaudeCheck(): Promise<RunResult> {

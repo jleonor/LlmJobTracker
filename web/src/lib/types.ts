@@ -193,3 +193,14 @@ export type ReviseTurn = {
 export type FilePreviewData =
   | { kind: 'pdf'; blob: Blob }
   | { kind: 'text' | 'markdown' | 'html'; text: string }
+
+// What one of the Listing's extract-url/extract-paste/extract-upload routes returns (D-121,
+// job-llm-steps.md): code-only extraction, reviewable before any model step runs. status is one
+// of the same EXTRACTION_STATUSES every other extraction uses (ok, no_text, unsupported, failed).
+export type ListingExtraction = {
+  method: 'url' | 'paste' | 'upload'
+  source: string | null
+  status: string
+  message: string | null
+  text: string
+}
