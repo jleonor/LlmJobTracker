@@ -17,11 +17,12 @@ One tracker row for one listing (D-46, D-56). Table `job_applications`.
   portals (LinkedIn Easy Apply, a recruiter's own site) give no stable public URL.
 - `status`: Identified, Applied, Screening, Interview, Offer, Rejected, Withdrawn (D-44, D-101).
 - `match_score`: the fit % (D-47), null until positioning has run (Phase 5).
-- `description`: prose, what the role is and its context. Written by whoever adds the listing —
-  Claude, from the listing text, once Phase 4 exists; by hand for anything added before that.
-  Never invented from nothing: if there is no listing text to summarise, this stays null (D-85's
-  rule against unsupported claims applies here too, even though a job description is not a claim
-  about the user).
+- `description`: prose, what the role is and its context. Written by the Job details Generate
+  (LLM) step, from the listing file's extracted text (`job-llm-steps.md`), once that step exists;
+  by hand for anything added before that, or when there is no listing file to read. Never
+  invented from nothing: if there is no listing text to summarise, this stays null (D-85's rule
+  against unsupported claims applies here too, even though a job description is not a claim about
+  the user).
 - `requirements`: a JSON array of short strings, stored in one `TEXT` column (same shallow
   shape `profile_outputs.input_sha256s` already uses for a list, not a separate table — D-99
   already decided the richer per-requirement weight/match detail lives in the positioning

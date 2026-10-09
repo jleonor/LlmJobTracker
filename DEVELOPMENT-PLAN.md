@@ -161,6 +161,45 @@ Step list, continued (added 2026-10-09, D-117): Application history's Edit dialo
 20. Frontend: Application history's Edit dialog gains a Stages section, one date field per status (five main plus Rejected/Withdrawn) with a Today button and a clear button, saved through the new endpoint alongside the existing notes/next action/due date PATCH.
 21. Checks: `scripts/check.py` output; a screenshot of the Stages editor setting a date with Today and the timeline/status badge updating after save.
 
+Step list, continued (added 2026-10-09, D-119 to D-123): the first of the job page's six
+Generate/Revise (LLM) buttons (D-103/D-114) becomes real — Listing. Full contract in
+`Agent/specs/job-llm-steps.md`. Job details, Positioning analysis and Application history follow
+the same pattern in their own appended batches once this one is built and reviewed, matching how
+every earlier continuation on this list was appended one reviewed batch at a time rather than
+planned to code-level detail upfront. Tailored CV and Cover letter stay disabled (D-119) — Phase
+5's own scope.
+
+22. Add `trafilatura` and promote `httpx` from a dev dependency to a runtime one
+    (`api/pyproject.toml`). Smoke-test outside the app: fetch a real job-posting URL and run the
+    same extraction on a saved HTML fixture, confirm readable text comes out, not navigation or
+    boilerplate.
+23. Migration 17: add `sha256`, `extraction_status`, `extraction_message`, `extracted_text` to
+    `job_files` (D-122), the same four columns `profile_files` already has. Tests: applies and
+    rolls back on a copy of the dev database and an empty database.
+24. Extraction code for a job file's own content, by kind: PDF (`pypdf`), DOCX (`python-docx`),
+    HTML (the new readability extractor), TXT/MD (as-is). Writes the migration 17 columns.
+    Synthetic PDF/HTML/DOCX/TXT job-listing fixtures under `tests/fixtures/synthetic/`.
+25. Backend: a code-only extraction endpoint taking a URL, pasted text, or an uploaded file, and
+    returning the extracted text plus how it was obtained (method, source, date) for the user to
+    review and edit — no Claude call here. A blocked URL, a PDF with no text layer, or empty HTML
+    returns a fallback reason instead of text, per Phase 4's already-decided fallback rule
+    (CLAUDE.md, D-32).
+26. `check_job_listing_text` Claude Job (job-llm-steps.md §1): submit function, renderer,
+    on_result parsing the `LOOKS_LIKE_A_JOB_POSTING:` line, wired into a new `job_pipeline.py`
+    (D-123). Tests with `FakeRunner`: a yes answer, a no answer, a malformed answer (treated as
+    no, per the spec's fail-open rule).
+27. `generate_job_listing` Claude Job (job-llm-steps.md §1): submit function, renderer built from
+    the reviewed text, on_result storing the Markdown answer as `job_files` kind `listing` with
+    its extraction columns filled directly from the generated text. Tests with `FakeRunner`.
+28. Frontend: a Generate Listing overlay, following `ReviseOverlay`'s layout (current document on
+    one side; on the other, this flow's own steps — pick a source (paste, URL, upload), review
+    and edit the extracted text, see the sanity-check result if it came back `no`, then run
+    generation with `RunTrace` showing it). Replaces the Listing subsection's disabled `LlmButton`
+    stub in `JobApplicationDetailPage.tsx`.
+29. Checks: `scripts/check.py` output; personal-data scan; screenshots of a URL, pasted text, and
+    an uploaded PDF each producing a reviewed-then-generated listing, and of the sanity check
+    firing on a deliberately bad fixture (a saved cookie-banner-only HTML page).
+
 Done when
 - [ ] The Job Application page, built on seed data, matches the D-56 layout (screenshot, compared against the job-detail mockups).
 - [ ] The dry-run report matches the spreadsheet: row counts, the 8 changed rows, and three spot-checked rows.
@@ -173,6 +212,7 @@ Done when
 - [ ] A real Job Application's detail page shows its real description, requirements, notes, status history and files — not seed data (screenshot, D-113).
 - [ ] A real job file previews, uploads, opens and is edited through the page, and a Master CV selection persists after a reload (screenshot, D-116).
 - [ ] A stage date set with Today in the Edit dialog updates the timeline and the current status badge (screenshot, D-117).
+- [ ] A Job Application gets a Listing file through Generate (LLM): a real URL, pasted text, and an uploaded PDF each produce extracted text the user reviews, then a generated Markdown listing (screenshot, D-119 to D-123).
 
 Out of scope: the Kanban board (see Phase 8).
 

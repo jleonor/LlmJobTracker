@@ -41,12 +41,14 @@ One row per file. Columns:
   null for every other kind today. Matches the frontend's optional `JobApplicationFile.date`.
 - `created_at`: when the row was added here, default now.
 
-No `sha256`, no `extraction_status`/`extraction_message`/`extracted_text` columns the way
-`profile_files` has: those exist there because a profile file's extracted text feeds a prompt
-(Phase 2). A Job Application's own files are not read by Claude yet (D-109: the preview endpoint
-and this table are new; nothing in this phase makes them a prompt input). Add those columns if
-and when a job's own files become prompt input (positioning reading the listing again, for
-example) — not before, per the project's own "don't build for a hypothetical" rule.
+`sha256`, `extraction_status`, `extraction_message`, `extracted_text`: the same four columns
+`profile_files` has, added once a job's own files become prompt input — the Listing file is read
+by Job details and Positioning analysis (`job-llm-steps.md`). Extraction runs the same code-only
+rules as `profile_files`' (pypdf/python-docx/text; HTML gets the same readability extraction
+`job-llm-steps.md`'s Listing step uses). Only `listing` is extracted today; the other kinds are
+written by a generation step (Tailored CV, Cover letter, the positioning breakdown — Phase 5)
+that stores extracted text directly, or are never read back as input (Additional files, Emails
+beyond the Application history step that already reads them as files, not as `extracted_text`).
 
 ## Preview, Open and Upload (D-109, D-111, D-112, D-116)
 
