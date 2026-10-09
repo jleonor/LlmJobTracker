@@ -131,9 +131,8 @@ function UploadButton() {
 }
 
 // A section's header actions (Job details, Positioning analysis, Application history): Edit,
-// then Revise or Generate depending on whether the section has anything to revise yet. An empty
-// section also gets Upload beside Generate, for a document the user already has of their own
-// (D-114, matching the Profile page's own_* upload pattern, D-68).
+// then Revise or Generate depending on whether the section has anything to revise yet. No Upload
+// here - that's a Files thing only (D-114).
 function SectionActions({ hasData }: { hasData: boolean }) {
   return (
     <div className="flex shrink-0 gap-2">
@@ -141,7 +140,6 @@ function SectionActions({ hasData }: { hasData: boolean }) {
         Edit
       </Button>
       <LlmButton hasData={hasData} />
-      {!hasData && <UploadButton />}
     </div>
   )
 }
