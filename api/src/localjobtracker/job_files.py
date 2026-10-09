@@ -165,6 +165,73 @@ def job_file_path(conn: sqlite3.Connection, files_root: Path, file_id: int) -> P
     return None if row is None else files_root / str(row["stored_path"])
 
 
+def latest_job_file_of_kind(
+    conn: sqlite3.Connection, application_id: int, kind: str
+) -> sqlite3.Row | None:
+    """The one current file of this kind for an application (D-115: Listing, Tailored CV, Cover
+    letter and the positioning breakdown each hold at most one), or None."""
+    row: sqlite3.Row | None = conn.execute(
+        "SELECT id, name, stored_path, extraction_status, extraction_message, extracted_text "
+        "FROM job_files WHERE job_application_id = ? AND kind = ? ORDER BY id DESC LIMIT 1",
+        (application_id, kind),
+    ).fetchone()
+    return row
+
+
+def _unique_target(folder: Path, name: str, content: bytes) -> tuple[Path, str]:
+    """`folder / name`, or a short-suffixed variant if something unrelated already has that name
+    (files.md's shared-folder layout isn't keyed by kind) — never overwrites."""
+    target = folder / name
+    if not target.exists():
+        return target, name
+    stem, suffix = Path(name).stem, Path(name).suffix
+    unique_name = f"{stem} ({hashlib.sha256(content).hexdigest()[:8]}){suffix}"
+    return folder / unique_name, unique_name
+
+
+def write_generated_job_file(
+    conn: sqlite3.Connection,
+    files_root: Path,
+    application_id: int,
+    kind: str,
+    name: str,
+    content: bytes,
+) -> JobApplicationFile:
+    """Save a Claude-generated result (Markdown text) as the one file in its kind's slot,
+    replacing whatever was there (D-115) — used by job_pipeline.py's Generate (LLM) steps, the
+    same way store_generated_file does for a profile document (D-84)."""
+    clear_job_files_of_kind(conn, files_root, application_id, kind)
+    app_row = conn.execute(
+        "SELECT company, role_title FROM job_applications WHERE id = ?", (application_id,)
+    ).fetchone()
+    if app_row is None:
+        raise JobFileUploadError(404, "No such Job Application.")
+    folder = managed_folder(files_root, app_row["company"], app_row["role_title"])
+    folder.mkdir(parents=True, exist_ok=True)
+    target, final_name = _unique_target(folder, name, content)
+    target.write_bytes(content)
+    digest = hashlib.sha256(content).hexdigest()
+    file_id = insert_job_file(
+        conn,
+        application_id,
+        kind=kind,
+        name=final_name,
+        stored_path=target.relative_to(files_root).as_posix(),
+        sha256=digest,
+        extraction_status="ok",
+        extracted_text=content.decode("utf-8"),
+    )
+    conn.commit()
+    return JobApplicationFile(
+        id=file_id,
+        kind=kind,
+        name=final_name,
+        date=None,
+        extraction_status="ok",
+        extraction_message=None,
+    )
+
+
 def store_job_file(
     conn: sqlite3.Connection,
     files_root: Path,
@@ -200,11 +267,7 @@ def store_job_file(
 
     folder = managed_folder(files_root, app_row["company"], app_row["role_title"])
     folder.mkdir(parents=True, exist_ok=True)
-    target = folder / name
-    if target.exists():
-        stem, suffix = Path(name).stem, Path(name).suffix
-        name = f"{stem} ({hashlib.sha256(content).hexdigest()[:8]}){suffix}"
-        target = folder / name
+    target, name = _unique_target(folder, name, content)
     target.write_bytes(content)
 
     extraction_status = extraction_message = extracted_text = None

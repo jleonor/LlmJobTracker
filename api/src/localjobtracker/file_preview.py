@@ -143,6 +143,45 @@ def _eml_to_html(data: bytes) -> str:
     return _sanitize(f"{headers}<hr>{body_html}")
 
 
+@dataclass(frozen=True)
+class EmailText:
+    sender: str | None
+    date: str | None
+    subject: str | None
+    body: str
+
+
+def eml_to_text(data: bytes) -> EmailText:
+    """An .eml's plain text, for a prompt to read (job_pipeline.py's Application history step) —
+    not a preview: no sandboxing needed here, since the text never reaches a browser as HTML."""
+    message = email.message_from_bytes(data, policy=email.policy.default)
+    body, is_html = _body_from_message(message)
+    text = bleach.clean(body, tags=[], strip=True) if is_html else body
+    return EmailText(
+        sender=message.get("From"),
+        date=message.get("Date"),
+        subject=message.get("Subject"),
+        body=text.strip(),
+    )
+
+
+def msg_to_text(data: bytes) -> EmailText:
+    """A .msg's plain text, the same way eml_to_text reads an .eml."""
+    with extract_msg.openMsg(data) as parsed:
+        html_body = _as_text(getattr(parsed, "htmlBody", None))
+        text = (
+            bleach.clean(html_body, tags=[], strip=True)
+            if html_body
+            else _as_text(getattr(parsed, "body", None))
+        )
+        return EmailText(
+            sender=getattr(parsed, "sender", None),
+            date=str(getattr(parsed, "date", "") or "") or None,
+            subject=getattr(parsed, "subject", None),
+            body=text.strip(),
+        )
+
+
 def _msg_to_html(data: bytes) -> str:
     """Render a .msg file as HTML (D-107).
 
