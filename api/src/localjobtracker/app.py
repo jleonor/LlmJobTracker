@@ -37,6 +37,13 @@ from localjobtracker.job_applications import (
     update_job_application,
 )
 from localjobtracker.job_files import JobApplicationFile, JobFileUploadError, store_job_file
+from localjobtracker.listing_intake import (
+    ListingExtraction,
+    ListingFetchError,
+    extract_from_paste,
+    extract_from_upload,
+    extract_from_url,
+)
 from localjobtracker.profile_files import (
     ProfileFile,
     ProfileFileText,
@@ -81,6 +88,14 @@ PREVIEW_MEDIA_TYPES: Final[dict[str, str]] = {
 
 class SettingsEdit(BaseModel):
     user_name: str
+
+
+class ListingUrlRequest(BaseModel):
+    url: str
+
+
+class ListingPasteRequest(BaseModel):
+    text: str
 
 
 class ReviseTurnCreate(BaseModel):
@@ -312,6 +327,57 @@ def create_app(
             else preview.content.encode("utf-8")
         )
         return Response(content=content, media_type=PREVIEW_MEDIA_TYPES[preview.kind])
+
+    @app.post(
+        "/job-applications/{application_id}/listing/extract-url",
+        response_model=ListingExtraction,
+        dependencies=[Depends(require_token)],
+    )
+    def extract_listing_from_url(
+        application_id: int, body: ListingUrlRequest, conn: Annotated[Connection, Depends(get_db)]
+    ) -> ListingExtraction:
+        if get_job_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            return extract_from_url(body.url)
+        except ListingFetchError as error:
+            raise HTTPException(status_code=error.status, detail=error.message) from error
+
+    @app.post(
+        "/job-applications/{application_id}/listing/extract-paste",
+        response_model=ListingExtraction,
+        dependencies=[Depends(require_token)],
+    )
+    def extract_listing_from_paste(
+        application_id: int,
+        body: ListingPasteRequest,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> ListingExtraction:
+        if get_job_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return extract_from_paste(body.text)
+
+    @app.post(
+        "/job-applications/{application_id}/listing/extract-upload",
+        response_model=ListingExtraction,
+        dependencies=[Depends(require_token)],
+    )
+    async def extract_listing_from_upload(
+        application_id: int, request: Request
+    ) -> ListingExtraction:
+        # Async, like upload_job_file/upload_profile_file below, so it opens its own connection
+        # rather than sharing one across threads via Depends(get_db).
+        name = unquote(request.headers.get("X-File-Name", ""))
+        content = await request.body()
+        conn = connect(db_path)
+        try:
+            if get_job_application_detail(conn, application_id) is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+            return extract_from_upload(name, content)
+        except ListingFetchError as error:
+            raise HTTPException(status_code=error.status, detail=error.message) from error
+        finally:
+            conn.close()
 
     @app.post("/runs/check", response_model=RunResult, dependencies=[Depends(require_token)])
     def run_check() -> RunResult:

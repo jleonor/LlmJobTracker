@@ -29,7 +29,9 @@ class Extraction:
     message: str | None
 
 
-def _clean(text: str) -> str:
+def clean_text(text: str) -> str:
+    """Normalise line endings and surrounding whitespace. Shared by every extraction path, and
+    by pasted text (listing_intake.py), which gets no other cleanup before this."""
     return text.replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
@@ -40,7 +42,7 @@ def _pdf(path: Path) -> Extraction:
             reader.decrypt("")
         except Exception:
             return Extraction("failed", "", "This PDF is password protected.")
-    text = _clean("\n\n".join(page.extract_text() or "" for page in reader.pages))
+    text = clean_text("\n\n".join(page.extract_text() or "" for page in reader.pages))
     if len(text) < MIN_TEXT_CHARS:
         return Extraction(
             "no_text",
@@ -112,7 +114,7 @@ def _docx(path: Path) -> Extraction:
     # A paragraph already read by python-docx is not repeated.
     known = set(lines)
     lines += [text for text in boxed if text not in known]
-    text = _clean("\n".join(lines))
+    text = clean_text("\n".join(lines))
     if not text:
         return Extraction("no_text", "", "This DOCX file has no text.")
     return Extraction("ok", text, None)
@@ -127,7 +129,7 @@ def _decode_text(raw: bytes) -> str:
 
 
 def _plain(path: Path) -> Extraction:
-    text = _clean(_decode_text(path.read_bytes()))
+    text = clean_text(_decode_text(path.read_bytes()))
     if not text:
         return Extraction("no_text", "", "This text file is empty.")
     return Extraction("ok", text, None)
@@ -136,11 +138,12 @@ def _plain(path: Path) -> Extraction:
 def html_to_text(html: str) -> str:
     """The readable content of an HTML page, dropping navigation, cookie banners and footers
     (trafilatura). Shared by a saved HTML file (`_html` below) and a fetched URL's response."""
-    return _clean(trafilatura.extract(html) or "")
+    return clean_text(trafilatura.extract(html) or "")
 
 
-def _html(path: Path) -> Extraction:
-    text = html_to_text(_decode_text(path.read_bytes()))
+def extraction_from_html_text(text: str) -> Extraction:
+    """The no_text check every HTML-derived extraction needs, whether the HTML came from a saved
+    file (`_html` below) or a URL fetched by listing_intake.py."""
     if len(text) < MIN_TEXT_CHARS:
         return Extraction(
             "no_text",
@@ -149,6 +152,10 @@ def _html(path: Path) -> Extraction:
             "its content, or the save kept only navigation and boilerplate text).",
         )
     return Extraction("ok", text, None)
+
+
+def _html(path: Path) -> Extraction:
+    return extraction_from_html_text(html_to_text(_decode_text(path.read_bytes())))
 
 
 def extract(path: Path) -> Extraction:
