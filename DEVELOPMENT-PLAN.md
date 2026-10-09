@@ -200,6 +200,56 @@ planned to code-level detail upfront. Tailored CV and Cover letter stay disabled
     an uploaded PDF each producing a reviewed-then-generated listing, and of the sanity check
     firing on a deliberately bad fixture (a saved cookie-banner-only HTML page).
 
+Step list, continued (added 2026-10-09, D-124 to D-128): Phase 3's scope now formally includes
+the remaining LLM-wiring batches and two previously-untracked gaps. This batch builds Job
+details, Positioning analysis and Application history — full contracts in
+`Agent/specs/job-llm-steps.md` §2–4. No migration is needed for any of the three: every column
+they write (`description`, `requirements`, `work_mode`, `contract_type`, `fit`, `gaps`,
+`strategy`, `unclear`, `match_score`, `next_action`, `due_date`) already exists.
+
+30. `generate_job_details` Claude Job (job-llm-steps.md §2): submit/render/on_result in
+    `job_pipeline.py`, gated server-side (D-128: the listing file exists). Parses `DESCRIPTION`
+    and one `REQUIREMENT` block per requirement, rejecting the answer if any requirement is not a
+    verbatim substring of the listing (D-125); `WORK MODE`/`CONTRACT TYPE` fall back to `Unknown`
+    if missing or invalid rather than failing the run. Writes `description`, `requirements`,
+    `work_mode`, `contract_type` directly. Tests with `FakeRunner`: a good answer; a requirement
+    that doesn't match the listing text (rejected, naming the offending text); an invalid work
+    mode (falls back to `Unknown`, does not fail the job).
+31. `generate_positioning` Claude Job (job-llm-steps.md §3): submit/render/on_result, gated
+    server-side (the three LLM profile documents, a Master CV selected, Job details filled, the
+    listing file exists). Parses one `=== REQUIREMENT ===` block per stored requirement
+    (TEXT/WEIGHT/MATCH/REASONING), rejecting the answer if the parsed set doesn't exactly match
+    the stored `requirements` list, if any weight or match is outside `[0, 10]`, or if every
+    weight is `0`. Computes `match_score = Σ(weight × match) ÷ (10 × Σweight) × 100` (D-47) in
+    code. Renders the parsed rows into an actual Markdown table and stores it as the positioning
+    breakdown document (`job_files` kind `positioning_breakdown`, replacing any existing one).
+    Writes `fit`/`gaps`/`strategy`/`unclear`/`match_score`. Tests with `FakeRunner`: a good
+    answer with the score hand-verified against D-47's formula by the test itself; a missing,
+    extra, or reworded requirement (rejected); every weight `0` (rejected).
+32. `generate_application_history` Claude Job (job-llm-steps.md §4): a small plain-text email
+    reader (reusing `file_preview.py`'s email-parsing primitives, reduced to text rather than
+    sanitised HTML — emails are untrusted, D-38, read as data between markers). Parses
+    `NOTES`/`NEXT ACTION`/`DUE DATE`; writes `next_action` and `due_date` directly, but **not**
+    `notes` (D-127 — `notes` stays user-only, per `domain.md`'s existing rule; `NOTES` is readable
+    only through the job's own trace/exchange). Gated server-side (Job details filled, a dated
+    status exists). Tests with `FakeRunner`.
+33. Frontend: a reusable `GenerateSectionOverlay` (lighter than Listing's wizard — these three
+    have no source to pick or text to review, just stored data to read) wired to Job details',
+    Positioning analysis's, and Application history's `LlmButton`s, each gated client-side the
+    same way the backend gates it (so a disabled button's tooltip is informative, D-120). Fetches
+    `/profile/outputs` to check Positioning analysis's three-document gate.
+34. Checks: `scripts/check.py` output; personal-data scan; screenshots of Job details, Positioning
+    analysis (with its `match_score` hand-verified against the stored breakdown document) and
+    Application history, each populated from a real listing and, for Application history,
+    synthetic filed emails.
+
+Two further Phase 3 items are now tracked but not yet scheduled as steps (D-124): the real
+spreadsheet dry-run/apply import (originally steps 4, 6, 7 above — `import_real_jobs.py` is an
+explicit stopgap, not this), and verifying `.msg` preview against a real Outlook export rather
+than only `extract-msg`'s documented attributes (D-109). The Done-when checklist below is also
+acknowledged as stale for the earlier steps and is reconciled whenever the phase is next closed
+out.
+
 Done when
 - [ ] The Job Application page, built on seed data, matches the D-56 layout (screenshot, compared against the job-detail mockups).
 - [ ] The dry-run report matches the spreadsheet: row counts, the 8 changed rows, and three spot-checked rows.
@@ -212,7 +262,8 @@ Done when
 - [ ] A real Job Application's detail page shows its real description, requirements, notes, status history and files — not seed data (screenshot, D-113).
 - [ ] A real job file previews, uploads, opens and is edited through the page, and a Master CV selection persists after a reload (screenshot, D-116).
 - [ ] A stage date set with Today in the Edit dialog updates the timeline and the current status badge (screenshot, D-117).
-- [x] A Job Application gets a Listing file through Generate (LLM): a real URL, pasted text, and an uploaded PDF each produce extracted text the user reviews, then a generated Markdown listing (screenshot, D-119 to D-123). (2026-10-09: verified live against the real Claude Code CLI, seeded dev data. Pasted text produced a clean Markdown listing in 3.0s, $0.0073; the Files section updated (Generate flipped to Revise, Job Listing.md previews correctly). A deliberately unreachable URL showed "Could not reach this page (ConnectError)" with a one-click handoff to the paste tab. Pasted cookie-banner/footer-only junk text correctly drew the sanity check's "This might not be a job posting" warning, without blocking Generate. PDF upload's extraction is covered by automated tests (test_listing_intake.py, test_extraction.py) and the Upload tab's UI was confirmed to render correctly; driving the native OS file picker isn't reachable through this session's browser automation.)
+- [x] A Job Application gets a Listing file through Generate (LLM): a real URL, pasted text, and an uploaded PDF each produce extracted text the user reviews, then a generated Markdown listing (screenshot, D-119 to D-123).
+- [ ] Job details, Positioning analysis and Application history each generate for real from a real listing: Job details' requirements are verbatim quotes from the listing (spot-checked), Positioning analysis's match_score matches a hand calculation from the stored breakdown document's weights and matches, Application history proposes a next action and due date from synthetic filed emails without touching notes (screenshot, D-124 to D-128). (2026-10-09: verified live against the real Claude Code CLI, seeded dev data. Pasted text produced a clean Markdown listing in 3.0s, $0.0073; the Files section updated (Generate flipped to Revise, Job Listing.md previews correctly). A deliberately unreachable URL showed "Could not reach this page (ConnectError)" with a one-click handoff to the paste tab. Pasted cookie-banner/footer-only junk text correctly drew the sanity check's "This might not be a job posting" warning, without blocking Generate. PDF upload's extraction is covered by automated tests (test_listing_intake.py, test_extraction.py) and the Upload tab's UI was confirmed to render correctly; driving the native OS file picker isn't reachable through this session's browser automation.)
 
 Out of scope: the Kanban board (see Phase 8).
 
