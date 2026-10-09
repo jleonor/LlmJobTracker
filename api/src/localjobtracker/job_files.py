@@ -196,10 +196,17 @@ def write_generated_job_file(
     kind: str,
     name: str,
     content: bytes,
+    *,
+    extracted_text: str | None = None,
 ) -> JobApplicationFile:
-    """Save a Claude-generated result (Markdown text) as the one file in its kind's slot,
-    replacing whatever was there (D-115) — used by job_pipeline.py's Generate (LLM) steps, the
-    same way store_generated_file does for a profile document (D-84)."""
+    """Save a Claude-generated result as the one file in its kind's slot, replacing whatever was
+    there (D-115) — used by job_pipeline.py's Generate (LLM) steps, the same way
+    store_generated_file does for a profile document (D-84).
+
+    `extracted_text` is the file's own text when it has one to read back later (a Markdown
+    listing or positioning breakdown, read as itself); left out for a binary result (a Tailored
+    CV or Cover letter `.docx`, D-130), which isn't prompt input for anything downstream.
+    """
     clear_job_files_of_kind(conn, files_root, application_id, kind)
     app_row = conn.execute(
         "SELECT company, role_title FROM job_applications WHERE id = ?", (application_id,)
@@ -211,6 +218,7 @@ def write_generated_job_file(
     target, final_name = _unique_target(folder, name, content)
     target.write_bytes(content)
     digest = hashlib.sha256(content).hexdigest()
+    extraction_status = "ok" if extracted_text is not None else None
     file_id = insert_job_file(
         conn,
         application_id,
@@ -218,8 +226,8 @@ def write_generated_job_file(
         name=final_name,
         stored_path=target.relative_to(files_root).as_posix(),
         sha256=digest,
-        extraction_status="ok",
-        extracted_text=content.decode("utf-8"),
+        extraction_status=extraction_status,
+        extracted_text=extracted_text,
     )
     conn.commit()
     return JobApplicationFile(
@@ -227,7 +235,7 @@ def write_generated_job_file(
         kind=kind,
         name=final_name,
         date=None,
-        extraction_status="ok",
+        extraction_status=extraction_status,
         extraction_message=None,
     )
 
