@@ -786,6 +786,12 @@ MIGRATIONS: tuple[Migration, ...] = (
         ),
         down=("ALTER TABLE job_applications DROP COLUMN positioning_scores",),
     ),
+    Migration(
+        version=20,
+        name="add source_url to job_files, for Add Job's duplicate detection (D-146)",
+        up=("ALTER TABLE job_files ADD COLUMN source_url TEXT",),
+        down=("ALTER TABLE job_files DROP COLUMN source_url",),
+    ),
 )
 
 _LEDGER = """
