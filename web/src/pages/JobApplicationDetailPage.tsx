@@ -2,7 +2,7 @@ import { ArrowLeft } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
-import { FilePreview } from '@/components/app/FilePreview'
+import { FilePreview, FilePreviewBody, useFilePreview } from '@/components/app/FilePreview'
 import { GenerateListingOverlay } from '@/components/app/GenerateListingOverlay'
 import { GenerateSectionOverlay } from '@/components/app/GenerateSectionOverlay'
 import { JobReviseOverlay } from '@/components/app/JobReviseOverlay'
@@ -1288,6 +1288,27 @@ const COVER_LETTER_KINDS = new Set(['cover_letter'])
 // because it is also a filed, listed email (D-112, extended by D-115).
 const EMAIL_KINDS = new Set(['eml', 'msg'])
 
+// JobReviseOverlay's left pane for Tailored CV and Cover letter (D-141): a live preview of the
+// current file, reusing FilePreview's own loading/rendering rather than a second viewer - the
+// same pane GenerateSectionOverlay's preview mode showed before these two sections had a real
+// chat. `open` gates the fetch the same way FilePreview's own Dialog `open` does, and since a
+// successful turn replaces the file (a new job_files row, D-115), the new `fileId` that flows
+// down once the page refetches triggers its own refetch automatically.
+function JobFileRevisePreview({
+  applicationId,
+  fileId,
+  name,
+  open,
+}: {
+  applicationId: number
+  fileId: number
+  name: string
+  open: boolean
+}) {
+  const state = useFilePreview({ table: 'job_file', applicationId, id: fileId }, open)
+  return <FilePreviewBody name={name} state={state} />
+}
+
 function Files({
   application,
   onChanged,
@@ -1421,30 +1442,60 @@ function Files({
         onOpenChange={setListingOverlayOpen}
         onChanged={onChanged}
       />
-      <GenerateSectionOverlay
-        title="Tailored CV"
-        hasData={tailoredCv.length > 0}
-        preview={
-          tailoredCv[0] ? { table: 'job_file', applicationId: application.id, id: tailoredCv[0].id } : null
-        }
-        previewName={tailoredCv[0]?.name}
-        open={tailoredCvOverlayOpen}
-        onOpenChange={setTailoredCvOverlayOpen}
-        onSubmit={() => generateTailoredCv(application.id)}
-        onChanged={onChanged}
-      />
-      <GenerateSectionOverlay
-        title="Cover letter"
-        hasData={coverLetter.length > 0}
-        preview={
-          coverLetter[0] ? { table: 'job_file', applicationId: application.id, id: coverLetter[0].id } : null
-        }
-        previewName={coverLetter[0]?.name}
-        open={coverLetterOverlayOpen}
-        onOpenChange={setCoverLetterOverlayOpen}
-        onSubmit={() => generateCoverLetter(application.id)}
-        onChanged={onChanged}
-      />
+      {tailoredCv.length > 0 ? (
+        <JobReviseOverlay
+          applicationId={application.id}
+          sectionKind="tailored_cv"
+          title="Tailored CV"
+          leftPane={
+            <JobFileRevisePreview
+              applicationId={application.id}
+              fileId={tailoredCv[0].id}
+              name={tailoredCv[0].name}
+              open={tailoredCvOverlayOpen}
+            />
+          }
+          open={tailoredCvOverlayOpen}
+          onOpenChange={setTailoredCvOverlayOpen}
+          onChanged={onChanged}
+        />
+      ) : (
+        <GenerateSectionOverlay
+          title="Tailored CV"
+          hasData={false}
+          open={tailoredCvOverlayOpen}
+          onOpenChange={setTailoredCvOverlayOpen}
+          onSubmit={() => generateTailoredCv(application.id)}
+          onChanged={onChanged}
+        />
+      )}
+      {coverLetter.length > 0 ? (
+        <JobReviseOverlay
+          applicationId={application.id}
+          sectionKind="cover_letter"
+          title="Cover letter"
+          leftPane={
+            <JobFileRevisePreview
+              applicationId={application.id}
+              fileId={coverLetter[0].id}
+              name={coverLetter[0].name}
+              open={coverLetterOverlayOpen}
+            />
+          }
+          open={coverLetterOverlayOpen}
+          onOpenChange={setCoverLetterOverlayOpen}
+          onChanged={onChanged}
+        />
+      ) : (
+        <GenerateSectionOverlay
+          title="Cover letter"
+          hasData={false}
+          open={coverLetterOverlayOpen}
+          onOpenChange={setCoverLetterOverlayOpen}
+          onSubmit={() => generateCoverLetter(application.id)}
+          onChanged={onChanged}
+        />
+      )}
     </Section>
   )
 }
