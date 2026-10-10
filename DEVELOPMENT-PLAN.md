@@ -288,6 +288,28 @@ than only `extract-msg`'s documented attributes (D-109). The Done-when checklist
 acknowledged as stale for the earlier steps and is reconciled whenever the phase is next closed
 out.
 
+Step list, continued (added 2026-10-10, D-135): a UI-consistency pass across the overlays this
+phase's LLM-wiring batches built, prompted by the user comparing the Profile page's Revise (LLM)
+overlay against the job page's own set. No backend or Claude Job changes.
+
+40. `GenerateSectionOverlay` gains an optional document-preview pane (reusing `FilePreview`'s own
+    loading/rendering, factored out into a shared piece rather than duplicated) for Tailored CV
+    and Cover letter, matching `ReviseOverlay`'s/`GenerateListingOverlay`'s current-document-left,
+    action-right layout; Job details, Positioning analysis and Application history keep a single
+    column, since none of them has one backing document to show. Every `GenerateSectionOverlay`
+    and `GenerateListingOverlay` instance moves to the same scroll-safe shell `ReviseOverlay`/
+    `AnalysisOverlay` already use (a fixed-height flex column with the growing content in its own
+    `overflow-y-auto` region) — `GenerateSectionOverlay` had neither a width override nor internal
+    scrolling, so a long trace could push the dialog's close button off-screen (D-135).
+41. `AnalysisOverlay`'s three always-visible read-only columns become three tabs (a new `Tabs` UI
+    primitive, matching the existing `Dialog`/`Select` wrappers around `@base-ui/react`), so the
+    document currently being written has the overlay's full width instead of sharing it with two
+    idle ones. The active tab follows whichever document's prompt is currently running; the user
+    can switch away at any time without being pulled back until the next prompt starts (D-135).
+42. Checks: `scripts/check.py` output; screenshots of a job-page Revise with its document preview,
+    a resized `GenerateSectionOverlay` for one of the non-file sections, and the analysis overlay
+    auto-switching tabs mid-run.
+
 Done when
 - [ ] The Job Application page, built on seed data, matches the D-56 layout (screenshot, compared against the job-detail mockups).
 - [ ] The dry-run report matches the spreadsheet: row counts, the 8 changed rows, and three spot-checked rows.
@@ -303,6 +325,7 @@ Done when
 - [x] A Job Application gets a Listing file through Generate (LLM): a real URL, pasted text, and an uploaded PDF each produce extracted text the user reviews, then a generated Markdown listing (screenshot, D-119 to D-123). (2026-10-09: verified live against the real Claude Code CLI, seeded dev data. Pasted text produced a clean Markdown listing in 3.0s, $0.0073; the Files section updated (Generate flipped to Revise, Job Listing.md previews correctly). A deliberately unreachable URL showed "Could not reach this page (ConnectError)" with a one-click handoff to the paste tab. Pasted cookie-banner/footer-only junk text correctly drew the sanity check's "This might not be a job posting" warning, without blocking Generate. PDF upload's extraction is covered by automated tests (test_listing_intake.py, test_extraction.py) and the Upload tab's UI was confirmed to render correctly; driving the native OS file picker isn't reachable through this session's browser automation.)
 - [x] Job details, Positioning analysis and Application history each generate for real from a real listing: Job details' requirements are verbatim quotes from the listing (spot-checked), Positioning analysis's match_score matches a hand calculation from the stored breakdown document's weights and matches, Application history proposes a next action and due date from synthetic filed emails without touching notes (screenshot, D-124 to D-128). (2026-10-09: verified live against the real Claude Code CLI, seeded dev data with real profile documents. Job details: description complete and lossless, requirements an exact match to the listing text, work mode correctly inferred. Positioning analysis: match_score 58.1%, hand-verified as Σ(w×m)÷(10×Σw)×100 = (8×4+7×6+6×8)÷(10×21)×100 against the rendered breakdown table (now an actual Markdown table, remark-gfm added). Application history: next_action and due_date correctly derived from a filed synthetic email; notes left untouched, confirming D-127. Live testing surfaced and fixed one real parsing bug: a well-formed answer that omitted "=== END REQUIREMENT ===" tags, now tolerated by every block parser, with a regression test.)
 - [x] Tailored CV and Cover letter each generate for real as edits of the Master CV / cover letter template: no role, employer or date added or removed on the CV; the cover letter contains no colon, em dash, en dash or sentence-punctuation dash and falls within the word-count band; both open and preview correctly as real `.docx` files (screenshot, D-129 to D-131). (2026-10-09: verified live against the real Claude Code CLI, seeded dev data, Northwind Analytics application. First attempt surfaced a real gap (D-132): the application's selected Master CV was a `.pdf`, and `docx_editor.py` can only parse a `.docx`, so the job failed deep inside with a raw "File is not a zip file" error. Fixed with an `_is_docx()` check in the prompt builders, both server-side gates, and the frontend's own gate computation, plus two regression tests; re-verified after switching the application to its real `.docx` Master CV. Tailored CV: done in 39.3s, $0.1599; previewed correctly as a 2-page `.docx` — tagline reworded to "Data Analyst | Reporting, Dashboards & Analytics Automation" and a skills-table row updated to surface Power BI/Tableau/dashboard work, no role, employer or date added or removed, formatting preserved throughout. Cover letter: done in 40.9s, $0.1456; previewed correctly as a 1-page `.docx`, five short paragraphs addressed to Northwind Analytics, no colon/em dash/en dash/sentence-punctuation dash present and within the word-count band.)
+- [ ] The job page's Revise/Generate overlays match the Profile page's sizing and scroll safely with no off-screen close button; the analysis overlay's tabs follow the active document (screenshot, D-135).
 
 Out of scope: the Kanban board (see Phase 8).
 
