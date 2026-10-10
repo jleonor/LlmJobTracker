@@ -310,6 +310,56 @@ overlay against the job page's own set. No backend or Claude Job changes.
     a resized `GenerateSectionOverlay` for one of the non-file sections, and the analysis overlay
     auto-switching tabs mid-run.
 
+Step list, continued (added 2026-10-10, D-136): the job page's five Generate/Revise (LLM)
+buttons move from one-shot regenerate to a real comment-thread chat, reopening D-131 by the
+user's own request. This batch builds the shared plumbing (a job-scoped turns table, a
+generalized chat overlay) and the first, simplest content kind - Job details. Positioning
+analysis, Application history, Tailored CV and Cover letter each get their own appended batch
+once this one is reviewed, in the risk-ascending order D-136 records. Listing is not part of
+this list - it stays as it is (D-136).
+
+43. Write `Agent/specs/job-revise-steps.md`: the job-scoped turns table shape, the chat prompt
+    contract (writing rules, fixed context, the current content, prior turns, the new message -
+    the same inputs `revise-steps.md` already uses, scoped to a job application instead of the
+    profile), and Job details' own patch answer grammar (a `DESCRIPTION` replace-or-unchanged
+    line, and one `=== REQUIREMENT PATCH ===` block per changed requirement keyed `NUMBER: <n>`
+    or `NUMBER: NEW`, with `ACTION: EDIT | REMOVE | ADD` and, for EDIT/ADD, a `TEXT` line
+    re-checked verbatim against the listing (D-125) the same way a fresh generation's
+    requirements already are - unlisted requirement numbers are left as they are). Docs only.
+44. Migration: `job_revise_turns` (`job_application_id`, `section_kind` CHECK against the five
+    section kinds, `claude_job_id`, `message`, `attachment_job_file_id` nullable FK to
+    `job_files`, `created_at`) - one shared table with a `section_kind` column rather than five
+    tables, the same single-table-many-kinds shape `revise_turns` already uses for the three
+    profile documents, kept separate from `revise_turns` itself since its `output_kind` CHECK and
+    missing `job_application_id` column are profile-specific by design (D-136). Tests: applies
+    and rolls back, and the FK to `job_files` clears to null when the attached file is deleted.
+45. Backend: `job_revise_pipeline.py`, composing onto `job_pipeline.py` the same way
+    `revise_pipeline.py` composes onto `profile_pipeline.py` (D-123's pattern) -
+    `submit_job_revise_turn`, `build_job_revise_prompt`, and an `on_result` that dispatches by
+    `section_kind`. Only `job_details` is implemented this batch: parses the `DESCRIPTION` line
+    and `REQUIREMENT PATCH` blocks, applies them to the stored `description`/`requirements`,
+    re-validates every EDIT/ADD's `TEXT` verbatim against the listing (D-125), and rejects the
+    whole turn on a bad patch (unknown `NUMBER`, non-verbatim `TEXT`, or a malformed block) the
+    same way D-134's parser already does. `GET`/`POST
+    /job-applications/{id}/revise/{section_kind}/turns` routes, mirroring
+    `/profile/revise/{output_kind}/turns`'s shape; a `section_kind` other than `job_details` 400s
+    for now (not yet implemented) rather than 404ing, so the frontend can tell "not built yet"
+    apart from "not a real kind." Tests with `FakeRunner`: a good patch (an edit and a removal),
+    a patch whose edited text isn't a verbatim listing substring (rejected), an unknown
+    requirement number (rejected).
+46. Frontend: generalize `ReviseOverlay` into a `JobReviseOverlay` the Job details section can
+    open instead of `GenerateSectionOverlay` - the same current-content-left, chat-right layout
+    and polling pattern, scoped by `(applicationId, sectionKind)` instead of `outputKind`,
+    reading/posting through the new routes. `JobApplicationDetailPage.tsx`'s Job details
+    `SectionActions` opens this instead of `GenerateSectionOverlay` once there's already data to
+    revise; the very first Generate, with nothing to revise yet, stays the existing
+    confirm-then-trace flow - a chat needs something to patch (the same reason `ReviseOverlay`
+    itself only ever appears once a profile document exists, D-102).
+47. Checks: `scripts/check.py` output; personal-data scan; a screenshot of a real chat turn
+    editing Job details' requirements (one edit, one removal) against a real imported
+    application, and of a deliberately bad edit (non-verbatim text) being rejected with the turn
+    left unchanged.
+
 Done when
 - [ ] The Job Application page, built on seed data, matches the D-56 layout (screenshot, compared against the job-detail mockups).
 - [ ] The dry-run report matches the spreadsheet: row counts, the 8 changed rows, and three spot-checked rows.
@@ -326,6 +376,7 @@ Done when
 - [x] Job details, Positioning analysis and Application history each generate for real from a real listing: Job details' requirements are verbatim quotes from the listing (spot-checked), Positioning analysis's match_score matches a hand calculation from the stored breakdown document's weights and matches, Application history proposes a next action and due date from synthetic filed emails without touching notes (screenshot, D-124 to D-128). (2026-10-09: verified live against the real Claude Code CLI, seeded dev data with real profile documents. Job details: description complete and lossless, requirements an exact match to the listing text, work mode correctly inferred. Positioning analysis: match_score 58.1%, hand-verified as Σ(w×m)÷(10×Σw)×100 = (8×4+7×6+6×8)÷(10×21)×100 against the rendered breakdown table (now an actual Markdown table, remark-gfm added). Application history: next_action and due_date correctly derived from a filed synthetic email; notes left untouched, confirming D-127. Live testing surfaced and fixed one real parsing bug: a well-formed answer that omitted "=== END REQUIREMENT ===" tags, now tolerated by every block parser, with a regression test.)
 - [x] Tailored CV and Cover letter each generate for real as edits of the Master CV / cover letter template: no role, employer or date added or removed on the CV; the cover letter contains no colon, em dash, en dash or sentence-punctuation dash and falls within the word-count band; both open and preview correctly as real `.docx` files (screenshot, D-129 to D-131). (2026-10-09: verified live against the real Claude Code CLI, seeded dev data, Northwind Analytics application. First attempt surfaced a real gap (D-132): the application's selected Master CV was a `.pdf`, and `docx_editor.py` can only parse a `.docx`, so the job failed deep inside with a raw "File is not a zip file" error. Fixed with an `_is_docx()` check in the prompt builders, both server-side gates, and the frontend's own gate computation, plus two regression tests; re-verified after switching the application to its real `.docx` Master CV. Tailored CV: done in 39.3s, $0.1599; previewed correctly as a 2-page `.docx` — tagline reworded to "Data Analyst | Reporting, Dashboards & Analytics Automation" and a skills-table row updated to surface Power BI/Tableau/dashboard work, no role, employer or date added or removed, formatting preserved throughout. Cover letter: done in 40.9s, $0.1456; previewed correctly as a 1-page `.docx`, five short paragraphs addressed to Northwind Analytics, no colon/em dash/en dash/sentence-punctuation dash present and within the word-count band.)
 - [ ] The job page's Revise/Generate overlays match the Profile page's sizing and scroll safely with no off-screen close button; the analysis overlay's tabs follow the active document (screenshot, D-135).
+- [ ] Job details' Revise (LLM) opens a real chat: a message that edits one requirement and removes another is applied correctly, and a message whose edit isn't a verbatim listing substring is rejected with the turn left unchanged (screenshot, D-136).
 
 Out of scope: the Kanban board (see Phase 8).
 
