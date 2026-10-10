@@ -360,6 +360,49 @@ this list - it stays as it is (D-136).
     application, and of a deliberately bad edit (non-verbatim text) being rejected with the turn
     left unchanged.
 
+Step list, continued (added 2026-10-10, D-137 to D-139): the next two of the job page's chat
+sections, per D-136's risk-ascending order - Application history (adds the attachment path) and
+Positioning analysis (adds the breakdown-table patch and `match_score` recompute). Also corrects
+one piece of the earlier sizing pass.
+
+48. `GenerateSectionOverlay` sized consistently (`h-[85vh] max-w-6xl`) whether or not it has a
+    preview pane, correcting D-135's smaller no-preview size per the user's request (D-137).
+49. Extend `Agent/specs/job-revise-steps.md` with Application history's answer grammar
+    (`NEXT ACTION`/`DUE DATE`, each `unchanged`/`none`/a value) and its attachment handling.
+50. Backend: Application history's chat-revise in `job_revise_pipeline.py` - the
+    unchanged/none/value grammar for both fields, a rejection when neither changes; the turn's
+    optional attachment is filed for real first (`.eml`/`.msg` by extension, otherwise `other`)
+    and its text read into the prompt (eml/msg parsing, or `extraction.py`'s `extract()` for
+    anything else). `submit_job_revise_turn` gains an optional `attachment_job_file_id`; the
+    route passes it through from the request body. Tests with `FakeRunner`: a next-action-only
+    edit, a due-date clear, an attached `.eml` whose body shows up in the sent prompt, a
+    malformed due date (rejected).
+51. Frontend: `JobReviseOverlay` generalized to take its left-pane content as `children` instead
+    of Job-details-specific props, and an optional file-attach input (shown only for Application
+    history) that uploads through the existing `uploadJobFile` before the turn is sent, filing it
+    the same way any other upload is filed and showing up in Files right away. Wired to
+    Application history's Revise (LLM) button the same way Job details' is.
+52. Checks: `scripts/check.py` output; personal-data scan; screenshots of an Application history
+    chat turn with and without an attached file, against a real imported application.
+53. Extend `Agent/specs/job-revise-steps.md` with Positioning analysis's answer grammar.
+54. Migration 19: `job_applications.positioning_scores` (JSON, default `'[]'`) - the structured
+    per-requirement weight/match/reasoning record a `NUMBER`-indexed patch needs, which the
+    rendered breakdown Markdown table alone can't reliably supply back. `generate_positioning`'s
+    `on_result` (`job_pipeline.py`) is updated to also write it. Tests: applies and rolls back.
+55. Backend: Positioning analysis's chat-revise - `FIT`/`GAPS`/`STRATEGY`/`UNCLEAR` blocks (each
+    `unchanged` or a full replacement) plus zero or more `REQUIREMENT PATCH` blocks
+    (`NUMBER`/`WEIGHT`/`MATCH`/`REASONING`, any subset of the three) referencing
+    `positioning_scores` by position, the same verbatim-or-fail guarantee D-134 already
+    established for the one-shot step. Applying a score patch recomputes `match_score` (D-47) and
+    re-renders the breakdown document from the updated list. Tests with `FakeRunner`: a fit/gaps
+    edit, a single requirement's weight changed with `match_score` hand-verified, an out-of-range
+    `NUMBER` (rejected).
+56. Frontend: `JobReviseOverlay` wired to Positioning analysis's Revise (LLM) button, left pane
+    showing the match score, fit, gaps, strategy, unclear and the per-requirement breakdown rows.
+57. Checks: `scripts/check.py` output; personal-data scan; a screenshot of a real Positioning
+    analysis chat turn adjusting one requirement's weight, with the recomputed match score
+    hand-verified against D-47's formula.
+
 Done when
 - [ ] The Job Application page, built on seed data, matches the D-56 layout (screenshot, compared against the job-detail mockups).
 - [ ] The dry-run report matches the spreadsheet: row counts, the 8 changed rows, and three spot-checked rows.
@@ -377,6 +420,8 @@ Done when
 - [x] Tailored CV and Cover letter each generate for real as edits of the Master CV / cover letter template: no role, employer or date added or removed on the CV; the cover letter contains no colon, em dash, en dash or sentence-punctuation dash and falls within the word-count band; both open and preview correctly as real `.docx` files (screenshot, D-129 to D-131). (2026-10-09: verified live against the real Claude Code CLI, seeded dev data, Northwind Analytics application. First attempt surfaced a real gap (D-132): the application's selected Master CV was a `.pdf`, and `docx_editor.py` can only parse a `.docx`, so the job failed deep inside with a raw "File is not a zip file" error. Fixed with an `_is_docx()` check in the prompt builders, both server-side gates, and the frontend's own gate computation, plus two regression tests; re-verified after switching the application to its real `.docx` Master CV. Tailored CV: done in 39.3s, $0.1599; previewed correctly as a 2-page `.docx` — tagline reworded to "Data Analyst | Reporting, Dashboards & Analytics Automation" and a skills-table row updated to surface Power BI/Tableau/dashboard work, no role, employer or date added or removed, formatting preserved throughout. Cover letter: done in 40.9s, $0.1456; previewed correctly as a 1-page `.docx`, five short paragraphs addressed to Northwind Analytics, no colon/em dash/en dash/sentence-punctuation dash present and within the word-count band.)
 - [ ] The job page's Revise/Generate overlays match the Profile page's sizing and scroll safely with no off-screen close button; the analysis overlay's tabs follow the active document (screenshot, D-135).
 - [ ] Job details' Revise (LLM) opens a real chat: a message that edits one requirement and removes another is applied correctly, and a message whose edit isn't a verbatim listing substring is rejected with the turn left unchanged (screenshot, D-136).
+- [ ] Application history's Revise (LLM) opens a real chat: a message updates next_action/due_date, a message with an attached file reads it as context and files it for real, and clearing a field with `none` works (screenshot, D-137 to D-138).
+- [ ] Positioning analysis's Revise (LLM) opens a real chat: a message changing one requirement's weight or match recomputes match_score correctly and re-renders the breakdown document (screenshot, D-139).
 
 Out of scope: the Kanban board (see Phase 8).
 
