@@ -1,6 +1,6 @@
 # LocalJobTracker: Development Plan
 
-**Current phase: 4, not started.** Phases 0 through 3 are done; `main` is fast-forwarded to Phase 3's end (D-61, D-142). Phase 4's step list is not yet drafted.
+**Current phase: 4, in progress.** Phases 0 through 3 are done; `main` is fast-forwarded to Phase 3's end (D-61, D-142). Phase 4's step list is approved (2026-10-10, D-143 to D-146).
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -473,6 +473,71 @@ Scope
 - A new Job Application starts as Identified, and it queues one positioning Claude Job (D-49). The positioning output itself is built in Phase 5.
 - Create `Agent/specs/intake-steps.md` (extraction rules per input type, and the Claude step contract).
 - Candidate libraries, confirmed in this phase: `pypdf` (or PyMuPDF) for PDF, an HTML-to-text extractor such as `trafilatura`, and `python-docx` for DOCX.
+
+Most of the extraction/Claude-step machinery this phase needs was already built in Phase 3,
+pulled forward for the existing-application Listing subsection (D-121 to D-128): `extraction.py`,
+`listing_intake.py`, and the `check_job_listing_text`/`generate_job_listing` Claude Jobs. This
+phase's own, genuinely new work is: a row-creation endpoint (none exists today — `insert_job_application`
+is only ever called by the one-off `import_real_jobs.py` script), one new small Claude step to
+pull company/role/lane/location/portal out of the reviewed text before a row (and its file path)
+can exist, duplicate detection, and the Add Job overlay itself, which chains the new identity
+step together with the job page's own existing Generate steps (D-143 to D-146).
+
+Step list (approved in chat 2026-10-10, D-143 to D-146)
+
+1. Cut `phase-4-add-job` from `main` (D-61). Write `Agent/specs/intake-steps.md`: the
+   `extract_job_identity` prompt contract (inputs: the reviewed text, the positioning strategy
+   document, existing `location` values; output: company, role title, lane suggestion, location
+   suggestion, portal name/URL; fails closed if company or role title is missing, with a
+   manual-entry fallback in the UI) and the duplicate-detection rule (D-146: sha256 of the
+   extracted text, and source URL, checked against existing `job_files` before any Claude call
+   runs — never company+role, since two genuine postings can share both). Docs only.
+2. Migration: add `job_files.source_url` (nullable). `sha256`/`extraction_status`/
+   `extraction_message`/`extracted_text` already exist (D-122). Tests: applies and rolls back on
+   a copy of the dev database and an empty database.
+3. Backend: generalize `submit_check_job_listing_text` (`job_pipeline.py`) to accept
+   `application_id: int | None` (a Claude Job linked to no application, D-49). New routes that
+   need no existing application: `POST /job-applications/intake/extract-{paste,url,upload}`
+   (thin wrappers over the existing `listing_intake.py` functions, which already don't require
+   one) and `POST /job-applications/intake/check` (queues `check_job_listing_text` with
+   `application_id=None`). Tests with `FakeRunner`.
+4. Backend: `POST /job-applications/intake/duplicate-check` (D-146) — hashes the reviewed text,
+   looks up `job_files` (kind `listing`) by `sha256` or `source_url`, returns the matching
+   application if one exists. Tests: a repeat by text and a repeat by URL are each caught;
+   different text/URL is not.
+5. Backend: new Claude Job kind `extract_job_identity` in `job_pipeline.py` (no tools, D-145).
+   `submit_extract_job_identity(conn, queue, text)`, `application_id=None`. Tests with
+   `FakeRunner`: a good answer; a missing-company answer (rejected, surfaced with a manual-entry
+   fallback).
+6. Backend: `POST /job-applications` — the creation endpoint. Takes the reviewed text, the
+   confirmed identity fields (company, role, lane, location, portal), the chosen workflow, and an
+   optional `master_cv_profile_file_id`. Creates the row (status Identified, with its
+   `status_history` row — D-143: this is Phase 4's "job history" step, no LLM involved),
+   `insert_job_application`, saves the listing file to `files/<company>/<role>/listing.txt`, sets
+   the Master CV reference if given, and queues the rest of the chain as ordered Claude Jobs,
+   reusing every existing submit function unchanged: `generate_job_listing` →
+   `generate_job_details` → (workflow 2/3) `generate_positioning` → (workflow 3)
+   `generate_tailored_cv` → `generate_cover_letter`. Tests: each of the three workflows queues
+   exactly the right Claude Jobs, in order.
+7. Frontend: `AddJobOverlay`, the same `h-[85vh] max-w-6xl` Dialog shell as the other overlays.
+   Stage 0: workflow picker (the three chains) and a Master CV dropdown, shown once workflow 2/3
+   is picked. Stage 1: source picker (paste/URL/upload), reusing `GenerateListingOverlay`'s.
+   Stage 2: review/edit the extracted text, with the sanity-check banner (reusing the existing
+   pattern) and a duplicate banner when one is found (link to the existing application, with an
+   override to continue anyway).
+8. Frontend: stage 3, identity confirmation — company/role/lane/location/portal, pre-filled from
+   `extract_job_identity` and editable, with manual entry if that step failed. Confirming calls
+   the new creation endpoint.
+9. Frontend: progress stage (D-144) — once the row exists, the overlay switches to tabs (reusing
+   `AnalysisOverlay`'s auto-following shell, D-135) for whichever steps this workflow queued
+   (Listing, Job details, and Positioning/Tailored CV/Cover letter when included). Footer: View
+   job (navigate to the new Job Application page and close), Add another job (resets the overlay
+   to Stage 0, leaving the just-queued jobs running), Close (dismiss only — nothing is cancelled,
+   the queue keeps processing).
+10. Frontend: wire the disabled "Add Job" button in `AppShell.tsx` to open `AddJobOverlay`. The
+    table's queue counter/badges already reflect the new jobs once queued.
+11. Checks: `scripts/check.py` output; personal-data scan; synthetic fixtures for each input type
+    under `tests/fixtures/synthetic/`; screenshots per the Done-when list below.
 
 Done when
 - [ ] Raw text, one URL, one saved HTML page and one text-layer PDF each produce listing text, and you check the output.
