@@ -615,7 +615,25 @@ function PositioningAnalysis({
       onSaved={onChanged}
     />
   )
-  const generateOverlay = (
+  const generateOverlay = hasData ? (
+    <JobReviseOverlay
+      applicationId={application.id}
+      sectionKind="positioning"
+      title="Positioning analysis"
+      leftPane={
+        <CurrentPositioningPane
+          matchScore={application.match_score}
+          fit={application.fit}
+          gaps={application.gaps}
+          strategy={application.strategy}
+          unclear={application.unclear}
+        />
+      }
+      open={generateOpen}
+      onOpenChange={setGenerateOpen}
+      onChanged={onChanged}
+    />
+  ) : (
     <GenerateSectionOverlay
       title="Positioning analysis"
       hasData={hasData}
@@ -718,6 +736,68 @@ function PositioningAnalysis({
       {dialog}
       {generateOverlay}
     </Section>
+  )
+}
+
+// JobReviseOverlay's left pane for Positioning analysis (D-139): the same fields the page body
+// itself shows. The per-requirement breakdown (weight/match/reasoning) stays out of this pane -
+// it's already one click away via "Check reasoning", and the chat resolves which stored
+// requirement a message means on its own, the same way Job details' chat does without the user
+// needing to know a requirement's number either.
+function CurrentPositioningPane({
+  matchScore,
+  fit,
+  gaps,
+  strategy,
+  unclear,
+}: {
+  matchScore: number | null
+  fit: string[]
+  gaps: string[]
+  strategy: string | null
+  unclear: string[]
+}) {
+  if (matchScore === null && fit.length === 0 && gaps.length === 0 && !strategy && unclear.length === 0) {
+    return <p className="text-sm text-muted-foreground">Nothing to revise yet.</p>
+  }
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <Field label="Match score">{matchScore === null ? EMPTY : `${matchScore}%`}</Field>
+      <Field label="Fit">
+        {fit.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5">
+            {fit.map((point) => (
+              <li key={point}>{point}</li>
+            ))}
+          </ul>
+        ) : (
+          EMPTY
+        )}
+      </Field>
+      <Field label="Gaps">
+        {gaps.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5">
+            {gaps.map((point) => (
+              <li key={point}>{point}</li>
+            ))}
+          </ul>
+        ) : (
+          EMPTY
+        )}
+      </Field>
+      <Field label="Strategy">{strategy ?? EMPTY}</Field>
+      <Field label="Unclear">
+        {unclear.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5">
+            {unclear.map((point) => (
+              <li key={point}>{point}</li>
+            ))}
+          </ul>
+        ) : (
+          EMPTY
+        )}
+      </Field>
+    </div>
   )
 }
 
