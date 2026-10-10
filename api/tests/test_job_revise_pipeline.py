@@ -323,13 +323,6 @@ def test_submit_rejects_an_empty_message(db_path: Path) -> None:
         submit(db_path, queue, app_id, "job_details", "   ")
 
 
-def test_submit_rejects_a_section_kind_whose_grammar_is_not_built_yet(db_path: Path) -> None:
-    app_id = add_application(db_path)
-    queue = make_queue(db_path, FakeRunner())
-    with pytest.raises(JobReviseNotReady, match="isn't built yet"):
-        submit(db_path, queue, app_id, "tailored_cv", "Reword the tagline.")
-
-
 def test_submit_rejects_an_unknown_section_kind(db_path: Path) -> None:
     app_id = add_application(db_path)
     queue = make_queue(db_path, FakeRunner())

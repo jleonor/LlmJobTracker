@@ -9,17 +9,15 @@ replacement — mirrors `revise-steps.md`'s OLD/NEW model in spirit, but each se
 answer grammar, since none of the five is a single plain-text document the way a profile output
 is.
 
-`job_details`, `application_history` and `positioning` have a grammar so far, matching D-136's
-risk-ascending order. Tailored CV and Cover letter are reserved section kinds (the
-`job_revise_turns` table's CHECK constraint already allows them) with no grammar yet —
-`submit_job_revise_turn` raises `JobReviseNotReady` for either today, naming that the chat isn't
-built for that section yet.
+All five sections now have a grammar: `job_details`, `application_history` and `positioning`
+each have their own (D-137 to D-140); `tailored_cv` and `cover_letter` (D-141) reuse D-130's
+existing block-id operations almost unchanged, built against the *current* file's own blocks.
 
 ## Job kind, table, and prompt shape
 
 - **Kind:** `revise_<section kind>` — `revise_job_details`, `revise_application_history`,
-  `revise_positioning`. Each links to the `job_application_id` it's revising, unlike a profile
-  revise turn (which links to none).
+  `revise_positioning`, `revise_tailored_cv`, `revise_cover_letter`. Each links to the
+  `job_application_id` it's revising, unlike a profile revise turn (which links to none).
 - **Table:** `job_revise_turns` (migration 18) — one shared table with a `section_kind` column,
   the same single-table-many-kinds shape `revise_turns` already uses for the three profile
   documents, kept separate from it since `revise_turns`'s `output_kind` CHECK and lack of a
@@ -157,6 +155,50 @@ function the one-shot step uses) — if every resulting weight would be `0`, the
 rejected, the same guard the one-shot step already has. An answer that changes nothing (every
 field `unchanged` and no patches) is rejected, same as the other two sections' grammars.
 
+## Tailored CV's and Cover letter's answer grammar (D-141)
+
+Unlike the other three, these reuse D-130's existing block-id operation grammar
+(EDIT/INSERT AFTER/REMOVE/ADD ROW AFTER) essentially unchanged — no new grammar was designed for
+this batch, confirming what D-136 already expected.
+
+What goes into the prompt: the *current* tailored CV's/cover letter's own numbered blocks
+(`docx_editor.list_blocks`/`blocks_as_text`, read fresh each turn — so a second turn sees the
+first turn's own edits, not the master CV's/template's original state); the three profile
+documents; the job description; the positioning breakdown document; the writing rules (the
+cover letter's own punctuation/length rules are enforced in code after applying, not just
+instructed, same as the one-shot step); the conversation so far; the new message.
+
+The answer is the same block-id operations the one-shot steps already use, applied with
+`docx_editor.apply_operations` (now exposed as the shared `apply_docx_edits`) against the
+*current* file's bytes rather than the master CV's/template's:
+
+```
+=== EDIT ===
+ID: <a block id from above>
+TEXT: <its full replacement text>
+=== END EDIT ===
+
+=== INSERT AFTER ===
+ID: <the block id this new one goes after>
+TEXT: <the new block's text - formatting is cloned from the ID it follows>
+=== END INSERT AFTER ===
+
+=== REMOVE ===
+ID: <a block id to delete entirely>
+=== END REMOVE ===
+
+=== ADD ROW AFTER ===     (Tailored CV only, for a skills-table row)
+ID: <a table row id this new row goes after, e.g. T1R2>
+CELLS: <cell text, in column order, separated by " | ">
+=== END ADD ROW AFTER ===
+```
+
+An unknown block id rejects the whole turn, the file left exactly as it was — the same
+verbatim-or-fail guarantee D-130 already established for the one-shot step, now reapplied turn
+by turn. The cover letter's style check runs after applying the edits to the *resulting*
+document, not just the changed blocks, since an edit to one paragraph can still produce a letter
+that violates the overall punctuation or length rule.
+
 ## Trace, honesty, and routes
 
 Same as `revise-steps.md`: the runner streams the answer in (`--include-partial-messages`), so
@@ -165,10 +207,4 @@ failed. The honesty rule is D-125's own, reapplied to a chat edit rather than re
 
 Routes mirror the profile ones, scoped by application and section:
 `GET`/`POST /job-applications/{id}/revise/{section_kind}/turns`. An unknown `section_kind` or a
-missing application 404s; a `section_kind` whose grammar isn't built yet, or a section with
-nothing yet to revise, 400s with a message naming why.
-
-## Out of scope here
-
-- Tailored CV and Cover letter's own answer grammars — each is its own appended batch (D-136),
-  built and reviewed in that order before its chat turn can actually run.
+missing application 404s; a section with nothing yet to revise 400s with a message naming why.

@@ -484,7 +484,7 @@ def profile_document_blocks(conn: sqlite3.Connection) -> dict[str, str]:
     }
 
 
-def _breakdown_text(conn: sqlite3.Connection, application_id: int) -> str:
+def breakdown_text(conn: sqlite3.Connection, application_id: int) -> str:
     breakdown = latest_job_file_of_kind(conn, application_id, "positioning_breakdown")
     if breakdown is None or breakdown["extraction_status"] != "ok":
         return "(no positioning breakdown yet)"
@@ -553,7 +553,7 @@ def build_tailored_cv_prompt(
     text = _TAILORED_CV_PROMPT.format(
         blocks=blocks,
         description=row["description"] or "",
-        breakdown=_breakdown_text(conn, application_id),
+        breakdown=breakdown_text(conn, application_id),
         rules=writing_rules_text(conn, rules_path),
         **profile_document_blocks(conn),
     )
@@ -575,7 +575,7 @@ def build_cover_letter_prompt(
     text = _COVER_LETTER_PROMPT.format(
         blocks=blocks,
         description=row["description"] or "",
-        breakdown=_breakdown_text(conn, application_id),
+        breakdown=breakdown_text(conn, application_id),
         rules=writing_rules_text(conn, rules_path),
         **profile_document_blocks(conn),
     )
@@ -1211,7 +1211,7 @@ def _log_page_count_if_grown(label: str, source_bytes: bytes, result_bytes: byte
         )
 
 
-def _apply_docx_edits(source_bytes: bytes, raw_answer: str) -> bytes:
+def apply_docx_edits(source_bytes: bytes, raw_answer: str) -> bytes:
     operations = parse_docx_edit_answer(raw_answer)
     document = docx_editor.read_document(source_bytes)
     try:
@@ -1229,7 +1229,7 @@ def _store_tailored_cv_result(
     raw_answer: str,
 ) -> None:
     master_bytes = _master_cv_bytes(conn, data_folder, application_id)
-    tailored_bytes = _apply_docx_edits(master_bytes, raw_answer)
+    tailored_bytes = apply_docx_edits(master_bytes, raw_answer)
     _log_page_count_if_grown("Tailored CV", master_bytes, tailored_bytes)
     write_generated_job_file(
         conn,
@@ -1249,7 +1249,7 @@ def _store_cover_letter_result(
     raw_answer: str,
 ) -> None:
     template_bytes = _cover_letter_template_bytes(conn, data_folder)
-    letter_bytes = _apply_docx_edits(template_bytes, raw_answer)
+    letter_bytes = apply_docx_edits(template_bytes, raw_answer)
     assembled_text = "\n".join(
         block.text for block in docx_editor.list_blocks(docx_editor.read_document(letter_bytes))
     )

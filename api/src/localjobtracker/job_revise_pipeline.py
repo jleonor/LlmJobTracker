@@ -2,10 +2,10 @@
 Agent/specs/job-revise-steps.md). Extends job_pipeline.py the same way revise_pipeline.py
 extends profile_pipeline.py (D-123's pattern) — one queue instance, hand-chained.
 
-`job_details`, `application_history` and `positioning` have an implemented answer grammar so
-far, matching D-136's risk-ascending build order: tailored_cv and cover_letter are reserved
-section kinds (migration 18's CHECK constraint already allows them) but each needs its own answer
-grammar, built and reviewed as its own batch before its chat turn can actually run.
+All five section kinds have an implemented answer grammar: `job_details`, `application_history`
+and `positioning` each have their own (D-137 to D-140); `tailored_cv` and `cover_letter` (D-141)
+reuse D-130's existing block-id operation grammar almost unchanged, built against the *current*
+tailored CV's/cover letter's own block map instead of the master CV's/template's.
 """
 
 import json
@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from localjobtracker import docx_editor
 from localjobtracker.claude_job_queue import (
     ClaudeJobQueue,
     OnResult,
@@ -29,7 +30,12 @@ from localjobtracker.job_applications import update_job_application
 from localjobtracker.job_files import latest_job_file_of_kind, write_generated_job_file
 from localjobtracker.job_pipeline import (
     GENERATED_BREAKDOWN_NAME,
+    GENERATED_COVER_LETTER_NAME,
+    GENERATED_TAILORED_CV_NAME,
     RequirementScore,
+    apply_docx_edits,
+    breakdown_text,
+    check_cover_letter_style,
     compute_match_score,
     email_blocks,
     profile_document_blocks,
@@ -45,13 +51,19 @@ from localjobtracker.job_revise_turns import (
     turn_for_job,
 )
 from localjobtracker.migrations import JOB_REVISE_SECTION_KINDS as SECTION_KINDS
-from localjobtracker.profile_pipeline import DEFAULT_RULES_PATH, MAX_PROMPT_CHARS
+from localjobtracker.profile_pipeline import (
+    DEFAULT_RULES_PATH,
+    MAX_PROMPT_CHARS,
+    writing_rules_text,
+)
 from localjobtracker.runner import RunResult
 
 REVISE_PREFIX: Final = "revise_"
 
 # Which section kinds have an implemented answer grammar so far (D-136's risk-ascending order).
-IMPLEMENTED_SECTION_KINDS: Final = frozenset({"job_details", "application_history", "positioning"})
+IMPLEMENTED_SECTION_KINDS: Final = frozenset(
+    {"job_details", "application_history", "positioning", "tailored_cv", "cover_letter"}
+)
 
 SECTION_LABELS: Final[dict[str, str]] = {
     "job_details": "Job details",
@@ -118,6 +130,14 @@ def _positioning_has_data(conn: sqlite3.Connection, application_id: int) -> bool
     )
 
 
+def _tailored_cv_has_data(conn: sqlite3.Connection, application_id: int) -> bool:
+    return latest_job_file_of_kind(conn, application_id, "tailored_cv") is not None
+
+
+def _cover_letter_has_data(conn: sqlite3.Connection, application_id: int) -> bool:
+    return latest_job_file_of_kind(conn, application_id, "cover_letter") is not None
+
+
 def submit_job_revise_turn(
     conn: sqlite3.Connection,
     queue: ClaudeJobQueue,
@@ -141,6 +161,10 @@ def submit_job_revise_turn(
         raise JobReviseNotReady("There is no Application history yet to revise.")
     if section_kind == "positioning" and not _positioning_has_data(conn, application_id):
         raise JobReviseNotReady("There is no Positioning analysis yet to revise.")
+    if section_kind == "tailored_cv" and not _tailored_cv_has_data(conn, application_id):
+        raise JobReviseNotReady("There is no Tailored CV yet to revise.")
+    if section_kind == "cover_letter" and not _cover_letter_has_data(conn, application_id):
+        raise JobReviseNotReady("There is no Cover letter yet to revise.")
     cleaned = message.strip()
     if not cleaned:
         raise ValueError("The message is empty.")
@@ -809,8 +833,208 @@ def _store_positioning_revision(
         )
 
 
+# Tailored CV and Cover letter (D-141): unlike the other three, these reuse D-130's existing
+# EDIT/INSERT AFTER/REMOVE/ADD ROW AFTER block-id grammar almost unchanged - the only difference
+# from the one-shot generate prompt is that the numbered blocks come from the *current* tailored
+# CV/cover letter (so an edit addresses what's actually there today, including any earlier
+# turn's changes), not the master CV/template, and the conversation so far is included.
+
+_TAILORED_CV_REVISE_PROMPT: Final = """TASK: revise_tailored_cv
+
+You are revising this person's already-tailored CV for this job, at the user's request, in an
+ongoing conversation - by editing specific blocks, never by rewriting it from scratch. Use only
+what the career history, questionnaire analysis and strategy below state; do not invent a role,
+employer, date, or achievement. Keep every block you do not explicitly change exactly as it is -
+do not touch formatting, only the text content of the blocks you edit, insert or remove.
+
+=== CURRENT TAILORED CV (numbered blocks) ===
+{blocks}
+=== END CURRENT TAILORED CV ===
+
+=== CAREER HISTORY ===
+{history_doc}
+=== END CAREER HISTORY ===
+
+=== QUESTIONNAIRE ANALYSIS ===
+{analysis_doc}
+=== END QUESTIONNAIRE ANALYSIS ===
+
+=== STRATEGY ===
+{strategy_doc}
+=== END STRATEGY ===
+
+=== JOB DESCRIPTION ===
+{description}
+=== END JOB DESCRIPTION ===
+
+=== POSITIONING BREAKDOWN ===
+{breakdown}
+=== END POSITIONING BREAKDOWN ===
+
+Writing rules that apply to everything you write:
+{rules}
+
+{conversation}
+
+=== THE USER'S NEW REQUEST ===
+{message}
+=== END THE USER'S NEW REQUEST ===
+
+Answer with one block per change, in any order, using the current tailored CV's own block ids
+above (not the master CV's) - only for what this request actually changes, do not re-emit
+anything you are leaving as is:
+
+=== EDIT ===
+ID: <a block id from above>
+TEXT: <its full replacement text>
+=== END EDIT ===
+
+=== INSERT AFTER ===
+ID: <the block id this new one goes after>
+TEXT: <the new block's text - formatting is cloned from the ID it follows>
+=== END INSERT AFTER ===
+
+=== REMOVE ===
+ID: <a block id to delete entirely>
+=== END REMOVE ===
+
+=== ADD ROW AFTER ===
+ID: <a table row id this new row goes after, e.g. T1R2>
+CELLS: <cell text, in column order, separated by " | ">
+=== END ADD ROW AFTER ==="""
+
+_COVER_LETTER_REVISE_PROMPT: Final = """TASK: revise_cover_letter
+
+You are revising this person's already-written cover letter for this job, at the user's request,
+in an ongoing conversation - by editing specific blocks, never by rewriting it from scratch. Use
+only what the career history, questionnaire analysis and strategy below state; do not invent a
+project, result, or employer.
+
+=== CURRENT COVER LETTER (numbered blocks) ===
+{blocks}
+=== END CURRENT COVER LETTER ===
+
+=== CAREER HISTORY ===
+{history_doc}
+=== END CAREER HISTORY ===
+
+=== QUESTIONNAIRE ANALYSIS ===
+{analysis_doc}
+=== END QUESTIONNAIRE ANALYSIS ===
+
+=== STRATEGY ===
+{strategy_doc}
+=== END STRATEGY ===
+
+=== JOB DESCRIPTION ===
+{description}
+=== END JOB DESCRIPTION ===
+
+=== POSITIONING BREAKDOWN ===
+{breakdown}
+=== END POSITIONING BREAKDOWN ===
+
+Writing rules that apply to everything you write (follow these exactly, including any rule about
+punctuation):
+{rules}
+
+{conversation}
+
+=== THE USER'S NEW REQUEST ===
+{message}
+=== END THE USER'S NEW REQUEST ===
+
+Answer with one block per change, the same EDIT/INSERT AFTER/REMOVE blocks the CV uses, using the
+current cover letter's own block ids above (not the template's) - only for what this request
+actually changes, do not re-emit anything you are leaving as is:
+
+=== EDIT ===
+ID: <a block id from above>
+TEXT: <its full replacement text>
+=== END EDIT ===
+
+=== INSERT AFTER ===
+ID: <the block id this new one goes after>
+TEXT: <the new block's text>
+=== END INSERT AFTER ===
+
+=== REMOVE ===
+ID: <a block id to delete entirely>
+=== END REMOVE ==="""
+
+
+def _current_docx_bytes(
+    conn: sqlite3.Connection, files_root: Path, application_id: int, kind: str, label: str
+) -> bytes:
+    file = latest_job_file_of_kind(conn, application_id, kind)
+    if file is None:
+        raise PromptRejected(f"There is no {label} yet to revise.")
+    path = files_root / str(file["stored_path"])
+    if not path.exists():
+        raise PromptRejected(f"The {label} file could not be found.")
+    return path.read_bytes()
+
+
+def _build_docx_revise_prompt(
+    conn: sqlite3.Connection,
+    files_root: Path,
+    rules_path: Path,
+    turn: JobReviseTurn,
+    *,
+    kind: str,
+    label: str,
+    template: str,
+    section_kind: str,
+) -> str:
+    application_id = turn.job_application_id
+    current_bytes = _current_docx_bytes(conn, files_root, application_id, kind, label)
+    blocks = docx_editor.blocks_as_text(
+        docx_editor.list_blocks(docx_editor.read_document(current_bytes))
+    )
+    row = conn.execute(
+        "SELECT description FROM job_applications WHERE id = ?", (application_id,)
+    ).fetchone()
+    if row is None:
+        raise PromptRejected("This Job Application no longer exists.")
+    docs = profile_document_blocks(conn)
+    history = prior_messages(conn, application_id, section_kind, turn.id)
+    return template.format(
+        blocks=blocks,
+        history_doc=docs["history"],
+        analysis_doc=docs["analysis"],
+        strategy_doc=docs["strategy"],
+        description=row["description"] or "",
+        breakdown=breakdown_text(conn, application_id),
+        rules=writing_rules_text(conn, rules_path),
+        conversation=_history_block(history),
+        message=turn.message,
+    )
+
+
+def _store_docx_revision(
+    conn: sqlite3.Connection,
+    files_root: Path,
+    application_id: int,
+    raw_answer: str,
+    *,
+    kind: str,
+    label: str,
+    generated_name: str,
+    check_style: bool,
+) -> None:
+    current_bytes = _current_docx_bytes(conn, files_root, application_id, kind, label)
+    revised_bytes = apply_docx_edits(current_bytes, raw_answer)
+    if check_style:
+        assembled_text = "\n".join(
+            block.text
+            for block in docx_editor.list_blocks(docx_editor.read_document(revised_bytes))
+        )
+        check_cover_letter_style(assembled_text)
+    write_generated_job_file(conn, files_root, application_id, kind, generated_name, revised_bytes)
+
+
 def build_job_revise_prompt(
-    conn: sqlite3.Connection, files_root: Path, prompt: PromptRow
+    conn: sqlite3.Connection, files_root: Path, rules_path: Path, prompt: PromptRow
 ) -> RenderedPrompt:
     section_kind = section_kind_for(prompt.prompt_kind)
     if section_kind is None:
@@ -825,6 +1049,28 @@ def build_job_revise_prompt(
         text = _build_application_history_revise_prompt(conn, files_root, turn)
     elif section_kind == "positioning":
         text = _build_positioning_revise_prompt(conn, turn)
+    elif section_kind == "tailored_cv":
+        text = _build_docx_revise_prompt(
+            conn,
+            files_root,
+            rules_path,
+            turn,
+            kind="tailored_cv",
+            label="tailored CV",
+            template=_TAILORED_CV_REVISE_PROMPT,
+            section_kind=section_kind,
+        )
+    elif section_kind == "cover_letter":
+        text = _build_docx_revise_prompt(
+            conn,
+            files_root,
+            rules_path,
+            turn,
+            kind="cover_letter",
+            label="cover letter",
+            template=_COVER_LETTER_REVISE_PROMPT,
+            section_kind=section_kind,
+        )
     else:
         raise PromptRejected(f"{SECTION_LABELS[section_kind]}'s chat isn't built yet.")
     if len(text) > MAX_PROMPT_CHARS:
@@ -843,12 +1089,35 @@ def _store_job_revise_result(
     turn = turn_for_job(conn, prompt.claude_job_id)
     if turn is None:
         raise PromptRejected("This revise turn was not recorded.")
+    application_id = turn.job_application_id
     if section_kind == "job_details":
-        _store_job_details_revision(conn, turn.job_application_id, result.text)
+        _store_job_details_revision(conn, application_id, result.text)
     elif section_kind == "application_history":
-        _store_application_history_revision(conn, turn.job_application_id, result.text)
+        _store_application_history_revision(conn, application_id, result.text)
     elif section_kind == "positioning":
-        _store_positioning_revision(conn, files_root, turn.job_application_id, result.text)
+        _store_positioning_revision(conn, files_root, application_id, result.text)
+    elif section_kind == "tailored_cv":
+        _store_docx_revision(
+            conn,
+            files_root,
+            application_id,
+            result.text,
+            kind="tailored_cv",
+            label="tailored CV",
+            generated_name=GENERATED_TAILORED_CV_NAME,
+            check_style=False,
+        )
+    elif section_kind == "cover_letter":
+        _store_docx_revision(
+            conn,
+            files_root,
+            application_id,
+            result.text,
+            kind="cover_letter",
+            label="cover letter",
+            generated_name=GENERATED_COVER_LETTER_NAME,
+            check_style=True,
+        )
     else:
         raise PromptRejected(f"{SECTION_LABELS[section_kind]}'s chat isn't built yet.")
 
@@ -864,7 +1133,7 @@ def make_pipeline(
     def render(conn: sqlite3.Connection, prompt: PromptRow) -> RenderedPrompt:
         if section_kind_for(prompt.prompt_kind) is None:
             return job_render(conn, prompt)
-        return build_job_revise_prompt(conn, files_root, prompt)
+        return build_job_revise_prompt(conn, files_root, rules_path, prompt)
 
     def on_result(conn: sqlite3.Connection, prompt: PromptRow, result: RunResult) -> None:
         if section_kind_for(prompt.prompt_kind) is None:
