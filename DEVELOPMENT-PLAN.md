@@ -1,6 +1,6 @@
 # LocalJobTracker: Development Plan
 
-**Current phase: 3, not started.** Phases 0 through 2 are done; `main` is fast-forwarded to Phase 2's end (D-61). Phase 3's step list is drafted (D-97) and awaiting your approval before any product code is written (CLAUDE.md rule 7).
+**Current phase: 4, not started.** Phases 0 through 3 are done; `main` is fast-forwarded to Phase 3's end (D-61, D-142). Phase 4's step list is not yet drafted.
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -25,7 +25,7 @@ This plan says what gets built, in what order, and how we know a phase is done. 
 | 6 | Emails and chat | Email history on the job page; chat proposes actions you confirm |
 | 7 | Question memory | Answered clarifying questions are found again |
 | 8 | Shell and hardening | Electron shell, backups, run log, optional board |
-| Parked | Not scheduled | Browser assist, managed agent loop, form filling |
+| Parked | Not scheduled | Browser assist, managed agent loop, form filling, the real spreadsheet dry-run/apply import (D-142) |
 
 ---
 
@@ -429,8 +429,6 @@ build order was set.
 
 Done when
 - [x] The Job Application page, built on seed data, matches the D-56 layout (screenshot, compared against the job-detail mockups). (2026-10-10: superseded by D-113 - the page has shown real data, not seed data, since step 13; `sampleJobDetail.ts` was retired. The layout itself still matches D-56, confirmed by the real-data screenshots against the next item.)
-- [ ] The dry-run report matches the spreadsheet: row counts, the 8 changed rows, and three spot-checked rows.
-- [ ] Running the import twice creates no duplicates.
 - [x] An edit survives an app restart. (2026-10-10: the McKinsey & Company application's due date, set to 2026-10-20 earlier in today's session via Application history's chat, is still 2026-10-20 after you restarted the backend.)
 - [x] One `.docx`, one `.eml` and one `.msg` preview correctly. "Open in Word" works. (2026-10-10: `.docx` confirmed live - Master CV and a Tailored CV both preview correctly as converted PDFs (McKinsey & Company application). `.eml` confirmed live - a real LinkedIn application-confirmation email (Sigma Suisse application) returns 200 OK with correctly parsed From/To/Date/Subject and sanitised body. No `.msg` file exists among the real applications to test against live - this mirrors D-109's own already-tracked gap (verifying `.msg` against a real Outlook export, not just `extract-msg`'s documented attributes), still open. "Open" (the actual UI label; not literally "Open in Word") wasn't driven directly, to avoid popping a window on the desktop mid-session - it calls the same `open_in_default_app` path already exercised by other phases.)
 - [x] Each status change writes a history row. "Last updated" matches the newest row, and the job page timeline shows the dates reached (screenshot). (2026-10-10: confirmed live across all four real applications - each shows a connected timeline with the dates actually reached, e.g. Sigma Suisse: Identified 2026-09-29, Applied 2026-10-01.)
@@ -448,7 +446,9 @@ Done when
 - [ ] Positioning analysis's Revise (LLM) opens a real chat: a message changing one requirement's weight or match recomputes match_score correctly and re-renders the breakdown document (screenshot, D-139). (2026-10-10: the chat itself verified live, including the D-140 fix - "Lower the weight on the academic-background gap..." against the McKinsey & Company application correctly reworded gaps/strategy and left match_score untouched (no numbered scores existed yet, since that application predates migration 19). The weight/match patch -> match_score recompute path is covered by `test_a_turn_adjusts_one_weight_and_recomputes_match_score` with hand-verified arithmetic, not yet exercised live against an application with real positioning_scores - left unchecked pending that (deliberately not forced by regenerating Positioning analysis for a real application just to populate it, since that would overwrite your real analysis with a new one you didn't ask for).
 - [x] Tailored CV's and Cover letter's Revise (LLM) open a real chat: a message edits the current file in place (not the master CV/template), and a cover letter edit that violates the punctuation rule is rejected with the file left unchanged (screenshot, D-141). (2026-10-10: verified live against the real Claude Code CLI, McKinsey & Company application. Tailored CV: "Reword the professional title line..." correctly changed "Technology & AI Consultant" to "AI Product Engineer" in place, turn done in 4s. Cover letter: "Make the opening sentence more direct and confident" correctly reworded the opening paragraph, turn done in 14s; a follow-up "Add a colon after 'Dear Hiring Team' instead of a comma" correctly failed with "The letter uses ':' as punctuation near...", and the file was left exactly as the prior turn had it - confirmed via the job record, not just the UI.)
 
-Out of scope: the Kanban board (see Phase 8).
+Out of scope: the Kanban board (see Phase 8); the real spreadsheet dry-run/apply import, moved to Parked (D-142).
+
+**Phase 3 closed 2026-10-10 (D-142).** Confirmed by the user in chat despite four items left unchecked above - the Master CV upload/full-edit cycle, the Today-button-then-Save path, and Application history's attachment and Positioning's weight-recompute paths - each deliberately not forced live this round (see each item's own note) and covered by passing automated tests in the meantime.
 
 ---
 
