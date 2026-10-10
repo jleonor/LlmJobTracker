@@ -324,6 +324,28 @@ export function postReviseTurn(outputKind: string, message: string): Promise<Rev
   })
 }
 
+// A job-page section's chat-revise conversation so far, oldest first (D-136). The turn shape is
+// the same as a profile ReviseTurn's, just scoped to one application and one section instead of
+// one output kind.
+export function fetchJobReviseTurns(
+  applicationId: number,
+  sectionKind: string,
+): Promise<ReviseTurn[]> {
+  return request<ReviseTurn[]>(`/api/job-applications/${applicationId}/revise/${sectionKind}/turns`)
+}
+
+export function postJobReviseTurn(
+  applicationId: number,
+  sectionKind: string,
+  message: string,
+): Promise<ReviseTurn> {
+  return request<ReviseTurn>(`/api/job-applications/${applicationId}/revise/${sectionKind}/turns`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  })
+}
+
 export function fetchClaudeJobs(): Promise<ClaudeJob[]> {
   return request<ClaudeJob[]>('/api/claude-jobs')
 }

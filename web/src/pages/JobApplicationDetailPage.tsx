@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { FilePreview } from '@/components/app/FilePreview'
 import { GenerateListingOverlay } from '@/components/app/GenerateListingOverlay'
 import { GenerateSectionOverlay } from '@/components/app/GenerateSectionOverlay'
+import { JobReviseOverlay } from '@/components/app/JobReviseOverlay'
 import { QueueStatusBadge } from '@/components/app/QueueStatusBadge'
 import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
@@ -344,14 +345,27 @@ function JobDetails({
         onOpenChange={setEditOpen}
         onSaved={onChanged}
       />
-      <GenerateSectionOverlay
-        title="Job details"
-        hasData={hasData}
-        open={generateOpen}
-        onOpenChange={setGenerateOpen}
-        onSubmit={() => generateJobDetails(application.id)}
-        onChanged={onChanged}
-      />
+      {hasData ? (
+        <JobReviseOverlay
+          applicationId={application.id}
+          sectionKind="job_details"
+          title="Job details"
+          description={application.description}
+          requirements={application.requirements}
+          open={generateOpen}
+          onOpenChange={setGenerateOpen}
+          onChanged={onChanged}
+        />
+      ) : (
+        <GenerateSectionOverlay
+          title="Job details"
+          hasData={hasData}
+          open={generateOpen}
+          onOpenChange={setGenerateOpen}
+          onSubmit={() => generateJobDetails(application.id)}
+          onChanged={onChanged}
+        />
+      )}
     </Section>
   )
 }
@@ -417,11 +431,11 @@ function JobDetailsEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="flex h-[70vh] w-full max-w-lg flex-col gap-3 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit job details</DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FormField label="Portal name">
               <Input value={portalName} onChange={(event) => setPortalName(event.target.value)} />
@@ -725,11 +739,11 @@ function PositioningEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="flex h-[70vh] w-full max-w-lg flex-col gap-3 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit positioning analysis</DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           <p className="text-xs text-muted-foreground">
             Match score is computed from the positioning breakdown document (D-47), not edited here.
           </p>
@@ -933,11 +947,11 @@ function ApplicationHistoryEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="flex h-[70vh] w-full max-w-lg flex-col gap-3 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit application history</DialogTitle>
         </DialogHeader>
-        <div className="flex flex-col gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           <FormField label="Notes">
             <Textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} />
           </FormField>
