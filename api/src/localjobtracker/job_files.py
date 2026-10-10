@@ -66,6 +66,59 @@ class JobFileText(BaseModel):
     text: str
 
 
+def listing_text_sha256(text: str) -> str:
+    """The dedup fingerprint for a listing's reviewed text (D-146). Only stripped - the text has
+    already been through code extraction's own whitespace normalisation by the time a user
+    reviews it, so no further cleaning is needed here. Used both to check for a duplicate before
+    any Claude call runs, and to store a comparable fingerprint once the application exists, so a
+    later duplicate check has something real to match against."""
+    return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+
+
+class DuplicateListingMatch(BaseModel):
+    """D-146: one existing application whose listing matches the text or URL Add Job is about to
+    use. Surfaced as an overridable warning, never a hard block."""
+
+    application_id: int
+    company: str
+    role_title: str
+    matched_by: str  # "content" | "url"
+
+
+def find_duplicate_listing(
+    conn: sqlite3.Connection, *, sha256: str | None, source_url: str | None
+) -> DuplicateListingMatch | None:
+    """The existing application (if any) whose listing file matches this content hash or source
+    URL (Agent/specs/intake-steps.md, D-146). Checked before Add Job runs any Claude call.
+
+    Never matches on company + role title (two genuine postings can share both). Content is
+    checked first: a content match is a stronger signal than a shared source URL (the same URL
+    can legitimately be reused - a careers page listing several openings - while identical text
+    almost never is).
+    """
+    if sha256:
+        row = conn.execute(
+            "SELECT a.id AS application_id, a.company, a.role_title "
+            "FROM job_files f JOIN job_applications a ON a.id = f.job_application_id "
+            "WHERE f.kind = 'listing' AND f.sha256 = ? "
+            "ORDER BY f.id DESC LIMIT 1",
+            (sha256,),
+        ).fetchone()
+        if row is not None:
+            return DuplicateListingMatch(matched_by="content", **dict(row))
+    if source_url:
+        row = conn.execute(
+            "SELECT a.id AS application_id, a.company, a.role_title "
+            "FROM job_files f JOIN job_applications a ON a.id = f.job_application_id "
+            "WHERE f.kind = 'listing' AND f.source_url = ? "
+            "ORDER BY f.id DESC LIMIT 1",
+            (source_url,),
+        ).fetchone()
+        if row is not None:
+            return DuplicateListingMatch(matched_by="url", **dict(row))
+    return None
+
+
 def insert_job_file(
     conn: sqlite3.Connection,
     job_application_id: int,
@@ -75,17 +128,22 @@ def insert_job_file(
     stored_path: str,
     date: str | None = None,
     sha256: str | None = None,
+    source_url: str | None = None,
     extraction_status: str | None = None,
     extraction_message: str | None = None,
     extracted_text: str | None = None,
 ) -> int:
-    """Record one file already copied into the managed folder. Returns its id."""
+    """Record one file already copied into the managed folder. Returns its id.
+
+    `source_url` is set only for a listing extracted from a URL (D-146's duplicate check); every
+    other kind leaves it null.
+    """
     cursor = conn.execute(
         """
         INSERT INTO job_files (
             job_application_id, kind, name, stored_path, date,
-            sha256, extraction_status, extraction_message, extracted_text
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            sha256, source_url, extraction_status, extraction_message, extracted_text
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_application_id,
@@ -94,6 +152,7 @@ def insert_job_file(
             stored_path,
             date,
             sha256,
+            source_url,
             extraction_status,
             extraction_message,
             extracted_text,

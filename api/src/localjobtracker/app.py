@@ -36,7 +36,14 @@ from localjobtracker.job_applications import (
     set_master_cv,
     update_job_application,
 )
-from localjobtracker.job_files import JobApplicationFile, JobFileUploadError, store_job_file
+from localjobtracker.job_files import (
+    DuplicateListingMatch,
+    JobApplicationFile,
+    JobFileUploadError,
+    find_duplicate_listing,
+    listing_text_sha256,
+    store_job_file,
+)
 from localjobtracker.job_pipeline import (
     JobStepNotReady,
     submit_check_job_listing_text,
@@ -128,6 +135,11 @@ class ListingCheckRequest(BaseModel):
 class ListingGenerateRequest(BaseModel):
     method: str
     text: str
+
+
+class DuplicateCheckRequest(BaseModel):
+    text: str
+    source_url: str | None = None
 
 
 class ReviseTurnCreate(BaseModel):
@@ -522,6 +534,18 @@ def create_app(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
             ) from error
         return _job_or_404(conn, job_id)
+
+    @app.post(
+        "/job-applications/intake/duplicate-check",
+        response_model=DuplicateListingMatch | None,
+        dependencies=[Depends(require_token)],
+    )
+    def intake_duplicate_check(
+        body: DuplicateCheckRequest, conn: Annotated[Connection, Depends(get_db)]
+    ) -> DuplicateListingMatch | None:
+        return find_duplicate_listing(
+            conn, sha256=listing_text_sha256(body.text), source_url=body.source_url
+        )
 
     @app.post(
         "/job-applications/{application_id}/job-details/generate",

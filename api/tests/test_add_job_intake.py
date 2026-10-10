@@ -1,6 +1,6 @@
-"""Tests for Add Job's intake routes (step 3, Agent/specs/intake-steps.md): the same extraction
-and sanity check as the existing-application Listing routes (test_listing_intake.py), run with no
-application yet.
+"""Tests for Add Job's intake routes (steps 3-4, Agent/specs/intake-steps.md): the same
+extraction and sanity check as the existing-application Listing routes (test_listing_intake.py),
+run with no application yet, plus the duplicate-check endpoint.
 """
 
 from collections.abc import Iterator
@@ -12,7 +12,10 @@ import respx
 from fastapi.testclient import TestClient
 
 from localjobtracker.app import TOKEN_HEADER, create_app
+from localjobtracker.job_applications import insert_job_application
+from localjobtracker.job_files import insert_job_file, listing_text_sha256
 from localjobtracker.runner import FakeRunner
+from localjobtracker.storage import connect
 
 TOKEN = "test-token"
 LISTING_FIXTURES = (
@@ -112,3 +115,70 @@ def test_intake_check_queues_and_runs_with_no_application_yet(client: TestClient
 def test_intake_check_rejects_empty_text(client: TestClient) -> None:
     response = client.post("/job-applications/intake/check", json={"text": "  "})
     assert response.status_code == 400
+
+
+# --- Duplicate check (step 4) -------------------------------------------------------------------
+
+
+def test_duplicate_check_finds_no_match_against_an_empty_tracker(client: TestClient) -> None:
+    response = client.post(
+        "/job-applications/intake/duplicate-check", json={"text": "Senior Data Analyst..."}
+    )
+    assert response.status_code == 200
+    assert response.json() is None
+
+
+def test_duplicate_check_matches_by_content(client: TestClient, db_path: Path) -> None:
+    text = "Senior Data Analyst at Acme Inc. Must know SQL."
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(conn, {"company": "Acme Inc", "role_title": "Analyst"})
+        insert_job_file(
+            conn,
+            app_id,
+            kind="listing",
+            name="Job Listing.md",
+            stored_path="Acme Inc/Analyst/Job Listing.md",
+            sha256=listing_text_sha256(text),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client.post("/job-applications/intake/duplicate-check", json={"text": text})
+    assert response.status_code == 200
+    body = response.json()
+    assert body is not None
+    assert body["application_id"] == app_id
+    assert body["matched_by"] == "content"
+
+
+def test_duplicate_check_matches_by_source_url(client: TestClient, db_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(conn, {"company": "Acme Inc", "role_title": "Analyst"})
+        insert_job_file(
+            conn,
+            app_id,
+            kind="listing",
+            name="Job Listing.md",
+            stored_path="Acme Inc/Analyst/Job Listing.md",
+            sha256="unrelated-hash",
+            source_url="https://example.com/jobs/123",
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client.post(
+        "/job-applications/intake/duplicate-check",
+        json={
+            "text": "A different rewording of the same posting.",
+            "source_url": "https://example.com/jobs/123",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body is not None
+    assert body["application_id"] == app_id
+    assert body["matched_by"] == "url"
