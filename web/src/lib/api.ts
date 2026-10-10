@@ -334,15 +334,18 @@ export function fetchJobReviseTurns(
   return request<ReviseTurn[]>(`/api/job-applications/${applicationId}/revise/${sectionKind}/turns`)
 }
 
+// `attachmentJobFileId` is a job_files row already filed before this call (D-138, Application
+// history only so far) - the file itself is uploaded through uploadJobFile, not here.
 export function postJobReviseTurn(
   applicationId: number,
   sectionKind: string,
   message: string,
+  attachmentJobFileId?: number,
 ): Promise<ReviseTurn> {
   return request<ReviseTurn>(`/api/job-applications/${applicationId}/revise/${sectionKind}/turns`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, attachment_job_file_id: attachmentJobFileId ?? null }),
   })
 }
 

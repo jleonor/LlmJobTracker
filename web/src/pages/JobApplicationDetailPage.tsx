@@ -350,8 +350,12 @@ function JobDetails({
           applicationId={application.id}
           sectionKind="job_details"
           title="Job details"
-          description={application.description}
-          requirements={application.requirements}
+          leftPane={
+            <CurrentJobDetailsPane
+              description={application.description}
+              requirements={application.requirements}
+            />
+          }
           open={generateOpen}
           onOpenChange={setGenerateOpen}
           onChanged={onChanged}
@@ -367,6 +371,33 @@ function JobDetails({
         />
       )}
     </Section>
+  )
+}
+
+// JobReviseOverlay's left pane for Job details (D-136): the description and numbered
+// requirements exactly as the chat prompt itself presents them, so a message like "remove #3"
+// refers to what's on screen.
+function CurrentJobDetailsPane({
+  description,
+  requirements,
+}: {
+  description: string | null
+  requirements: string[]
+}) {
+  if (!description && requirements.length === 0) {
+    return <p className="text-sm text-muted-foreground">Nothing to revise yet.</p>
+  }
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      {description && <p className="whitespace-pre-wrap">{description}</p>}
+      {requirements.length > 0 && (
+        <ol className="list-decimal space-y-1 pl-5">
+          {requirements.map((requirement) => (
+            <li key={requirement}>{requirement}</li>
+          ))}
+        </ol>
+      )}
+    </div>
   )
 }
 
@@ -872,15 +903,54 @@ function ApplicationHistory({
         onOpenChange={setEditOpen}
         onSaved={onChanged}
       />
-      <GenerateSectionOverlay
-        title="Application history"
-        hasData={hasData}
-        open={generateOpen}
-        onOpenChange={setGenerateOpen}
-        onSubmit={() => generateApplicationHistory(application.id)}
-        onChanged={onChanged}
-      />
+      {hasData ? (
+        <JobReviseOverlay
+          applicationId={application.id}
+          sectionKind="application_history"
+          title="Application history"
+          leftPane={
+            <CurrentApplicationHistoryPane
+              nextAction={application.next_action}
+              dueDate={application.due_date}
+            />
+          }
+          allowAttachment
+          open={generateOpen}
+          onOpenChange={setGenerateOpen}
+          onChanged={onChanged}
+        />
+      ) : (
+        <GenerateSectionOverlay
+          title="Application history"
+          hasData={hasData}
+          open={generateOpen}
+          onOpenChange={setGenerateOpen}
+          onSubmit={() => generateApplicationHistory(application.id)}
+          onChanged={onChanged}
+        />
+      )}
     </Section>
+  )
+}
+
+// JobReviseOverlay's left pane for Application history (D-138): next_action and due_date exactly
+// as the chat prompt presents them. notes is left out - the chat never reads or writes it
+// (D-127), so showing it here would suggest otherwise.
+function CurrentApplicationHistoryPane({
+  nextAction,
+  dueDate,
+}: {
+  nextAction: string | null
+  dueDate: string | null
+}) {
+  if (!nextAction && !dueDate) {
+    return <p className="text-sm text-muted-foreground">Nothing to revise yet.</p>
+  }
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <Field label="Next action">{nextAction ?? EMPTY}</Field>
+      <Field label="Due date">{dueDate ?? EMPTY}</Field>
+    </div>
   )
 }
 

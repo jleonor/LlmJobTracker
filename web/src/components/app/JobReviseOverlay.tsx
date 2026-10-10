@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { RunTrace } from '@/components/app/RunTrace'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ApiError, fetchJobReviseTurns, postJobReviseTurn } from '@/lib/api'
+import { ApiError, fetchJobReviseTurns, postJobReviseTurn, uploadJobFile } from '@/lib/api'
 import type { ReviseTurn } from '@/lib/types'
 
 // How often the conversation is read back while the overlay is open (ReviseOverlay.tsx's own
@@ -14,23 +15,34 @@ const ACTIVE_POLL_MS = 1000
 
 // What each job-page section's chat turn reads (mirrors profileDocuments.ts's
 // PROFILE_DOCUMENT_CONTEXT), shown as chips so the user can see what the model reads without
-// opening the prompt itself. Only job_details has a real chat so far (D-136's build order).
+// opening the prompt itself. Only the implemented sections (D-136's build order) are listed.
 const JOB_REVISE_CONTEXT: Record<string, string[]> = {
   job_details: ['Listing'],
+  application_history: ['Filed emails'],
+}
+
+// Which upload kind a turn's attached file is filed under (D-138): an .eml/.msg files the same
+// way an uploaded email already does, anything else goes to Additional files - the same split
+// EmailsColumn's own upload already uses, just generalized to any file, not only emails.
+function attachmentKind(file: File): string {
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.msg')) return 'msg'
+  if (name.endsWith('.eml')) return 'eml'
+  return 'other'
 }
 
 // The job page's chat-revise overlay (D-136): the job-scoped counterpart to ReviseOverlay, same
-// current-content-left, chat-right layout, but the "document" on the left is Job details' own
-// description and numbered requirements, not a single Markdown file - there's no document to
-// show for a section backed by structured fields, so this renders them directly instead of
-// reusing MarkdownDocument. Each requirement keeps the number the chat prompt itself uses
-// ("Current requirements, numbered"), so a message like "remove #3" refers to what the user sees.
+// current-content-left, chat-right layout, but the left pane is whatever content the caller
+// passes in (a structured-field section has no single document to show the way a Markdown file
+// does), and `allowAttachment` turns on a file input next to the message box (Application
+// history only, D-138) - the file is filed for real through the existing upload endpoint before
+// the turn is sent, not held as throwaway context.
 export function JobReviseOverlay({
   applicationId,
   sectionKind,
   title,
-  description,
-  requirements,
+  leftPane,
+  allowAttachment = false,
   open,
   onOpenChange,
   onChanged,
@@ -38,17 +50,20 @@ export function JobReviseOverlay({
   applicationId: number
   sectionKind: string
   title: string
-  description: string | null
-  requirements: string[]
+  leftPane: ReactNode
+  allowAttachment?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
-  // Called once a turn's job finishes, so the page's own fields catch up to what the turn wrote.
+  // Called once a turn's job finishes, so the page's own fields catch up to what the turn wrote
+  // - and right after a successful attachment upload, so Files shows it without waiting.
   onChanged: () => void
 }) {
   const [turns, setTurns] = useState<ReviseTurn[]>([])
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState('')
+  const [attachedFile, setAttachedFile] = useState<File | null>(null)
   const [sending, setSending] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   const reload = useCallback(() => {
     fetchJobReviseTurns(applicationId, sectionKind)
@@ -89,8 +104,16 @@ export function JobReviseOverlay({
     setSending(true)
     setError(null)
     try {
-      await postJobReviseTurn(applicationId, sectionKind, text)
+      let attachmentId: number | undefined
+      if (attachedFile) {
+        const filed = await uploadJobFile(applicationId, attachmentKind(attachedFile), attachedFile)
+        attachmentId = filed.id
+        onChanged()
+      }
+      await postJobReviseTurn(applicationId, sectionKind, text, attachmentId)
       setMessage('')
+      setAttachedFile(null)
+      if (fileInput.current) fileInput.current.value = ''
       reload()
     } catch (failure) {
       setError(failure instanceof ApiError ? failure.message : 'The message could not be sent.')
@@ -106,9 +129,7 @@ export function JobReviseOverlay({
           <DialogTitle>Revise (LLM): {title}</DialogTitle>
         </DialogHeader>
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="min-h-0 overflow-y-auto rounded border border-border p-3">
-            <CurrentJobDetails description={description} requirements={requirements} />
-          </div>
+          <div className="min-h-0 overflow-y-auto rounded border border-border p-3">{leftPane}</div>
           <div className="flex min-h-0 flex-col gap-2">
             <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
               <span>Context:</span>
@@ -127,6 +148,42 @@ export function JobReviseOverlay({
                 <Turn key={turn.id} turn={turn} />
               ))}
             </div>
+            {allowAttachment && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  ref={fileInput}
+                  type="file"
+                  className="sr-only"
+                  id={`${sectionKind}-attachment`}
+                  aria-label="Attach a file to this message"
+                  onChange={(event) => setAttachedFile(event.target.files?.[0] ?? null)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInput.current?.click()}
+                >
+                  Attach a file
+                </Button>
+                {attachedFile && (
+                  <span className="flex items-center gap-1 truncate">
+                    {attachedFile.name}
+                    <button
+                      type="button"
+                      aria-label="Remove the attached file"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        setAttachedFile(null)
+                        if (fileInput.current) fileInput.current.value = ''
+                      }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
             <div className="flex gap-2">
               <textarea
                 value={message}
@@ -149,30 +206,6 @@ export function JobReviseOverlay({
         </div>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function CurrentJobDetails({
-  description,
-  requirements,
-}: {
-  description: string | null
-  requirements: string[]
-}) {
-  if (!description && requirements.length === 0) {
-    return <p className="text-sm text-muted-foreground">Nothing to revise yet.</p>
-  }
-  return (
-    <div className="flex flex-col gap-3 text-sm">
-      {description && <p className="whitespace-pre-wrap">{description}</p>}
-      {requirements.length > 0 && (
-        <ol className="list-decimal space-y-1 pl-5">
-          {requirements.map((requirement) => (
-            <li key={requirement}>{requirement}</li>
-          ))}
-        </ol>
-      )}
-    </div>
   )
 }
 
