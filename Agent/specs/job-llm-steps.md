@@ -289,23 +289,24 @@ this prose) ===
 <listing text>
 === END JOB LISTING ===
 
-Score every one of these requirements, in this order, using their exact wording:
+Score every one of these requirements, in this order:
 
 1. <requirement 1>
 2. <requirement 2>
 ...
 
-For each, answer with one block, in the same order, using the exact text given above:
+For each, answer with one block, in the same order, referring to each requirement only by its
+number — never retype its text:
 
 === REQUIREMENT ===
-TEXT: <copied exactly from the numbered list above>
+NUMBER: <its number from the list above>
 WEIGHT: <0-10 — how important this requirement is to the role>
 MATCH: <0-10 — how well this person's background meets it>
 REASONING: <one or two sentences, citing the career history, questionnaire analysis, or strategy>
 === END REQUIREMENT ===
 
-Give exactly one block per requirement listed above — the same count, the same text, the same
-order. Do not add, skip, merge, or reword any of them.
+Give exactly one block per requirement listed above — the same count, each number used exactly
+once, the same order. Do not add, skip, merge, renumber, or retype any of them.
 
 Then:
 
@@ -326,12 +327,17 @@ Then:
 === END UNCLEAR ===
 ```
 
-**Code checks:** the parsed `REQUIREMENT` blocks' `TEXT` values, as a set, must equal the stored
-`requirements` list exactly (same members — missing, extra, or reworded text all fail the answer,
-named in the rejection message, the same verbatim-or-fail rule as Job details' own). `WEIGHT` and
-`MATCH` must each parse as a number in `[0, 10]`. If every weight is `0`, the answer is rejected
-(the score's denominator would be zero) rather than silently producing a meaningless 0%.
-`JOB STRATEGY` must be non-empty; `FIT`/`GAPS`/`UNCLEAR` may each be empty (a strong fit might
+**Code checks:** the parsed `REQUIREMENT` blocks' `NUMBER` values, as a set, must equal
+`{1, ..., len(requirements)}` exactly (missing or out-of-range numbers, or a duplicate, all fail
+the answer, named in the rejection message). A requirement's own text is never taken from the
+model's answer — `NUMBER` only selects which stored requirement a block scores, and the text
+stored and shown to the user always comes from `requirements[NUMBER - 1]` in code (D-134, replacing
+an earlier design where Claude retyped each requirement's `TEXT` verbatim: a live run on real data
+showed the model can still subtly reword a requirement's text even when told to copy it exactly —
+referencing by number removes that failure mode rather than just detecting it after the fact).
+`WEIGHT` and `MATCH` must each parse as a number in `[0, 10]`. If every weight is `0`, the answer
+is rejected (the score's denominator would be zero) rather than silently producing a meaningless
+0%. `JOB STRATEGY` must be non-empty; `FIT`/`GAPS`/`UNCLEAR` may each be empty (a strong fit might
 have no gaps worth naming).
 
 **Storage:** `match_score` is computed and written alongside `fit`/`gaps`/`strategy` (from

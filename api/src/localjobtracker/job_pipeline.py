@@ -190,21 +190,22 @@ this prose) ===
 {listing}
 === END JOB LISTING ===
 
-Score every one of these requirements, in this order, using their exact wording:
+Score every one of these requirements, in this order:
 
 {numbered}
 
-For each, answer with one block, in the same order, using the exact text given above:
+For each, answer with one block, in the same order, referring to each requirement only by its
+number - never retype its text:
 
 === REQUIREMENT ===
-TEXT: <copied exactly from the numbered list above>
+NUMBER: <its number from the list above>
 WEIGHT: <0-10 - how important this requirement is to the role>
 MATCH: <0-10 - how well this person's background meets it>
 REASONING: <one or two sentences, citing the career history, questionnaire analysis, or strategy>
 === END REQUIREMENT ===
 
-Give exactly one block per requirement listed above - the same count, the same text, the same
-order. Do not add, skip, merge, or reword any of them.
+Give exactly one block per requirement listed above - the same count, each number used exactly
+once, the same order. Do not add, skip, merge, renumber, or retype any of them.
 
 Then:
 
@@ -844,7 +845,7 @@ def parse_job_details_answer(text: str, listing_text: str) -> JobDetailsAnswer:
 
 _POSITIONING_REQUIREMENT_BLOCK = re.compile(
     r"=== REQUIREMENT ===\n"
-    r"TEXT:\s*(.*?)\n"
+    r"NUMBER:\s*(.*?)\n"
     r"WEIGHT:\s*(.*?)\n"
     r"MATCH:\s*(.*?)\n"
     r"REASONING:\s*(.*?)"
@@ -894,33 +895,48 @@ def _parse_score(value: str, label: str) -> float:
 
 
 def parse_positioning_answer(text: str, requirements: list[str]) -> PositioningAnswer:
-    scores = []
-    for match in _POSITIONING_REQUIREMENT_BLOCK.finditer(text):
-        req_text, weight_text, match_text, reasoning = (part.strip() for part in match.groups())
-        scores.append(
-            RequirementScore(
-                text=req_text,
-                weight=_parse_score(weight_text, "WEIGHT"),
-                match=_parse_score(match_text, "MATCH"),
-                reasoning=reasoning,
-            )
-        )
-    if not scores:
+    raw_blocks = [
+        tuple(part.strip() for part in match.groups())
+        for match in _POSITIONING_REQUIREMENT_BLOCK.finditer(text)
+    ]
+    if not raw_blocks:
         raise PromptRejected("The answer did not include any REQUIREMENT blocks.")
 
-    scored_texts = [score.text for score in scores]
-    if sorted(scored_texts) != sorted(requirements) or len(scored_texts) != len(requirements):
-        missing = sorted(set(requirements) - set(scored_texts))
-        extra = sorted(set(scored_texts) - set(requirements))
+    numbers = []
+    for number_text, _weight_text, _match_text, _reasoning in raw_blocks:
+        try:
+            numbers.append(int(number_text))
+        except ValueError as error:
+            raise PromptRejected(f"NUMBER is not an integer: {number_text!r}") from error
+
+    expected = list(range(1, len(requirements) + 1))
+    if sorted(numbers) != expected:
+        missing = sorted(set(expected) - set(numbers))
+        extra = sorted(set(numbers) - set(expected))
         detail = []
         if missing:
             detail.append(f"missing: {missing}")
         if extra:
-            detail.append(f"not a real requirement: {extra}")
+            detail.append(f"not a valid requirement number: {extra}")
         raise PromptRejected(
-            "The scored requirements don't match the stored list"
+            "The scored requirement numbers don't match the stored list"
             + (f" ({'; '.join(detail)})" if detail else " (a duplicate was given).")
         )
+
+    # NUMBER only ever selects which stored requirement a block scores - the requirement's own
+    # text always comes from the stored list itself, never from what Claude typed, so a reworded
+    # or paraphrased NUMBER line can't corrupt it (the live failure this replaced, D-134).
+    scores = [
+        RequirementScore(
+            text=requirements[number - 1],
+            weight=_parse_score(weight_text, "WEIGHT"),
+            match=_parse_score(match_text, "MATCH"),
+            reasoning=reasoning,
+        )
+        for number, (_number_text, weight_text, match_text, reasoning) in zip(
+            numbers, raw_blocks, strict=True
+        )
+    ]
 
     if sum(score.weight for score in scores) == 0:
         raise PromptRejected("Every requirement was given a weight of 0.")

@@ -72,9 +72,9 @@ Full-Time
 REQUIREMENTS = ["Strong SQL", "4+ years experience"]
 
 
-def _requirement_block(text: str, weight: str, match: str, reasoning: str = "Reasoning.") -> str:
+def _requirement_block(number: int, weight: str, match: str, reasoning: str = "Reasoning.") -> str:
     return (
-        f"=== REQUIREMENT ===\nTEXT: {text}\nWEIGHT: {weight}\nMATCH: {match}\n"
+        f"=== REQUIREMENT ===\nNUMBER: {number}\nWEIGHT: {weight}\nMATCH: {match}\n"
         f"REASONING: {reasoning}\n=== END REQUIREMENT ==="
     )
 
@@ -88,12 +88,10 @@ _TAIL = (
 
 GOOD_POSITIONING_ANSWER = (
     _requirement_block(
-        "Strong SQL", "8", "9", "The career history shows five years of SQL-heavy analyst work."
+        1, "8", "9", "The career history shows five years of SQL-heavy analyst work."
     )
     + "\n\n"
-    + _requirement_block(
-        "4+ years experience", "6", "10", "The career history shows five years in analytics."
-    )
+    + _requirement_block(2, "6", "10", "The career history shows five years in analytics.")
     + "\n\n=== FIT ===\n- Strong SQL background\n=== END FIT ===\n\n"
     "=== GAPS ===\n- No stated experience with the specific BI tool\n=== END GAPS ===\n\n"
     "=== JOB STRATEGY ===\nLead with the SQL and reporting experience.\n"
@@ -286,13 +284,13 @@ def test_parse_positioning_answer_tolerates_a_missing_end_requirement_tag() -> N
     # above always included the tag, so this shape never hit the parser until live verification.
     text = (
         "=== REQUIREMENT ===\n"
-        "TEXT: Strong SQL\n"
+        "NUMBER: 1\n"
         "WEIGHT: 8\n"
         "MATCH: 9\n"
         "REASONING: Five years of SQL-heavy analyst work.\n"
         "\n"
         "=== REQUIREMENT ===\n"
-        "TEXT: 4+ years experience\n"
+        "NUMBER: 2\n"
         "WEIGHT: 6\n"
         "MATCH: 10\n"
         "REASONING: Five years in analytics roles.\n"
@@ -343,73 +341,74 @@ def test_compute_match_score_matches_a_hand_calculation() -> None:
 
 
 def test_parse_positioning_answer_rejects_a_missing_requirement() -> None:
-    text = _requirement_block("Strong SQL", "8", "9") + _TAIL
+    text = _requirement_block(1, "8", "9") + _TAIL
     with pytest.raises(PromptRejected, match="missing"):
         parse_positioning_answer(text, REQUIREMENTS)
 
 
-def test_parse_positioning_answer_rejects_an_extra_requirement() -> None:
+def test_parse_positioning_answer_rejects_an_out_of_range_number() -> None:
     text = (
-        _requirement_block("Strong SQL", "8", "9")
+        _requirement_block(1, "8", "9")
         + "\n\n"
-        + _requirement_block("4+ years experience", "6", "10")
+        + _requirement_block(2, "6", "10")
         + "\n\n"
-        + _requirement_block("Knows Rust", "5", "5")
+        + _requirement_block(3, "5", "5")
         + _TAIL
     )
-    with pytest.raises(PromptRejected, match="not a real requirement"):
+    with pytest.raises(PromptRejected, match="not a valid requirement number"):
         parse_positioning_answer(text, REQUIREMENTS)
 
 
-def test_parse_positioning_answer_rejects_a_reworded_requirement() -> None:
+def test_parse_positioning_answer_rejects_a_duplicate_number() -> None:
+    # Regression guard for D-134: NUMBER identifies which stored requirement a block scores, so a
+    # requirement's own text can no longer be reworded by the model - but a duplicate or missing
+    # number is still a real answer-shape error and must still be caught. Every valid number (1
+    # and 2) is present at least once, with an extra duplicate of 2 - neither "missing" nor "not a
+    # valid requirement number" names anything, so the parser falls back to its generic message.
     text = (
-        _requirement_block("Strong SQL skills", "8", "9")
+        _requirement_block(1, "8", "9")
         + "\n\n"
-        + _requirement_block("4+ years experience", "6", "10")
+        + _requirement_block(2, "6", "10")
+        + "\n\n"
+        + _requirement_block(2, "6", "10")
         + _TAIL
     )
-    with pytest.raises(PromptRejected, match="don't match the stored list"):
+    with pytest.raises(PromptRejected, match=r"don't match the stored list \(a duplicate"):
+        parse_positioning_answer(text, REQUIREMENTS)
+
+
+def test_parse_positioning_answer_rejects_a_non_integer_number() -> None:
+    text = (
+        "=== REQUIREMENT ===\nNUMBER: one\nWEIGHT: 8\nMATCH: 9\nREASONING: Reasoning.\n"
+        "=== END REQUIREMENT ===\n\n" + _requirement_block(2, "6", "10") + _TAIL
+    )
+    with pytest.raises(PromptRejected, match="NUMBER is not an integer"):
         parse_positioning_answer(text, REQUIREMENTS)
 
 
 def test_parse_positioning_answer_rejects_an_out_of_range_score() -> None:
-    text = (
-        _requirement_block("Strong SQL", "11", "9")
-        + "\n\n"
-        + _requirement_block("4+ years experience", "6", "10")
-        + _TAIL
-    )
+    text = _requirement_block(1, "11", "9") + "\n\n" + _requirement_block(2, "6", "10") + _TAIL
     with pytest.raises(PromptRejected, match="out of range"):
         parse_positioning_answer(text, REQUIREMENTS)
 
 
 def test_parse_positioning_answer_rejects_a_non_numeric_score() -> None:
-    text = (
-        _requirement_block("Strong SQL", "high", "9")
-        + "\n\n"
-        + _requirement_block("4+ years experience", "6", "10")
-        + _TAIL
-    )
+    text = _requirement_block(1, "high", "9") + "\n\n" + _requirement_block(2, "6", "10") + _TAIL
     with pytest.raises(PromptRejected, match="not a number"):
         parse_positioning_answer(text, REQUIREMENTS)
 
 
 def test_parse_positioning_answer_rejects_all_zero_weights() -> None:
-    text = (
-        _requirement_block("Strong SQL", "0", "9")
-        + "\n\n"
-        + _requirement_block("4+ years experience", "0", "10")
-        + _TAIL
-    )
+    text = _requirement_block(1, "0", "9") + "\n\n" + _requirement_block(2, "0", "10") + _TAIL
     with pytest.raises(PromptRejected, match="weight of 0"):
         parse_positioning_answer(text, REQUIREMENTS)
 
 
 def test_parse_positioning_answer_requires_a_job_strategy_block() -> None:
     text = (
-        _requirement_block("Strong SQL", "8", "9")
+        _requirement_block(1, "8", "9")
         + "\n\n"
-        + _requirement_block("4+ years experience", "6", "10")
+        + _requirement_block(2, "6", "10")
         + "\n\n=== FIT ===\n=== END FIT ===\n\n=== GAPS ===\n=== END GAPS ===\n\n"
         "=== UNCLEAR ===\n=== END UNCLEAR ===\n"
     )
@@ -601,9 +600,11 @@ def test_generate_positioning_end_to_end_computes_and_stores_the_score(db_path: 
         conn.close()
 
 
-def test_generate_positioning_fails_the_job_when_requirements_dont_match(db_path: Path) -> None:
+def test_generate_positioning_fails_the_job_when_requirement_numbers_dont_match(
+    db_path: Path,
+) -> None:
     app_id = make_positioning_ready(db_path)
-    bad_answer = GOOD_POSITIONING_ANSWER.replace("Strong SQL", "Strong SQL skills")
+    bad_answer = GOOD_POSITIONING_ANSWER.replace("NUMBER: 2", "NUMBER: 1")
     queue = make_queue(db_path, FakeRunner(text=bad_answer))
     conn = connect(db_path)
     try:
