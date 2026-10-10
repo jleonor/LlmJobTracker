@@ -184,7 +184,7 @@ export function GenerateListingOverlay({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[85vh] w-full max-w-5xl flex-col gap-3 sm:max-w-5xl">
+      <DialogContent className="flex h-[85vh] w-full max-w-6xl flex-col gap-3 sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>{hasData ? 'Revise (LLM): Listing' : 'Generate (LLM): Listing'}</DialogTitle>
         </DialogHeader>

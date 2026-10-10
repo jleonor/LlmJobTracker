@@ -1260,6 +1260,10 @@ function Files({
       <GenerateSectionOverlay
         title="Tailored CV"
         hasData={tailoredCv.length > 0}
+        preview={
+          tailoredCv[0] ? { table: 'job_file', applicationId: application.id, id: tailoredCv[0].id } : null
+        }
+        previewName={tailoredCv[0]?.name}
         open={tailoredCvOverlayOpen}
         onOpenChange={setTailoredCvOverlayOpen}
         onSubmit={() => generateTailoredCv(application.id)}
@@ -1268,6 +1272,10 @@ function Files({
       <GenerateSectionOverlay
         title="Cover letter"
         hasData={coverLetter.length > 0}
+        preview={
+          coverLetter[0] ? { table: 'job_file', applicationId: application.id, id: coverLetter[0].id } : null
+        }
+        previewName={coverLetter[0]?.name}
         open={coverLetterOverlayOpen}
         onOpenChange={setCoverLetterOverlayOpen}
         onSubmit={() => generateCoverLetter(application.id)}

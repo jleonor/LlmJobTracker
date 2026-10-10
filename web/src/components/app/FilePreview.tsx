@@ -26,27 +26,16 @@ type State =
   // so it is revoked exactly once too (see the effect's cleanup).
   | { stage: 'ready'; data: FilePreviewData; pdfUrl: string | null }
 
-// The reusable file preview overlay (brainstorm #3): a "Preview" button anywhere a file is
-// listed opens this, instead of each caller building its own viewer. Rendering strategy is
-// picked from the API response's own content type (file_preview.py, D-107), not the file name:
-// PDF and converted-docx both arrive as "pdf" and render in an <iframe>; the three generated
-// documents arrive as "markdown"; untrusted email content (D-26, D-38) arrives as "html" and
-// renders in a fully sandboxed iframe (`sandbox=""`: no scripts, no forms, no same-origin).
-export function FilePreview({
-  source,
-  name,
-  open,
-  onOpenChange,
-}: {
-  source: PreviewSource
-  name: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
+// Loads a previewed file's bytes and renders them, independent of the Dialog chrome around it —
+// shared by the standalone FilePreview overlay below and by GenerateSectionOverlay's inline
+// document pane (Revise shows the current file next to the action, not behind a second "Preview"
+// click). `active` gates the fetch the same way a Dialog's `open` did, so a pane that isn't
+// showing yet (e.g. the overlay is closed) does nothing.
+export function useFilePreview(source: PreviewSource, active: boolean): State {
   const [state, setState] = useState<State>({ stage: 'loading' })
 
   useEffect(() => {
-    if (!open) return
+    if (!active) return
     setState({ stage: 'loading' })
     let cancelled = false
     let objectUrl: string | null = null
@@ -68,7 +57,37 @@ export function FilePreview({
     // `source` is a plain object literal from the caller; comparing its fields, not identity,
     // avoids re-fetching on every render while still refetching when the target file changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, source.table, source.id, source.table === 'job_file' ? source.applicationId : null])
+  }, [active, source.table, source.id, source.table === 'job_file' ? source.applicationId : null])
+
+  return state
+}
+
+// The loading/error/ready states `useFilePreview` can be in, rendered the same way regardless of
+// what's around them (a Dialog's body, or an inline pane).
+export function FilePreviewBody({ name, state }: { name: string; state: State }) {
+  if (state.stage === 'loading') return <Centered>Loading preview...</Centered>
+  if (state.stage === 'error') return <Centered className="text-destructive">{state.message}</Centered>
+  return <Rendered name={name} data={state.data} pdfUrl={state.pdfUrl} />
+}
+
+// The reusable file preview overlay (brainstorm #3): a "Preview" button anywhere a file is
+// listed opens this, instead of each caller building its own viewer. Rendering strategy is
+// picked from the API response's own content type (file_preview.py, D-107), not the file name:
+// PDF and converted-docx both arrive as "pdf" and render in an <iframe>; the three generated
+// documents arrive as "markdown"; untrusted email content (D-26, D-38) arrives as "html" and
+// renders in a fully sandboxed iframe (`sandbox=""`: no scripts, no forms, no same-origin).
+export function FilePreview({
+  source,
+  name,
+  open,
+  onOpenChange,
+}: {
+  source: PreviewSource
+  name: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const state = useFilePreview(source, open)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -76,14 +95,8 @@ export function FilePreview({
         <DialogHeader>
           <DialogTitle className="truncate pr-8">{name}</DialogTitle>
         </DialogHeader>
-        <div className="flex-1 overflow-hidden rounded border border-border bg-background">
-          {state.stage === 'loading' && <Centered>Loading preview...</Centered>}
-          {state.stage === 'error' && (
-            <Centered className="text-destructive">{state.message}</Centered>
-          )}
-          {state.stage === 'ready' && (
-            <Rendered name={name} data={state.data} pdfUrl={state.pdfUrl} />
-          )}
+        <div className="min-h-0 flex-1 overflow-hidden rounded border border-border bg-background">
+          <FilePreviewBody name={name} state={state} />
         </div>
       </DialogContent>
     </Dialog>
