@@ -434,7 +434,7 @@ def build_positioning_prompt(conn: sqlite3.Connection, application_id: int) -> s
     return _require_prompt_size(text)
 
 
-def _email_blocks(files_root: Path, conn: sqlite3.Connection, application_id: int) -> str:
+def email_blocks(files_root: Path, conn: sqlite3.Connection, application_id: int) -> str:
     rows = conn.execute(
         "SELECT kind, stored_path FROM job_files "
         "WHERE job_application_id = ? AND kind IN ('eml', 'msg') ORDER BY date, id",
@@ -467,7 +467,7 @@ def build_application_history_prompt(
         raise PromptRejected("This Job Application no longer exists.")
     text = _APPLICATION_HISTORY_PROMPT.format(
         description=row["description"] or "",
-        emails=_email_blocks(files_root, conn, application_id),
+        emails=email_blocks(files_root, conn, application_id),
     )
     return _require_prompt_size(text)
 

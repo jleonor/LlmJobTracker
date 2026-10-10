@@ -145,6 +145,9 @@ class ReviseTurnView(BaseModel):
 
 class JobReviseTurnCreate(BaseModel):
     message: str
+    # A job_files row already filed before this request (D-138) - only Application history's
+    # chat reads it today.
+    attachment_job_file_id: int | None = None
 
 
 class JobReviseTurnView(BaseModel):
@@ -597,7 +600,14 @@ def create_app(
         if section_kind not in SECTION_KINDS:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         try:
-            job_id = submit_job_revise_turn(conn, queue, application_id, section_kind, body.message)
+            job_id = submit_job_revise_turn(
+                conn,
+                queue,
+                application_id,
+                section_kind,
+                body.message,
+                body.attachment_job_file_id,
+            )
         except JobReviseNotReady as error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
