@@ -403,6 +403,30 @@ one piece of the earlier sizing pass.
     analysis chat turn adjusting one requirement's weight, with the recomputed match score
     hand-verified against D-47's formula.
 
+Step list, continued (added 2026-10-10, D-141): the last two of the job page's chat sections,
+per D-136's build order - Tailored CV and Cover letter. Unlike the other three, both reuse
+D-130's block-id operation grammar (EDIT/INSERT AFTER/REMOVE/ADD ROW AFTER) almost unchanged,
+built against the *current* tailored CV/cover letter's own block map instead of the master
+CV/template's - no new answer grammar, matching what was already suspected before this batch's
+build order was set.
+
+58. Extend `Agent/specs/job-revise-steps.md` with Tailored CV's and Cover letter's answer
+    grammar (D-130's existing operations, reused).
+59. Backend: Tailored CV's and Cover letter's chat-revise in `job_revise_pipeline.py` - the
+    prompt is built from the *current* file's own numbered blocks (not the master CV/template's),
+    plus the same profile documents, job description and positioning breakdown context the
+    one-shot steps already use, plus the conversation so far. The answer is applied with
+    `docx_editor.apply_operations` the same way the one-shot steps already do (`apply_docx_edits`,
+    now a shared, public helper of `job_pipeline.py`), replacing the existing file. Cover letter's
+    turn re-checks `check_cover_letter_style` after applying, same as the one-shot step. Tests
+    with `FakeRunner`: an edit applied to the current tailored CV, a cover letter edit that
+    violates the punctuation rule (rejected, file left unchanged).
+60. Frontend: `JobReviseOverlay` wired to Tailored CV's and Cover letter's Revise (LLM) buttons,
+    left pane showing a live preview of the current file (reusing `FilePreview`'s own
+    loading/rendering, the same pane `GenerateSectionOverlay`'s preview mode already showed).
+61. Checks: `scripts/check.py` output; personal-data scan; a screenshot of a real Tailored CV
+    chat turn and a real Cover letter chat turn, each against a real generated file.
+
 Done when
 - [ ] The Job Application page, built on seed data, matches the D-56 layout (screenshot, compared against the job-detail mockups).
 - [ ] The dry-run report matches the spreadsheet: row counts, the 8 changed rows, and three spot-checked rows.
@@ -422,6 +446,7 @@ Done when
 - [x] Job details' Revise (LLM) opens a real chat: a message that edits one requirement and removes another is applied correctly, and a message whose edit isn't a verbatim listing substring is rejected with the turn left unchanged (screenshot, D-136). (2026-10-10: verified live against the real Claude Code CLI, McKinsey & Company application. "Remove the requirement about willingness to travel and flexible hours" correctly removed that requirement and renumbered the rest; description left unchanged. The verbatim-rejection path is covered by `test_a_bad_edit_leaves_requirements_unchanged` and related tests, not separately re-run live this round.)
 - [ ] Application history's Revise (LLM) opens a real chat: a message updates next_action/due_date, a message with an attached file reads it as context and files it for real, and clearing a field with `none` works (screenshot, D-137 to D-138). (2026-10-10: the chat itself verified live - "Set the due date to 2026-10-20..." correctly set due_date, next_action left unchanged, turn finished in 3s. The attachment path and `none`-clears-a-field are covered by `test_an_attached_eml_shows_up_in_the_sent_prompt`/`test_an_attached_other_file_is_read_with_the_general_extractor`/`test_a_turn_can_clear_the_due_date`, not yet exercised live with a real file - left unchecked pending that.)
 - [ ] Positioning analysis's Revise (LLM) opens a real chat: a message changing one requirement's weight or match recomputes match_score correctly and re-renders the breakdown document (screenshot, D-139). (2026-10-10: the chat itself verified live, including the D-140 fix - "Lower the weight on the academic-background gap..." against the McKinsey & Company application correctly reworded gaps/strategy and left match_score untouched (no numbered scores existed yet, since that application predates migration 19). The weight/match patch -> match_score recompute path is covered by `test_a_turn_adjusts_one_weight_and_recomputes_match_score` with hand-verified arithmetic, not yet exercised live against an application with real positioning_scores - left unchecked pending that.)
+- [ ] Tailored CV's and Cover letter's Revise (LLM) open a real chat: a message edits the current file in place (not the master CV/template), and a cover letter edit that violates the punctuation rule is rejected with the file left unchanged (screenshot, D-141).
 
 Out of scope: the Kanban board (see Phase 8).
 
