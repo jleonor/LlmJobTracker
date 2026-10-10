@@ -19,6 +19,7 @@ const ACTIVE_POLL_MS = 1000
 const JOB_REVISE_CONTEXT: Record<string, string[]> = {
   job_details: ['Listing'],
   application_history: ['Filed emails'],
+  positioning: ['Career history', 'Questionnaire report', 'Strategy', 'Job details'],
 }
 
 // Which upload kind a turn's attached file is filed under (D-138): an .eml/.msg files the same

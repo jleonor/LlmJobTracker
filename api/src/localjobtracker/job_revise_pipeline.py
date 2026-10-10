@@ -659,12 +659,22 @@ def parse_positioning_revision(text: str) -> PositioningRevision:
     patches = []
     for body in _SCORE_PATCH_BLOCK.findall(text):
         number, weight, match_value, reasoning = _split_score_patch(body)
+        weight_value = None if weight.lower() == "unchanged" else weight
+        match_result = None if match_value.lower() == "unchanged" else match_value
+        reasoning_value = None if reasoning.lower() == "unchanged" else reasoning
+        # A block that is "unchanged" in every field (D-140: observed live when there was
+        # nothing to patch and the model echoed the answer template anyway) has nothing to
+        # apply - dropped here rather than failing on NUMBER: unchanged not being an integer.
+        if (
+            number.lower() == "unchanged"
+            and weight_value is None
+            and match_result is None
+            and reasoning_value is None
+        ):
+            continue
         patches.append(
             ScorePatch(
-                number=number,
-                weight=None if weight.lower() == "unchanged" else weight,
-                match=None if match_value.lower() == "unchanged" else match_value,
-                reasoning=None if reasoning.lower() == "unchanged" else reasoning,
+                number=number, weight=weight_value, match=match_result, reasoning=reasoning_value
             )
         )
 
@@ -746,7 +756,9 @@ def _build_positioning_revise_prompt(conn: sqlite3.Connection, turn: JobReviseTu
         analysis_doc=docs["analysis"],
         strategy_doc=docs["strategy"],
         description=row["description"] or "",
-        numbered_scores=numbered or "(none)",
+        numbered_scores=numbered
+        or "(none yet - this application's Positioning analysis predates per-requirement "
+        "scoring; leave the REQUIREMENT PATCH section out entirely until it is regenerated)",
         current_fit=bullets_or_none(row["fit"]),
         current_gaps=bullets_or_none(row["gaps"]),
         current_strategy=row["strategy"] or "",

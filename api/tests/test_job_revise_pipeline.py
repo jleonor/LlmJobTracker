@@ -572,8 +572,17 @@ def fill_positioning(
         update_job_application(
             conn, app_id, {"fit": fit, "gaps": gaps, "strategy": strategy, "unclear": unclear}
         )
-        match_score = round(
-            sum(s.weight * s.match for s in scores) / (10 * sum(s.weight for s in scores)) * 100, 1
+        # Empty scores (D-140: a Positioning analysis generated before migration 19) has no
+        # match_score to compute - left null, the same as a row that predates it.
+        match_score = (
+            round(
+                sum(s.weight * s.match for s in scores)
+                / (10 * sum(s.weight for s in scores))
+                * 100,
+                1,
+            )
+            if scores
+            else None
         )
         with conn:
             conn.execute(
@@ -639,6 +648,19 @@ def test_parse_positioning_revision_reads_fields_and_patches() -> None:
     assert revision.fit == ["A new fit point"]
     assert revision.gaps is None
     assert revision.patches == [ScorePatch(number="1", weight="9", match=None, reasoning=None)]
+
+
+def test_parse_positioning_revision_drops_a_fully_unchanged_patch_block() -> None:
+    """D-140: observed live - with no scores to patch yet, the model echoed the answer
+    template's own REQUIREMENT PATCH block with every field "unchanged" rather than omitting it.
+    That block has nothing to apply, so it's dropped instead of failing on a non-integer NUMBER."""
+    revision = parse_positioning_revision(
+        positioning_answer(
+            "unchanged", "- A new gap", "unchanged", "unchanged", score_patch("unchanged")
+        )
+    )
+    assert revision.gaps == ["A new gap"]
+    assert revision.patches == []
 
 
 def test_parse_positioning_revision_rejects_a_no_op_answer() -> None:
@@ -746,3 +768,37 @@ def test_submit_rejects_when_positioning_has_nothing_to_revise(db_path: Path) ->
     queue = make_queue(db_path, FakeRunner())
     with pytest.raises(JobReviseNotReady, match="no Positioning analysis yet"):
         submit(db_path, queue, app_id, "positioning", "Raise the SQL weight.")
+
+
+def test_a_turn_succeeds_with_no_scores_yet_and_an_echoed_empty_patch_block(db_path: Path) -> None:
+    """D-140: a Positioning analysis generated before migration 19 has positioning_scores = '[]'
+    - a turn that only touches gaps must still succeed even if the model echoes the answer
+    template's own empty REQUIREMENT PATCH block."""
+    app_id = add_application(db_path)
+    add_profile_documents(db_path)
+    fill_positioning(
+        db_path,
+        app_id,
+        fit=["Strong SQL background"],
+        gaps=[],
+        strategy="Lead with the data work.",
+        unclear=[],
+        scores=[],
+    )
+    runner = FakeRunner(
+        text=positioning_answer(
+            "unchanged",
+            "- No BI tool experience",
+            "unchanged",
+            "unchanged",
+            score_patch("unchanged"),
+        )
+    )
+    queue = make_queue(db_path, runner)
+
+    submit(db_path, queue, app_id, "positioning", "Note the BI tool gap.")
+    run_all(queue)
+
+    fit, gaps, strategy, unclear, match_score = read_positioning(db_path, app_id)
+    assert gaps == ["No BI tool experience"]
+    assert match_score is None  # untouched - no scores existed to recompute from
