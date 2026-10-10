@@ -472,7 +472,7 @@ def build_application_history_prompt(
     return _require_prompt_size(text)
 
 
-def _profile_document_blocks(conn: sqlite3.Connection) -> dict[str, str]:
+def profile_document_blocks(conn: sqlite3.Connection) -> dict[str, str]:
     """The three LLM profile documents, as the labelled blocks every prompt that reads them
     uses (shared by Tailored CV and Cover letter, job-llm-steps.md §5-6)."""
     return {
@@ -555,7 +555,7 @@ def build_tailored_cv_prompt(
         description=row["description"] or "",
         breakdown=_breakdown_text(conn, application_id),
         rules=writing_rules_text(conn, rules_path),
-        **_profile_document_blocks(conn),
+        **profile_document_blocks(conn),
     )
     return _require_prompt_size(text)
 
@@ -577,7 +577,7 @@ def build_cover_letter_prompt(
         description=row["description"] or "",
         breakdown=_breakdown_text(conn, application_id),
         rules=writing_rules_text(conn, rules_path),
-        **_profile_document_blocks(conn),
+        **profile_document_blocks(conn),
     )
     return _require_prompt_size(text)
 
@@ -983,6 +983,25 @@ def render_breakdown_document(scores: list[RequirementScore], match_score: float
     return "\n".join(lines)
 
 
+# job_applications.positioning_scores (migration 19, D-139): the structured record of each
+# requirement's weight/match/reasoning, stored alongside the rendered breakdown document (the
+# document is for reading; this is for a chat revise to patch one row by position without
+# reparsing its own rendered Markdown table back into structure).
+
+
+def scores_to_json(scores: list[RequirementScore]) -> str:
+    return json.dumps(
+        [
+            {"text": s.text, "weight": s.weight, "match": s.match, "reasoning": s.reasoning}
+            for s in scores
+        ]
+    )
+
+
+def scores_from_json(text: str) -> list[RequirementScore]:
+    return [RequirementScore(**row) for row in json.loads(text)]
+
+
 _NOTES_BLOCK = _block_pattern("NOTES")
 _NEXT_ACTION_BLOCK = _block_pattern("NEXT ACTION")
 _DUE_DATE_BLOCK = _block_pattern("DUE DATE")
@@ -1141,8 +1160,8 @@ def _store_positioning_result(
     )
     with conn:
         conn.execute(
-            "UPDATE job_applications SET match_score = ? WHERE id = ?",
-            (match_score, application_id),
+            "UPDATE job_applications SET match_score = ?, positioning_scores = ? WHERE id = ?",
+            (match_score, scores_to_json(answer.scores), application_id),
         )
     document = render_breakdown_document(answer.scores, match_score)
     write_generated_job_file(

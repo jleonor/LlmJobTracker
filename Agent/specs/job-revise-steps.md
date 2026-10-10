@@ -9,17 +9,17 @@ replacement — mirrors `revise-steps.md`'s OLD/NEW model in spirit, but each se
 answer grammar, since none of the five is a single plain-text document the way a profile output
 is.
 
-`job_details` and `application_history` have a grammar so far, matching D-136's risk-ascending
-order. Positioning analysis, Tailored CV and Cover letter are reserved section kinds (the
+`job_details`, `application_history` and `positioning` have a grammar so far, matching D-136's
+risk-ascending order. Tailored CV and Cover letter are reserved section kinds (the
 `job_revise_turns` table's CHECK constraint already allows them) with no grammar yet —
-`submit_job_revise_turn` raises `JobReviseNotReady` for any of them today, naming that the chat
-isn't built for that section yet.
+`submit_job_revise_turn` raises `JobReviseNotReady` for either today, naming that the chat isn't
+built for that section yet.
 
 ## Job kind, table, and prompt shape
 
-- **Kind:** `revise_<section kind>` — `revise_job_details`, `revise_application_history`. Each
-  links to the `job_application_id` it's revising, unlike a profile revise turn (which links to
-  none).
+- **Kind:** `revise_<section kind>` — `revise_job_details`, `revise_application_history`,
+  `revise_positioning`. Each links to the `job_application_id` it's revising, unlike a profile
+  revise turn (which links to none).
 - **Table:** `job_revise_turns` (migration 18) — one shared table with a `section_kind` column,
   the same single-table-many-kinds shape `revise_turns` already uses for the three profile
   documents, kept separate from it since `revise_turns`'s `output_kind` CHECK and lack of a
@@ -100,6 +100,63 @@ grammar allows it. A `DUE DATE` that is neither of those two words is checked as
 anything else rejects the whole turn, both fields left as they were. An answer that changes
 neither field is rejected, same as Job details' "did not change anything" guard.
 
+## Positioning analysis's answer grammar (D-139)
+
+What goes into the prompt: the three profile documents (career history, questionnaire analysis,
+strategy — `profile_document_blocks`, now a shared, public helper of `job_pipeline.py` rather
+than that step's own private one, since Tailored CV and Cover letter's prompts already needed
+it); the job description; the current `positioning_scores`, numbered 1-based with each
+requirement's current weight and match shown alongside it; the current `fit`/`gaps`/`strategy`/
+`unclear`; the conversation so far; the new message.
+
+Until this batch, the only record of each requirement's weight/match/reasoning was the *rendered*
+breakdown Markdown table — not something a `NUMBER`-indexed patch can reliably read back from,
+since reparsing a table the model never wrote in this turn is exactly the fragile, lossy
+round-trip this app's prompt design avoids elsewhere (D-130, D-134). Migration 19 adds
+`job_applications.positioning_scores` (JSON `[{text, weight, match, reasoning}]`), written
+alongside the rendered document by both the one-shot `generate_positioning` and this chat.
+
+The answer:
+
+```
+=== FIT ===
+unchanged, or the full replacement list (one "- bullet" per line)
+=== END FIT ===
+
+=== GAPS ===
+unchanged, or the full replacement list (one "- bullet" per line)
+=== END GAPS ===
+
+=== STRATEGY ===
+unchanged, or the full replacement text
+=== END STRATEGY ===
+
+=== UNCLEAR ===
+unchanged, or the full replacement list (one "- bullet" per line)
+=== END UNCLEAR ===
+```
+
+then, only for a requirement's score actually being changed — one not mentioned stays exactly as
+it is:
+
+```
+=== REQUIREMENT PATCH ===
+NUMBER: <a number from the list above>
+WEIGHT: unchanged, or a new 0-10 weight
+MATCH: unchanged, or a new 0-10 match
+REASONING: unchanged, or new reasoning
+=== END REQUIREMENT PATCH ===
+```
+
+Each of `WEIGHT`/`MATCH`/`REASONING` is independent — a patch can touch any subset of the three,
+leaving the others as they are. `NUMBER` is checked against the stored list's current length (out
+of range, non-integer, or patched more than once rejects the whole turn); `WEIGHT`/`MATCH` are
+checked as `0`-`10` when given. Applying any score patch recomputes `match_score` (D-47) from the
+updated list and re-renders the breakdown document (`render_breakdown_document`, the same
+function the one-shot step uses) — if every resulting weight would be `0`, the whole turn is
+rejected, the same guard the one-shot step already has. An answer that changes nothing (every
+field `unchanged` and no patches) is rejected, same as the other two sections' grammars.
+
 ## Trace, honesty, and routes
 
 Same as `revise-steps.md`: the runner streams the answer in (`--include-partial-messages`), so
@@ -113,5 +170,5 @@ nothing yet to revise, 400s with a message naming why.
 
 ## Out of scope here
 
-- Positioning analysis, Tailored CV and Cover letter's own answer grammars — each is its own
-  appended batch (D-136), built and reviewed in that order before its chat turn can actually run.
+- Tailored CV and Cover letter's own answer grammars — each is its own appended batch (D-136),
+  built and reviewed in that order before its chat turn can actually run.

@@ -1,6 +1,6 @@
 """Tests for the job page's chat-revise plumbing (D-136, Agent/specs/job-revise-steps.md):
-Job details' and Application history's patch grammars, the shared job-scoped turns table, and
-the routes.
+Job details', Application history's and Positioning analysis's patch grammars, the shared
+job-scoped turns table, and the routes.
 """
 
 from pathlib import Path
@@ -15,17 +15,22 @@ from localjobtracker.job_applications import (
     insert_job_application,
     update_job_application,
 )
-from localjobtracker.job_files import store_job_file
+from localjobtracker.job_files import list_job_files, store_job_file
+from localjobtracker.job_pipeline import RequirementScore, scores_to_json
 from localjobtracker.job_revise_pipeline import (
     ApplicationHistoryRevision,
     JobReviseNotReady,
     RequirementPatch,
+    ScorePatch,
     apply_requirement_patches,
+    apply_score_patches,
     make_pipeline,
     parse_application_history_revision,
     parse_job_details_revision,
+    parse_positioning_revision,
     submit_job_revise_turn,
 )
+from localjobtracker.profile_pipeline import store_output
 from localjobtracker.runner import FakeRunner
 from localjobtracker.storage import connect
 
@@ -322,7 +327,7 @@ def test_submit_rejects_a_section_kind_whose_grammar_is_not_built_yet(db_path: P
     app_id = add_application(db_path)
     queue = make_queue(db_path, FakeRunner())
     with pytest.raises(JobReviseNotReady, match="isn't built yet"):
-        submit(db_path, queue, app_id, "positioning", "Raise the weight on the SQL requirement.")
+        submit(db_path, queue, app_id, "tailored_cv", "Reword the tagline.")
 
 
 def test_submit_rejects_an_unknown_section_kind(db_path: Path) -> None:
@@ -530,3 +535,214 @@ def test_submit_rejects_when_application_history_has_nothing_to_revise(db_path: 
     queue = make_queue(db_path, FakeRunner())
     with pytest.raises(JobReviseNotReady, match="no Application history yet"):
         submit(db_path, queue, app_id, "application_history", "What's next?")
+
+
+# --- Positioning analysis: helpers ---
+
+
+def add_profile_documents(db_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        for kind, text in (
+            ("full_cv_history", "# Career history\n\nAnalyst with five years of SQL-heavy work."),
+            (
+                "questionnaire_analysis",
+                "# Questionnaire analysis\n\nStrong preference for data roles.",
+            ),
+            ("strategy", "# Strategy\n\nLead with SQL and reporting experience."),
+        ):
+            store_output(conn, kind, text, None, [], source="generated")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def fill_positioning(
+    db_path: Path,
+    app_id: int,
+    *,
+    fit: list[str],
+    gaps: list[str],
+    strategy: str,
+    unclear: list[str],
+    scores: list[RequirementScore],
+) -> None:
+    conn = connect(db_path)
+    try:
+        update_job_application(
+            conn, app_id, {"fit": fit, "gaps": gaps, "strategy": strategy, "unclear": unclear}
+        )
+        match_score = round(
+            sum(s.weight * s.match for s in scores) / (10 * sum(s.weight for s in scores)) * 100, 1
+        )
+        with conn:
+            conn.execute(
+                "UPDATE job_applications SET match_score = ?, positioning_scores = ? WHERE id = ?",
+                (match_score, scores_to_json(scores), app_id),
+            )
+    finally:
+        conn.close()
+
+
+def read_positioning(
+    db_path: Path, app_id: int
+) -> tuple[list[str], list[str], str | None, list[str], float | None]:
+    conn = connect(db_path)
+    try:
+        detail = get_job_application_detail(conn, app_id)
+    finally:
+        conn.close()
+    assert detail is not None
+    return detail.fit, detail.gaps, detail.strategy, detail.unclear, detail.match_score
+
+
+def positioning_answer(
+    fit: str = "unchanged",
+    gaps: str = "unchanged",
+    strategy: str = "unchanged",
+    unclear: str = "unchanged",
+    *patches: str,
+) -> str:
+    body = "\n\n".join(patches)
+    return (
+        f"=== FIT ===\n{fit}\n=== END FIT ===\n\n"
+        f"=== GAPS ===\n{gaps}\n=== END GAPS ===\n\n"
+        f"=== STRATEGY ===\n{strategy}\n=== END STRATEGY ===\n\n"
+        f"=== UNCLEAR ===\n{unclear}\n=== END UNCLEAR ===\n\n{body}"
+    )
+
+
+def score_patch(
+    number: str, weight: str = "unchanged", match: str = "unchanged", reasoning: str = "unchanged"
+) -> str:
+    return (
+        f"=== REQUIREMENT PATCH ===\nNUMBER: {number}\nWEIGHT: {weight}\nMATCH: {match}\n"
+        f"REASONING: {reasoning}\n=== END REQUIREMENT PATCH ==="
+    )
+
+
+TWO_SCORES = [
+    RequirementScore(text="Strong SQL", weight=8, match=9, reasoning="Five years of SQL work."),
+    RequirementScore(text="4+ years experience", weight=6, match=10, reasoning="Six years total."),
+]
+
+
+# --- parse_positioning_revision / apply_score_patches: pure-function tests ---
+
+
+def test_parse_positioning_revision_reads_fields_and_patches() -> None:
+    revision = parse_positioning_revision(
+        positioning_answer(
+            "- A new fit point", "unchanged", "unchanged", "unchanged", score_patch("1", "9")
+        )
+    )
+    assert revision.fit == ["A new fit point"]
+    assert revision.gaps is None
+    assert revision.patches == [ScorePatch(number="1", weight="9", match=None, reasoning=None)]
+
+
+def test_parse_positioning_revision_rejects_a_no_op_answer() -> None:
+    with pytest.raises(PromptRejected, match="did not change anything"):
+        parse_positioning_revision(positioning_answer())
+
+
+def test_apply_score_patches_changes_only_the_given_fields() -> None:
+    result = apply_score_patches(
+        TWO_SCORES, [ScorePatch(number="1", weight="9", match=None, reasoning=None)]
+    )
+    assert result[0] == RequirementScore(
+        text="Strong SQL", weight=9, match=9, reasoning="Five years of SQL work."
+    )
+    assert result[1] == TWO_SCORES[1]  # untouched
+
+
+def test_apply_score_patches_rejects_an_out_of_range_number() -> None:
+    with pytest.raises(PromptRejected, match="not a current requirement"):
+        apply_score_patches(
+            TWO_SCORES, [ScorePatch(number="5", weight="1", match=None, reasoning=None)]
+        )
+
+
+def test_apply_score_patches_rejects_leaving_every_weight_at_zero() -> None:
+    with pytest.raises(PromptRejected, match="weight of 0"):
+        apply_score_patches(
+            TWO_SCORES,
+            [
+                ScorePatch(number="1", weight="0", match=None, reasoning=None),
+                ScorePatch(number="2", weight="0", match=None, reasoning=None),
+            ],
+        )
+
+
+# --- submit_job_revise_turn / the pipeline, end to end with FakeRunner ---
+
+
+def test_a_turn_adjusts_one_weight_and_recomputes_match_score(db_path: Path) -> None:
+    app_id = add_application(db_path)
+    add_profile_documents(db_path)
+    fill_positioning(
+        db_path,
+        app_id,
+        fit=["Strong SQL background"],
+        gaps=[],
+        strategy="Lead with the data work.",
+        unclear=[],
+        scores=TWO_SCORES,
+    )
+    runner = FakeRunner(
+        text=positioning_answer(
+            "unchanged", "unchanged", "unchanged", "unchanged", score_patch("1", "10", "9")
+        )
+    )
+    queue = make_queue(db_path, runner)
+
+    submit(db_path, queue, app_id, "positioning", "Weight the SQL requirement higher.")
+    run_all(queue)
+
+    fit, gaps, strategy, unclear, match_score = read_positioning(db_path, app_id)
+    assert strategy == "Lead with the data work."  # unchanged
+    # Σ(weight×match)÷(10×Σweight)×100 = (10×9 + 6×10) ÷ (10×16) × 100 = 93.75 -> 93.8
+    assert match_score == pytest.approx(93.8, abs=0.05)
+    conn = connect(db_path)
+    try:
+        breakdown = [
+            f for f in list_job_files(conn, app_id) if f["kind"] == "positioning_breakdown"
+        ]
+    finally:
+        conn.close()
+    assert len(breakdown) == 1
+
+
+def test_a_turn_replaces_fit_and_gaps(db_path: Path) -> None:
+    app_id = add_application(db_path)
+    add_profile_documents(db_path)
+    fill_positioning(
+        db_path,
+        app_id,
+        fit=["Strong SQL background"],
+        gaps=[],
+        strategy="Lead with the data work.",
+        unclear=[],
+        scores=TWO_SCORES,
+    )
+    runner = FakeRunner(
+        text=positioning_answer(
+            "- Strong SQL background\n- Five years of analytics", "- No BI tool experience"
+        )
+    )
+    queue = make_queue(db_path, runner)
+
+    submit(db_path, queue, app_id, "positioning", "Add a fit point and note the BI tool gap.")
+    run_all(queue)
+
+    fit, gaps, strategy, unclear, match_score = read_positioning(db_path, app_id)
+    assert fit == ["Strong SQL background", "Five years of analytics"]
+    assert gaps == ["No BI tool experience"]
+    assert match_score == pytest.approx(94.3, abs=0.05)  # untouched by a fit/gaps-only turn
+
+
+def test_submit_rejects_when_positioning_has_nothing_to_revise(db_path: Path) -> None:
+    app_id = add_application(db_path)
+    queue = make_queue(db_path, FakeRunner())
+    with pytest.raises(JobReviseNotReady, match="no Positioning analysis yet"):
+        submit(db_path, queue, app_id, "positioning", "Raise the SQL weight.")

@@ -778,6 +778,14 @@ MIGRATIONS: tuple[Migration, ...] = (
         ),
         down=("DROP TABLE job_revise_turns",),
     ),
+    Migration(
+        version=19,
+        name="add positioning_scores, the structured per-requirement breakdown (D-139)",
+        up=(
+            "ALTER TABLE job_applications ADD COLUMN positioning_scores TEXT NOT NULL DEFAULT '[]'",
+        ),
+        down=("ALTER TABLE job_applications DROP COLUMN positioning_scores",),
+    ),
 )
 
 _LEDGER = """

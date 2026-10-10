@@ -30,6 +30,7 @@ from localjobtracker.job_pipeline import (
     parse_positioning_answer,
     positioning_ready,
     render_breakdown_document,
+    scores_from_json,
     submit_generate_application_history,
     submit_generate_job_details,
     submit_generate_positioning,
@@ -586,12 +587,16 @@ def test_generate_positioning_end_to_end_computes_and_stores_the_score(db_path: 
         assert job is not None
         assert job.status == "done"
         row = conn.execute(
-            "SELECT fit, gaps, strategy, unclear, match_score FROM job_applications WHERE id = ?",
+            "SELECT fit, gaps, strategy, unclear, match_score, positioning_scores "
+            "FROM job_applications WHERE id = ?",
             (app_id,),
         ).fetchone()
         assert json.loads(row["fit"]) == ["Strong SQL background"]
         assert row["strategy"] == "Lead with the SQL and reporting experience."
         assert row["match_score"] == pytest.approx(94.3, abs=0.05)
+        scores = scores_from_json(row["positioning_scores"])
+        assert [s.text for s in scores] == REQUIREMENTS
+        assert scores[0].weight == 8
         files = list_job_files(conn, app_id)
         breakdown = [f for f in files if f["kind"] == "positioning_breakdown"]
         assert len(breakdown) == 1
