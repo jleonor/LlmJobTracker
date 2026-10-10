@@ -230,7 +230,8 @@ def latest_job_file_of_kind(
     """The one current file of this kind for an application (D-115: Listing, Tailored CV, Cover
     letter and the positioning breakdown each hold at most one), or None."""
     row: sqlite3.Row | None = conn.execute(
-        "SELECT id, name, stored_path, extraction_status, extraction_message, extracted_text "
+        "SELECT id, name, stored_path, sha256, source_url, extraction_status, "
+        "extraction_message, extracted_text "
         "FROM job_files WHERE job_application_id = ? AND kind = ? ORDER BY id DESC LIMIT 1",
         (application_id, kind),
     ).fetchone()
@@ -257,6 +258,8 @@ def write_generated_job_file(
     content: bytes,
     *,
     extracted_text: str | None = None,
+    source_url: str | None = None,
+    sha256_override: str | None = None,
 ) -> JobApplicationFile:
     """Save a Claude-generated result as the one file in its kind's slot, replacing whatever was
     there (D-115) — used by job_pipeline.py's Generate (LLM) steps, the same way
@@ -265,6 +268,14 @@ def write_generated_job_file(
     `extracted_text` is the file's own text when it has one to read back later (a Markdown
     listing or positioning breakdown, read as itself); left out for a binary result (a Tailored
     CV or Cover letter `.docx`, D-130), which isn't prompt input for anything downstream.
+
+    `source_url` and `sha256_override` exist for Add Job's Listing kind only
+    (Agent/specs/intake-steps.md, D-146): a dedup fingerprint of the *reviewed text*, computed
+    before any Claude call ran, needs to survive Generate replacing the placeholder row with the
+    model's own cleaned-up version - `sha256_override` keeps the stored hash meaning "the same
+    reviewed posting," not "byte-identical generated output," which would defeat a repeat check
+    against an application regenerated since. Every other caller leaves both None, falling back
+    to this function's own hash-of-content default.
     """
     clear_job_files_of_kind(conn, files_root, application_id, kind)
     app_row = conn.execute(
@@ -276,7 +287,7 @@ def write_generated_job_file(
     folder.mkdir(parents=True, exist_ok=True)
     target, final_name = _unique_target(folder, name, content)
     target.write_bytes(content)
-    digest = hashlib.sha256(content).hexdigest()
+    digest = sha256_override or hashlib.sha256(content).hexdigest()
     extraction_status = "ok" if extracted_text is not None else None
     file_id = insert_job_file(
         conn,
@@ -285,6 +296,7 @@ def write_generated_job_file(
         name=final_name,
         stored_path=target.relative_to(files_root).as_posix(),
         sha256=digest,
+        source_url=source_url,
         extraction_status=extraction_status,
         extracted_text=extracted_text,
     )

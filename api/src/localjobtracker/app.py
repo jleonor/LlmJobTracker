@@ -31,6 +31,7 @@ from localjobtracker.job_applications import (
     StatusHistoryEdit,
     UnknownField,
     get_job_application_detail,
+    insert_job_application,
     list_job_applications,
     replace_status_history,
     set_master_cv,
@@ -41,13 +42,17 @@ from localjobtracker.job_files import (
     JobApplicationFile,
     JobFileUploadError,
     find_duplicate_listing,
+    insert_job_file,
     listing_text_sha256,
+    managed_folder,
     store_job_file,
 )
 from localjobtracker.job_pipeline import (
+    ADD_JOB_WORKFLOWS,
     JobIdentityAnswer,
     JobStepNotReady,
     parse_identity_answer,
+    queue_add_job_chain,
     submit_check_job_listing_text,
     submit_extract_job_identity,
     submit_generate_application_history,
@@ -147,6 +152,29 @@ class DuplicateCheckRequest(BaseModel):
 
 class IdentityRequest(BaseModel):
     text: str
+
+
+class CreateJobApplicationRequest(BaseModel):
+    """Add Job's confirmation stage (Agent/specs/intake-steps.md): the identity fields the user
+    confirmed or typed by hand, the reviewed listing text and how it was obtained, the chosen
+    workflow, and an optional Master CV reference."""
+
+    company: str
+    role_title: str
+    lane: str | None = None
+    location: str | None = None
+    portal_name: str | None = None
+    portal_url: str | None = None
+    listing_method: str  # "url" | "paste" | "upload"
+    listing_text: str
+    listing_source_url: str | None = None
+    workflow: str  # one of job_pipeline.ADD_JOB_WORKFLOWS
+    master_cv_profile_file_id: int | None = None
+
+
+class AddJobResult(BaseModel):
+    application_id: int
+    claude_job_ids: list[int]  # in queued order: Listing, Job details, then the rest (D-144)
 
 
 class ReviseTurnCreate(BaseModel):
@@ -252,6 +280,81 @@ def create_app(
     ) -> list[JobApplication]:
         return list_job_applications(conn)
 
+    @app.post(
+        "/job-applications",
+        response_model=AddJobResult,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def create_job_application(
+        body: CreateJobApplicationRequest, conn: Annotated[Connection, Depends(get_db)]
+    ) -> AddJobResult:
+        company = body.company.strip()
+        role_title = body.role_title.strip()
+        listing_text = body.listing_text.strip()
+        if not company or not role_title:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Company and role title are required.",
+            )
+        if not listing_text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="There is no reviewed listing text.",
+            )
+        if body.workflow not in ADD_JOB_WORKFLOWS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown workflow: {body.workflow}.",
+            )
+        if body.workflow != "basic" and body.master_cv_profile_file_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Positioning analysis needs a Master CV selected.",
+            )
+        _require_master_cv_kind(conn, body.master_cv_profile_file_id)
+
+        application_id = insert_job_application(
+            conn,
+            {
+                "company": company,
+                "role_title": role_title,
+                "lane": body.lane,
+                "location": body.location,
+                "portal_name": body.portal_name,
+                "portal_url": body.portal_url,
+            },
+        )
+        if body.master_cv_profile_file_id is not None:
+            set_master_cv(conn, application_id, body.master_cv_profile_file_id)
+
+        # A placeholder listing row carries the reviewed text's dedup fingerprint (D-146)
+        # forward until generate_job_listing replaces it with the model's own cleaned-up
+        # version - _store_generated_listing preserves it rather than recomputing it from the
+        # generated content.
+        source_url = body.listing_source_url if body.listing_method == "url" else None
+        folder = managed_folder(files_root, company, role_title)
+        insert_job_file(
+            conn,
+            application_id,
+            kind="listing",
+            name="Job Listing.md",
+            stored_path=(folder / "Job Listing.md").relative_to(files_root).as_posix(),
+            sha256=listing_text_sha256(listing_text),
+            source_url=source_url,
+        )
+        conn.commit()
+
+        try:
+            claude_job_ids = queue_add_job_chain(
+                conn, queue, application_id, body.listing_method, listing_text, body.workflow
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        return AddJobResult(application_id=application_id, claude_job_ids=claude_job_ids)
+
     @app.get(
         "/job-applications/{application_id}",
         response_model=JobApplicationDetail,
@@ -304,16 +407,7 @@ def create_app(
     ) -> JobApplicationDetail:
         if get_job_application_detail(conn, application_id) is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-        if selection.profile_file_id is not None:
-            row = conn.execute(
-                "SELECT kind FROM profile_files WHERE id = ?", (selection.profile_file_id,)
-            ).fetchone()
-            if row is None:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such file.")
-            if row["kind"] != "master_cv":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST, detail="That file isn't a master CV."
-                )
+        _require_master_cv_kind(conn, selection.profile_file_id)
         detail = set_master_cv(conn, application_id, selection.profile_file_id)
         assert detail is not None
         return detail
@@ -938,6 +1032,20 @@ def _job_or_404(conn: Connection, job_id: int) -> ClaudeJob:
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     return job
+
+
+def _require_master_cv_kind(conn: Connection, profile_file_id: int | None) -> None:
+    """Shared by the Master CV selector (D-116) and Add Job's creation request
+    (Agent/specs/intake-steps.md): None clears the selection, so only a given id is checked."""
+    if profile_file_id is None:
+        return
+    row = conn.execute("SELECT kind FROM profile_files WHERE id = ?", (profile_file_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such file.")
+    if row["kind"] != "master_cv":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="That file isn't a master CV."
+        )
 
 
 def _job_file_or_404(conn: Connection, files_root: Path, application_id: int, file_id: int) -> Path:

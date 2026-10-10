@@ -789,9 +789,18 @@ def submit_generate_job_listing(
 
 
 def submit_generate_job_details(
-    conn: sqlite3.Connection, queue: ClaudeJobQueue, application_id: int
+    conn: sqlite3.Connection,
+    queue: ClaudeJobQueue,
+    application_id: int,
+    *,
+    skip_gate: bool = False,
 ) -> int:
-    if not job_details_ready(conn, application_id):
+    """`skip_gate` is for Add Job's own chain (queue_add_job_chain below), which queues this
+    immediately behind generate_job_listing - the listing this gate checks for does not exist
+    yet, only the queue entry that will create it (D-50: one Claude Job runs at a time, in
+    creation order). build_job_details_prompt's own PromptRejected is the real safety net then,
+    checked at render time once this step's turn actually comes."""
+    if not skip_gate and not job_details_ready(conn, application_id):
         raise JobStepNotReady("Add a listing file with readable text first.")
     return queue.submit(
         conn,
@@ -803,9 +812,15 @@ def submit_generate_job_details(
 
 
 def submit_generate_positioning(
-    conn: sqlite3.Connection, queue: ClaudeJobQueue, application_id: int
+    conn: sqlite3.Connection,
+    queue: ClaudeJobQueue,
+    application_id: int,
+    *,
+    skip_gate: bool = False,
 ) -> int:
-    if not positioning_ready(conn, application_id):
+    """`skip_gate`: see submit_generate_job_details above - Add Job's own chain queues this
+    before Job details has actually run."""
+    if not skip_gate and not positioning_ready(conn, application_id):
         raise JobStepNotReady(
             "Positioning analysis needs the career history, questionnaire analysis and "
             "strategy, a selected Master CV, and Job details filled in first."
@@ -834,9 +849,15 @@ def submit_generate_application_history(
 
 
 def submit_generate_tailored_cv(
-    conn: sqlite3.Connection, queue: ClaudeJobQueue, application_id: int
+    conn: sqlite3.Connection,
+    queue: ClaudeJobQueue,
+    application_id: int,
+    *,
+    skip_gate: bool = False,
 ) -> int:
-    if not tailored_cv_ready(conn, application_id):
+    """`skip_gate`: see submit_generate_job_details above - Add Job's own chain queues this
+    before Positioning analysis has actually run."""
+    if not skip_gate and not tailored_cv_ready(conn, application_id):
         raise JobStepNotReady(
             "Tailored CV needs a selected Master CV, the three LLM profile documents, Job "
             "details filled in, and a positioning breakdown document first."
@@ -851,9 +872,15 @@ def submit_generate_tailored_cv(
 
 
 def submit_generate_cover_letter(
-    conn: sqlite3.Connection, queue: ClaudeJobQueue, application_id: int
+    conn: sqlite3.Connection,
+    queue: ClaudeJobQueue,
+    application_id: int,
+    *,
+    skip_gate: bool = False,
 ) -> int:
-    if not cover_letter_ready(conn, application_id):
+    """`skip_gate`: see submit_generate_job_details above - Add Job's own chain queues this
+    before the Tailored CV has actually run."""
+    if not skip_gate and not cover_letter_ready(conn, application_id):
         raise JobStepNotReady(
             "Cover letter needs a Tailored CV, Job details filled in, the three LLM profile "
             "documents, a positioning breakdown document, and a cover letter template uploaded "
@@ -866,6 +893,44 @@ def submit_generate_cover_letter(
         [(JOB_KIND_COVER_LETTER, "")],
         job_application_id=application_id,
     )
+
+
+# Add Job: queuing a new row's whole chosen chain at once (Agent/specs/intake-steps.md).
+
+ADD_JOB_WORKFLOWS: Final = ("basic", "positioning", "full")
+
+
+def queue_add_job_chain(
+    conn: sqlite3.Connection,
+    queue: ClaudeJobQueue,
+    application_id: int,
+    method: str,
+    text: str,
+    workflow: str,
+) -> list[int]:
+    """Queue the rest of Add Job's chosen workflow once the row exists (D-143 to D-146):
+
+    - "basic": generate_job_listing, then generate_job_details.
+    - "positioning": the above, then generate_positioning (the application's Master CV must
+      already be selected - checked by the caller, since this function only queues).
+    - "full": the above, then generate_tailored_cv and generate_cover_letter.
+
+    Every step after the first is queued with `skip_gate=True`: its own inputs do not exist yet,
+    only the queue entry ahead of it that will create them, since the queue runs one Claude Job
+    at a time in creation order (D-50). Each step's own build_*_prompt() still raises
+    PromptRejected at render time if, for any reason (a predecessor failed), what it needs isn't
+    actually there once its turn comes - the real gate, not bypassed here, just checked later.
+    """
+    if workflow not in ADD_JOB_WORKFLOWS:
+        raise ValueError(f"Unknown workflow: {workflow}")
+    job_ids = [submit_generate_job_listing(conn, queue, application_id, method, text)]
+    job_ids.append(submit_generate_job_details(conn, queue, application_id, skip_gate=True))
+    if workflow in ("positioning", "full"):
+        job_ids.append(submit_generate_positioning(conn, queue, application_id, skip_gate=True))
+    if workflow == "full":
+        job_ids.append(submit_generate_tailored_cv(conn, queue, application_id, skip_gate=True))
+        job_ids.append(submit_generate_cover_letter(conn, queue, application_id, skip_gate=True))
+    return job_ids
 
 
 # Parsing answers.
@@ -1265,6 +1330,13 @@ def _application_id_for(conn: sqlite3.Connection, claude_job_id: int | None) -> 
 def _store_generated_listing(
     conn: sqlite3.Connection, files_root: Path, application_id: int, document: str
 ) -> None:
+    # Carry the dedup fingerprint forward from whatever listing row this replaces (Add Job's own
+    # placeholder, or an earlier Generate run) - D-146's duplicate check compares the *reviewed
+    # text*'s hash, which this step's own cleaned-up output would otherwise overwrite with a
+    # hash of its own, different, generated content. A listing with nothing to carry forward
+    # (the existing per-application flow's own first-ever Generate) falls back to the usual
+    # hash-of-content default, unchanged from before this existed.
+    existing = latest_job_file_of_kind(conn, application_id, "listing")
     write_generated_job_file(
         conn,
         files_root,
@@ -1273,6 +1345,8 @@ def _store_generated_listing(
         GENERATED_LISTING_NAME,
         document.encode("utf-8"),
         extracted_text=document,
+        source_url=existing["source_url"] if existing is not None else None,
+        sha256_override=existing["sha256"] if existing is not None else None,
     )
 
 
