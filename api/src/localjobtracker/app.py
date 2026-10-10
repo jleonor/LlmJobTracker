@@ -39,7 +39,6 @@ from localjobtracker.job_applications import (
 from localjobtracker.job_files import JobApplicationFile, JobFileUploadError, store_job_file
 from localjobtracker.job_pipeline import (
     JobStepNotReady,
-    make_pipeline,
     submit_check_job_listing_text,
     submit_generate_application_history,
     submit_generate_cover_letter,
@@ -48,6 +47,18 @@ from localjobtracker.job_pipeline import (
     submit_generate_positioning,
     submit_generate_tailored_cv,
 )
+from localjobtracker.job_revise_pipeline import (
+    JobReviseNotReady,
+    make_pipeline,
+    submit_job_revise_turn,
+)
+from localjobtracker.job_revise_turns import (
+    JobReviseTurn,
+    turns_for_section,
+)
+from localjobtracker.job_revise_turns import (
+    turn_for_job as job_revise_turn_for_job,
+)
 from localjobtracker.listing_intake import (
     ListingExtraction,
     ListingFetchError,
@@ -55,6 +66,7 @@ from localjobtracker.listing_intake import (
     extract_from_upload,
     extract_from_url,
 )
+from localjobtracker.migrations import JOB_REVISE_SECTION_KINDS as SECTION_KINDS
 from localjobtracker.profile_files import (
     ProfileFile,
     ProfileFileText,
@@ -124,6 +136,19 @@ class ReviseTurnCreate(BaseModel):
 
 class ReviseTurnView(BaseModel):
     """One chat turn and the Claude Job it queued (D-106)."""
+
+    id: int
+    message: str
+    created_at: str
+    job: ClaudeJob
+
+
+class JobReviseTurnCreate(BaseModel):
+    message: str
+
+
+class JobReviseTurnView(BaseModel):
+    """One chat turn revising a job-page section, and the Claude Job it queued (D-136)."""
 
     id: int
     message: str
@@ -538,6 +563,54 @@ def create_app(
             ) from error
         return _job_or_404(conn, job_id)
 
+    @app.get(
+        "/job-applications/{application_id}/revise/{section_kind}/turns",
+        response_model=list[JobReviseTurnView],
+        dependencies=[Depends(require_token)],
+    )
+    def job_revise_turns_route(
+        application_id: int, section_kind: str, conn: Annotated[Connection, Depends(get_db)]
+    ) -> list[JobReviseTurnView]:
+        if get_job_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        if section_kind not in SECTION_KINDS:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return [
+            _job_revise_turn_view(queue, conn, turn)
+            for turn in turns_for_section(conn, application_id, section_kind)
+        ]
+
+    @app.post(
+        "/job-applications/{application_id}/revise/{section_kind}/turns",
+        response_model=JobReviseTurnView,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def start_job_revise_turn(
+        application_id: int,
+        section_kind: str,
+        body: JobReviseTurnCreate,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> JobReviseTurnView:
+        if get_job_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        if section_kind not in SECTION_KINDS:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            job_id = submit_job_revise_turn(conn, queue, application_id, section_kind, body.message)
+        except JobReviseNotReady as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        turn = job_revise_turn_for_job(conn, job_id)
+        if turn is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return _job_revise_turn_view(queue, conn, turn)
+
     @app.post("/runs/check", response_model=RunResult, dependencies=[Depends(require_token)])
     def run_check() -> RunResult:
         return runner.run(CHECK_PROMPT)
@@ -764,6 +837,18 @@ def _with_live_text(queue: ClaudeJobQueue, job: ClaudeJob) -> ClaudeJob:
 def _revise_turn_view(queue: ClaudeJobQueue, conn: Connection, turn: ReviseTurn) -> ReviseTurnView:
     job = _job_or_404(conn, turn.claude_job_id)
     return ReviseTurnView(
+        id=turn.id,
+        message=turn.message,
+        created_at=turn.created_at,
+        job=_with_live_text(queue, job),
+    )
+
+
+def _job_revise_turn_view(
+    queue: ClaudeJobQueue, conn: Connection, turn: JobReviseTurn
+) -> JobReviseTurnView:
+    job = _job_or_404(conn, turn.claude_job_id)
+    return JobReviseTurnView(
         id=turn.id,
         message=turn.message,
         created_at=turn.created_at,
