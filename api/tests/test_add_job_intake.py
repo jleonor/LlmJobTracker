@@ -1,6 +1,6 @@
-"""Tests for Add Job's intake routes (steps 3-4, Agent/specs/intake-steps.md): the same
+"""Tests for Add Job's intake routes (steps 3-5, Agent/specs/intake-steps.md): the same
 extraction and sanity check as the existing-application Listing routes (test_listing_intake.py),
-run with no application yet, plus the duplicate-check endpoint.
+run with no application yet, plus the duplicate-check and identity-extraction endpoints.
 """
 
 from collections.abc import Iterator
@@ -182,3 +182,68 @@ def test_duplicate_check_matches_by_source_url(client: TestClient, db_path: Path
     assert body is not None
     assert body["application_id"] == app_id
     assert body["matched_by"] == "url"
+
+
+# --- Identity (step 5) ----------------------------------------------------------------------
+
+GOOD_IDENTITY_ANSWER = (
+    "=== COMPANY ===\nAcme Inc\n=== END COMPANY ===\n\n"
+    "=== ROLE TITLE ===\nSenior Data Analyst\n=== END ROLE TITLE ===\n\n"
+    "=== LANE ===\nUnknown\n=== END LANE ===\n\n"
+    "=== LOCATION ===\nGeneva\n=== END LOCATION ===\n\n"
+    "=== PORTAL NAME ===\nUnknown\n=== END PORTAL NAME ===\n\n"
+    "=== PORTAL URL ===\n\n=== END PORTAL URL ==="
+)
+
+
+@pytest.fixture
+def identity_client(db_path: Path) -> Iterator[TestClient]:
+    runner = FakeRunner(text=GOOD_IDENTITY_ANSWER)
+    with TestClient(create_app(TOKEN, db_path, runner)) as test_client:
+        test_client.headers[TOKEN_HEADER] = TOKEN
+        yield test_client
+
+
+def test_identity_route_queues_and_the_result_is_readable(identity_client: TestClient) -> None:
+    created = identity_client.post(
+        "/job-applications/intake/identity", json={"text": "Senior Data Analyst at Acme Inc."}
+    )
+    assert created.status_code == 201
+    job = created.json()
+    assert job["kind"] == "extract_job_identity"
+    assert job["job_application_id"] is None
+
+    identity_client.app.state.queue.process_next()  # type: ignore[attr-defined]
+
+    result = identity_client.get(f"/job-applications/intake/identity/{job['id']}")
+    assert result.status_code == 200
+    body = result.json()
+    assert body["company"] == "Acme Inc"
+    assert body["role_title"] == "Senior Data Analyst"
+    assert body["lane"] is None
+    assert body["location"] == "Geneva"
+
+
+def test_identity_route_rejects_empty_text(identity_client: TestClient) -> None:
+    response = identity_client.post("/job-applications/intake/identity", json={"text": "  "})
+    assert response.status_code == 400
+
+
+def test_identity_result_for_an_unknown_job_is_not_found(identity_client: TestClient) -> None:
+    response = identity_client.get("/job-applications/intake/identity/999")
+    assert response.status_code == 404
+
+
+def test_identity_result_surfaces_a_rejected_answer(db_path: Path) -> None:
+    bad_answer = (
+        "=== COMPANY ===\nUnknown\n=== END COMPANY ===\n\n"
+        "=== ROLE TITLE ===\nUnknown\n=== END ROLE TITLE ==="
+    )
+    with TestClient(create_app(TOKEN, db_path, FakeRunner(text=bad_answer))) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        created = client.post(
+            "/job-applications/intake/identity", json={"text": "A vague page with no company."}
+        )
+        client.app.state.queue.process_next()  # type: ignore[attr-defined]
+        response = client.get(f"/job-applications/intake/identity/{created.json()['id']}")
+    assert response.status_code == 400

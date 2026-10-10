@@ -12,7 +12,7 @@ from urllib.parse import unquote
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel
 
-from localjobtracker.claude_job_queue import ClaudeJobQueue
+from localjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
 from localjobtracker.claude_jobs import (
     ClaudeJob,
     PromptExchange,
@@ -45,8 +45,11 @@ from localjobtracker.job_files import (
     store_job_file,
 )
 from localjobtracker.job_pipeline import (
+    JobIdentityAnswer,
     JobStepNotReady,
+    parse_identity_answer,
     submit_check_job_listing_text,
+    submit_extract_job_identity,
     submit_generate_application_history,
     submit_generate_cover_letter,
     submit_generate_job_details,
@@ -140,6 +143,10 @@ class ListingGenerateRequest(BaseModel):
 class DuplicateCheckRequest(BaseModel):
     text: str
     source_url: str | None = None
+
+
+class IdentityRequest(BaseModel):
+    text: str
 
 
 class ReviseTurnCreate(BaseModel):
@@ -546,6 +553,41 @@ def create_app(
         return find_duplicate_listing(
             conn, sha256=listing_text_sha256(body.text), source_url=body.source_url
         )
+
+    @app.post(
+        "/job-applications/intake/identity",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def intake_extract_identity(
+        body: IdentityRequest, conn: Annotated[Connection, Depends(get_db)]
+    ) -> ClaudeJob:
+        try:
+            job_id = submit_extract_job_identity(conn, queue, body.text)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        return _job_or_404(conn, job_id)
+
+    @app.get(
+        "/job-applications/intake/identity/{job_id}",
+        response_model=JobIdentityAnswer,
+        dependencies=[Depends(require_token)],
+    )
+    def intake_identity_result(
+        job_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> JobIdentityAnswer:
+        exchange = prompt_exchange(conn, job_id, 0)
+        if exchange is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            return parse_identity_answer(exchange.result_text or "")
+        except PromptRejected as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
 
     @app.post(
         "/job-applications/{application_id}/job-details/generate",
