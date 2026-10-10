@@ -110,13 +110,7 @@ export function GenerateSectionOverlay({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className={
-          showPreview
-            ? 'flex h-[85vh] w-full max-w-6xl flex-col gap-3 sm:max-w-6xl'
-            : 'flex max-h-[85vh] w-full max-w-2xl flex-col gap-3 sm:max-w-2xl'
-        }
-      >
+      <DialogContent className="flex h-[85vh] w-full max-w-6xl flex-col gap-3 sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>
             {verb} (LLM): {title}
