@@ -471,6 +471,58 @@ def create_app(
             ) from error
         return _job_or_404(conn, job_id)
 
+    # --- Add Job intake (Agent/specs/intake-steps.md): the same extraction and sanity check as
+    # Listing's own routes above, run before a row exists (D-143 to D-146). -----------------------
+
+    @app.post(
+        "/job-applications/intake/extract-url",
+        response_model=ListingExtraction,
+        dependencies=[Depends(require_token)],
+    )
+    def intake_extract_from_url(body: ListingUrlRequest) -> ListingExtraction:
+        try:
+            return extract_from_url(body.url)
+        except ListingFetchError as error:
+            raise HTTPException(status_code=error.status, detail=error.message) from error
+
+    @app.post(
+        "/job-applications/intake/extract-paste",
+        response_model=ListingExtraction,
+        dependencies=[Depends(require_token)],
+    )
+    def intake_extract_from_paste(body: ListingPasteRequest) -> ListingExtraction:
+        return extract_from_paste(body.text)
+
+    @app.post(
+        "/job-applications/intake/extract-upload",
+        response_model=ListingExtraction,
+        dependencies=[Depends(require_token)],
+    )
+    async def intake_extract_from_upload(request: Request) -> ListingExtraction:
+        name = unquote(request.headers.get("X-File-Name", ""))
+        content = await request.body()
+        try:
+            return extract_from_upload(name, content)
+        except ListingFetchError as error:
+            raise HTTPException(status_code=error.status, detail=error.message) from error
+
+    @app.post(
+        "/job-applications/intake/check",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def intake_check_listing_text(
+        body: ListingCheckRequest, conn: Annotated[Connection, Depends(get_db)]
+    ) -> ClaudeJob:
+        try:
+            job_id = submit_check_job_listing_text(conn, queue, None, body.text)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        return _job_or_404(conn, job_id)
+
     @app.post(
         "/job-applications/{application_id}/job-details/generate",
         response_model=ClaudeJob,

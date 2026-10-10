@@ -139,6 +139,28 @@ def test_check_job_completes_with_a_no_or_malformed_answer_rather_than_failing(
             conn.close()
 
 
+def test_check_job_runs_with_no_application_yet(db_path: Path) -> None:
+    """Add Job runs this before a row exists (intake-steps.md) - the queue has always allowed a
+    Claude Job linked to no application (D-49)."""
+    runner = FakeRunner(text="LOOKS_LIKE_A_JOB_POSTING: yes\nIt names a role and requirements.")
+    queue = make_queue(db_path, runner)
+    conn = connect(db_path)
+    try:
+        job_id = submit_check_job_listing_text(conn, queue, None, "Senior Data Analyst...")
+    finally:
+        conn.close()
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+        assert job is not None
+        assert job.status == "done"
+        assert job.job_application_id is None
+    finally:
+        conn.close()
+
+
 def test_submit_check_rejects_empty_text(db_path: Path) -> None:
     app_id = add_application(db_path)
     queue = make_queue(db_path, FakeRunner())

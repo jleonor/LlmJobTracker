@@ -7,6 +7,11 @@ document in the database. The other three read current stored data (the listing,
 documents, filed emails), so - like profile_pipeline.py/revise_pipeline.py - they queue an empty
 placeholder prompt and build the real text in render(), at run time, so a job queued behind
 others still reads what is current when it actually runs.
+
+check_job_listing_text is also used with no Job Application at all (Agent/specs/intake-steps.md,
+Add Job): it runs before a row exists, the same "linked to no application" case the queue has
+always allowed (D-49). Its render()/on_result() never reads `application_id`, so this needs no
+further change here.
 """
 
 import io
@@ -651,10 +656,14 @@ def cover_letter_ready(conn: sqlite3.Connection, application_id: int) -> bool:
 
 
 def submit_check_job_listing_text(
-    conn: sqlite3.Connection, queue: ClaudeJobQueue, application_id: int, text: str
+    conn: sqlite3.Connection, queue: ClaudeJobQueue, application_id: int | None, text: str
 ) -> int:
     """Queue the sanity check that runs automatically once extraction produces text, before the
-    user reaches the review screen (job-llm-steps.md)."""
+    user reaches the review screen (job-llm-steps.md).
+
+    `application_id` is None for Add Job (Agent/specs/intake-steps.md): the sanity check runs
+    before a row exists, the same way the queue has always allowed a Claude Job linked to no
+    application (D-49)."""
     cleaned = text.strip()
     if not cleaned:
         raise ValueError("There is no text to check.")
