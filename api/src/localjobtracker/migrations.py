@@ -36,6 +36,16 @@ JOB_FILE_KINDS = (
     "msg",
     "other",
 )
+# The job page's five chat-revised sections (D-136, Agent/specs/job-revise-steps.md). Only
+# "job_details" has an implemented answer grammar so far (job_revise_pipeline.py); the rest are
+# reserved here so the table's CHECK constraint doesn't need a later migration to widen it.
+JOB_REVISE_SECTION_KINDS = (
+    "job_details",
+    "positioning",
+    "application_history",
+    "tailored_cv",
+    "cover_letter",
+)
 
 # Phase 2 values (D-62, D-64, D-66; Agent/specs/profile-steps.md).
 CLAUDE_JOB_STATUSES = ("queued", "processing", "paused", "cancelled", "done", "failed")
@@ -341,6 +351,24 @@ CREATE TABLE job_files (
     name TEXT NOT NULL,
     stored_path TEXT NOT NULL,
     date TEXT,
+    created_at TEXT NOT NULL DEFAULT ({_NOW})
+)
+"""
+
+# D-136, Agent/specs/job-revise-steps.md: one shared table for all five chat-revised sections
+# (section_kind column), the same single-table-many-kinds shape revise_turns already uses for
+# the three profile documents - kept separate from revise_turns itself since that table's
+# output_kind CHECK and lack of a job_application_id column are profile-specific by design.
+# attachment_job_file_id is unused until Application history's own batch wires an upload into a
+# turn, but the column is added now so that batch doesn't need its own table-rebuild migration.
+_V18_JOB_REVISE_TURNS = f"""
+CREATE TABLE job_revise_turns (
+    id INTEGER PRIMARY KEY,
+    job_application_id INTEGER NOT NULL REFERENCES job_applications(id) ON DELETE CASCADE,
+    section_kind TEXT NOT NULL CHECK (section_kind IN ({_in_list(JOB_REVISE_SECTION_KINDS)})),
+    claude_job_id INTEGER NOT NULL REFERENCES claude_jobs(id) ON DELETE CASCADE,
+    message TEXT NOT NULL CHECK (message <> ''),
+    attachment_job_file_id INTEGER REFERENCES job_files(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL DEFAULT ({_NOW})
 )
 """
@@ -739,6 +767,16 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE job_files DROP COLUMN extraction_status",
             "ALTER TABLE job_files DROP COLUMN sha256",
         ),
+    ),
+    Migration(
+        version=18,
+        name="add job_revise_turns for the job page's chat-revise sections (D-136)",
+        up=(
+            _V18_JOB_REVISE_TURNS,
+            "CREATE INDEX job_revise_turns_by_section "
+            "ON job_revise_turns (job_application_id, section_kind, id)",
+        ),
+        down=("DROP TABLE job_revise_turns",),
     ),
 )
 
