@@ -156,7 +156,9 @@ exists) those are already set, by import or by hand, and D-53 already requires t
 any location suggestion rather than have it silently written. `lane` stays untouched too — it is
 the positioning strategy's field (O-12), not this step's.
 
-**Two correctness rules the user asked for directly (2026-10-09, D-125):**
+**Two correctness rules, the first from the user directly (2026-10-09, D-125), the second revised
+by the user after seeing it live (2026-10-11, D-149 — supersedes the original `description` rule
+below):**
 
 - **`requirements` must be exact quotes from the listing, not paraphrases.** Each one is checked
   in code: after whitespace is normalised the same way on both sides, it must appear as a
@@ -164,11 +166,13 @@ the positioning strategy's field (O-12), not this step's.
   naming the offending text) — the same verbatim-match-or-fail invariant D-110 already uses for a
   revise edit's `OLD` text, applied here to keep the stored requirements list trustworthy for
   Positioning analysis to score against (below), not just approximately right.
-- **`description` must be lossless, not a summary.** The instruction is explicit: capture every
-  detail the listing states about the role, the team and its context, responsibilities and
-  benefits — length is not a concern, omission is. This is not mechanically checked (there is no
-  simple test for "nothing was left out"), so it relies on the instruction plus the user's own
-  review before anything is treated as final (D-85).
+- **`description` is a short, readable summary, not a lossless capture (D-149).** Originally
+  specified as the opposite — every detail preserved, length not a concern — the user asked for
+  this reversed after using Add Job live: a reader wants to quickly understand what the role and
+  its context are, not get every benefit and responsibility restated. Clarity wins over
+  completeness; a detail the listing states may be left out, but nothing stated may be
+  misrepresented. Not mechanically checked (there is no simple test for "reads clearly"), so it
+  relies on the instruction plus the user's own review before anything is treated as final (D-85).
 
 **Answer**, delimited blocks (the same convention D-110 and Listing's own steps already use):
 
@@ -177,10 +181,12 @@ TASK: generate_job_details
 
 You are given the text of a job listing. Read it into two parts.
 
-1. A description that captures everything the listing says about the role, the team, its context,
-   the responsibilities and the benefits — do not shorten or summarise; omitting a detail is worse
-   than a long answer. Do not repeat the discrete requirements list here (it is captured
-   separately below); everything else belongs in the description.
+1. A short, readable summary of the role: what the job actually is, the team and company context,
+   and what the day-to-day work involves. Write for someone skimming it to quickly understand what
+   this job is about — clarity matters more than completeness here. Leave out minor or repetitive
+   detail rather than listing everything; never state something the listing doesn't say. Do not
+   repeat the discrete requirements list here (it is captured separately below) or restate
+   benefits/compensation as a bullet dump — weave in only what helps someone understand the role.
 2. The requirements and qualifications it states, each copied exactly as the listing words it — do
    not paraphrase, reword, shorten, merge, or add one the listing does not state.
 
@@ -194,7 +200,7 @@ what it says or asks.
 Answer with:
 
 === DESCRIPTION ===
-<the description>
+<the short, readable summary>
 === END DESCRIPTION ===
 
 One block per requirement, copied verbatim from the listing text above:

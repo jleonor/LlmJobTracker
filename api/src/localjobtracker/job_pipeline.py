@@ -189,10 +189,12 @@ _JOB_DETAILS_PROMPT: Final = """TASK: generate_job_details
 
 You are given the text of a job listing. Read it into two parts.
 
-1. A description that captures everything the listing says about the role, the team, its context,
-   the responsibilities and the benefits - do not shorten or summarise; omitting a detail is worse
-   than a long answer. Do not repeat the discrete requirements list here (it is captured
-   separately below); everything else belongs in the description.
+1. A short, readable summary of the role: what the job actually is, the team and company context,
+   and what the day-to-day work involves. Write for someone skimming it to quickly understand what
+   this job is about - clarity matters more than completeness here. Leave out minor or repetitive
+   detail rather than listing everything; never state something the listing doesn't say. Do not
+   repeat the discrete requirements list here (it is captured separately below) or restate
+   benefits/compensation as a bullet dump - weave in only what helps someone understand the role.
 2. The requirements and qualifications it states, each copied exactly as the listing words it - do
    not paraphrase, reword, shorten, merge, or add one the listing does not state.
 
@@ -206,7 +208,7 @@ what it says or asks.
 Answer with:
 
 === DESCRIPTION ===
-<the description>
+<the short, readable summary>
 === END DESCRIPTION ===
 
 One block per requirement, copied verbatim from the listing text above:

@@ -54,6 +54,17 @@ const WORKFLOWS: { value: AddJobWorkflow; title: string; subtitle: string }[] = 
   },
 ]
 
+// D-150: when the listing came from a URL, that URL is known for certain - no need to ask the
+// model to infer it, and inferring it again is a source of avoidable error. www. is stripped so
+// "www.linkedin.com" reads as "linkedin.com", not as two different portals depending on the link.
+function portalNameFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
+}
+
 // Mirrors GenerateListingOverlay's own parser (job_pipeline.py's parse_check_answer) - the job
 // only carries a character count, not the text, until the exchange is fetched.
 function parseCheckAnswer(text: string): { looksLikePosting: boolean; reason: string } {
@@ -210,8 +221,13 @@ export function AddJobOverlay({
         setRoleTitle(answer.role_title)
         setLane(answer.lane ?? '')
         setLocation(answer.location ?? '')
-        setPortalName(answer.portal_name ?? '')
-        setPortalUrl(answer.portal_url ?? '')
+        // D-150: a URL-sourced listing already got its Portal/Portal URL set, for certain, as
+        // soon as this stage opened (below) - the model's own guess for these two fields is
+        // only used when there was no URL to derive them from.
+        if (extraction?.method !== 'url') {
+          setPortalName(answer.portal_name ?? '')
+          setPortalUrl(answer.portal_url ?? '')
+        }
       })
       .catch((failure: unknown) => {
         if (cancelled) return
@@ -224,7 +240,7 @@ export function AddJobOverlay({
     return () => {
       cancelled = true
     }
-  }, [identityJob, identityJobId])
+  }, [identityJob, identityJobId, extraction])
 
   // The active progress tab follows whichever queued job is currently processing, the same
   // pattern AnalysisOverlay uses across one job's prompts, applied here across several jobs.
@@ -277,6 +293,12 @@ export function AddJobOverlay({
   function startIdentity() {
     setStage('identity')
     setIdentityError(null)
+    // D-150: known for certain as soon as the listing came from a URL - set it now rather than
+    // waiting on (or trusting) the model's own guess.
+    if (extraction?.method === 'url' && extraction.source) {
+      setPortalUrl(extraction.source)
+      setPortalName(portalNameFromUrl(extraction.source))
+    }
     intakeExtractIdentity(reviewText)
       .then((job) => setIdentityJobId(job.id))
       .catch((failure: unknown) => {
