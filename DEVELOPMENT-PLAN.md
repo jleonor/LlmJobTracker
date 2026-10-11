@@ -534,8 +534,12 @@ Step list (approved in chat 2026-10-10, D-143 to D-146)
    job (navigate to the new Job Application page and close), Add another job (resets the overlay
    to Stage 0, leaving the just-queued jobs running), Close (dismiss only — nothing is cancelled,
    the queue keeps processing).
-10. Frontend: wire the disabled "Add Job" button in `AppShell.tsx` to open `AddJobOverlay`. The
-    table's queue counter/badges already reflect the new jobs once queued.
+10. Frontend: wire "Add Job" to open `AddJobOverlay`. Revised while building (D-147): the button
+    and overlay move into `JobApplicationsPage.tsx` itself rather than staying in `AppShell`'s
+    global header — this app has no router, and only the Jobs screen can react to "jump to the
+    new application" without new cross-component plumbing. The table's queue badges turned out to
+    be a hardcoded placeholder, not real data (D-148) — fixed as part of this step, not a
+    pre-existing given.
 11. Checks: `scripts/check.py` output; personal-data scan; synthetic fixtures for each input type
     under `tests/fixtures/synthetic/`; screenshots per the Done-when list below.
 
@@ -545,8 +549,8 @@ Done when
 - [ ] A blocked URL falls back to the saved-HTML or paste path.
 - [ ] The extracted text can be edited before Claude runs.
 - [ ] A hostile fixture ("ignore previous instructions...") changes nothing beyond the extracted fields.
-- [ ] A repeat of an added listing is detected.
-- [ ] Adding a listing creates its tracker row with status Identified and queues one positioning Claude Job, which the queue badge shows.
+- [x] A repeat of an added listing is detected. (2026-10-11: verified live against the real Claude Code CLI, seeded dev database. Pasting the same text a second time showed "This looks like a repeat of Acme Testing Co - Senior Data Analyst (same text)" with a working "Open it instead" link, which closed the overlay and navigated straight to the existing application.)
+- [x] Adding a listing creates its tracker row with status Identified and queues Claude Jobs, which the queue badge shows. (2026-10-11: verified live, basic workflow — the row was created as "Identified" with today's date in its status history, the progress tabs auto-followed Listing through Job details to completion, and both the table's and the detail page's "LLM: idle"/real-time badges reflected actual queue state throughout, not the hardcoded placeholder found and fixed during this step (D-148). The "positioning" and "full" workflows, and the URL/upload intake methods, reuse already-tested code paths but were not independently re-driven live this round.)
 - [ ] Synthetic fixtures for each input type exist under `tests/fixtures/synthetic/`.
 
 ---
