@@ -204,3 +204,53 @@ export type ListingExtraction = {
   message: string | null
   text: string
 }
+
+// Add Job (Agent/specs/intake-steps.md, D-143 to D-146). The three chains queue_add_job_chain
+// knows how to build, in increasing scope.
+export type AddJobWorkflow = 'basic' | 'positioning' | 'full'
+
+// GET /job-applications/intake/duplicate-check's result: the one existing application (if any)
+// whose listing matches the reviewed text's content hash or source URL, checked before any
+// Claude call runs. Never matched on company/role title (D-146).
+export type DuplicateListingMatch = {
+  application_id: number
+  company: string
+  role_title: string
+  matched_by: 'content' | 'url'
+}
+
+// GET /job-applications/intake/identity/{job_id}'s parsed answer: company and role_title are
+// the only two fields that can reject the whole answer (missing/Unknown fails closed); every
+// other field is null, not the literal word "Unknown", when the listing doesn't say.
+export type JobIdentityAnswer = {
+  company: string
+  role_title: string
+  lane: string | null
+  location: string | null
+  portal_name: string | null
+  portal_url: string | null
+}
+
+// POST /job-applications's body: the identity fields the user confirmed or typed by hand, the
+// reviewed listing text and how it was obtained, the chosen workflow, and an optional Master CV
+// reference.
+export type CreateJobApplicationRequest = {
+  company: string
+  role_title: string
+  lane: string | null
+  location: string | null
+  portal_name: string | null
+  portal_url: string | null
+  listing_method: ListingExtraction['method']
+  listing_text: string
+  listing_source_url: string | null
+  workflow: AddJobWorkflow
+  master_cv_profile_file_id: number | null
+}
+
+// POST /job-applications's result: the new row's id and every Claude Job queued for it, in
+// queued order (Listing, Job details, then the rest of the chosen workflow, D-144).
+export type AddJobResult = {
+  application_id: number
+  claude_job_ids: number[]
+}

@@ -1,10 +1,14 @@
 import type {
+  AddJobResult,
   ClaudeJob,
+  CreateJobApplicationRequest,
+  DuplicateListingMatch,
   FilePreviewData,
   JobApplication,
   JobApplicationDetailData,
   JobApplicationEdit,
   JobApplicationFile,
+  JobIdentityAnswer,
   ListingExtraction,
   ProfileFile,
   ProfileFileKind,
@@ -228,6 +232,89 @@ export function generateListing(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ method, text }),
+  })
+}
+
+// Add Job's intake routes (Agent/specs/intake-steps.md): the same extraction, sanity check and
+// duplicate detection as the existing-application Listing routes above, run before a row exists.
+
+export function intakeExtractFromUrl(url: string): Promise<ListingExtraction> {
+  return request<ListingExtraction>('/api/job-applications/intake/extract-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  })
+}
+
+export function intakeExtractFromPaste(text: string): Promise<ListingExtraction> {
+  return request<ListingExtraction>('/api/job-applications/intake/extract-paste', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+}
+
+export async function intakeExtractFromUpload(file: File): Promise<ListingExtraction> {
+  let response: Response
+  try {
+    response = await fetch('/api/job-applications/intake/extract-upload', {
+      method: 'POST',
+      headers: { 'X-File-Name': encodeURIComponent(file.name) },
+      body: file,
+    })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+  return (await response.json()) as ListingExtraction
+}
+
+// Queues the same no-tools sanity check as the existing-application Listing routes, with no
+// application yet (D-49's "linked to no application" case).
+export function intakeCheckListingText(text: string): Promise<ClaudeJob> {
+  return request<ClaudeJob>('/api/job-applications/intake/check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+}
+
+// D-146: checked before any Claude call runs. null means no match.
+export function intakeDuplicateCheck(
+  text: string,
+  sourceUrl: string | null,
+): Promise<DuplicateListingMatch | null> {
+  return request<DuplicateListingMatch | null>('/api/job-applications/intake/duplicate-check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, source_url: sourceUrl }),
+  })
+}
+
+// Queues extract_job_identity (D-145): company/role/lane/location/portal, before a row exists.
+export function intakeExtractIdentity(text: string): Promise<ClaudeJob> {
+  return request<ClaudeJob>('/api/job-applications/intake/identity', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+}
+
+// Reads back and parses the identity job's answer once it is done. Throws (ApiError, 400) if
+// the answer was rejected (no identifiable company or role title) - the overlay falls back to
+// manual entry.
+export function fetchIntakeIdentityResult(jobId: number): Promise<JobIdentityAnswer> {
+  return request<JobIdentityAnswer>(`/api/job-applications/intake/identity/${jobId}`)
+}
+
+// Creates the row and queues the rest of the chosen workflow (D-143 to D-146).
+export function createJobApplication(body: CreateJobApplicationRequest): Promise<AddJobResult> {
+  return request<AddJobResult>('/api/job-applications', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   })
 }
 

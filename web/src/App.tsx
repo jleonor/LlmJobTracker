@@ -19,7 +19,7 @@ function App() {
       queueText={queueLabel(queue.jobs)}
       userName={settings.user_name}
     >
-      {screen === 'jobs' && <JobApplicationsPage />}
+      {screen === 'jobs' && <JobApplicationsPage queue={queue} />}
       {screen === 'profile' && (
         <ProfilePage userName={settings.user_name} onNameChanged={reloadSettings} />
       )}

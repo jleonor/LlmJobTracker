@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { ApiError, fetchClaudeJobs } from '@/lib/api'
-import type { ClaudeJob } from '@/lib/types'
+import type { ClaudeJob, QueueStatus } from '@/lib/types'
 
 // How often the queue is read while nothing is running. Tightened while a job is processing
 // (D-105), so a streaming trace panel has something fresh to show.
@@ -53,4 +53,16 @@ export function queueLabel(jobs: ClaudeJob[]): string {
   const queued = jobs.filter((job) => job.status === 'queued').length
   if (queued > 0) return `LLM: ${queued} queued`
   return 'LLM: idle'
+}
+
+// The per-application queue badge (D-56's "beside the status tag", the table's own Queue
+// column): idle unless this application has a non-terminal Claude Job of its own. A job this
+// application once ran that is now done/failed/cancelled reads as idle too - nothing is
+// currently pending, which is what the badge is for (D-49 to D-52).
+export function queueStatusFor(jobs: ClaudeJob[], applicationId: number): QueueStatus {
+  const mine = jobs.filter((job) => job.job_application_id === applicationId)
+  if (mine.some((job) => job.status === 'processing')) return 'processing'
+  if (mine.some((job) => job.status === 'paused')) return 'paused'
+  if (mine.some((job) => job.status === 'queued')) return 'queued'
+  return 'idle'
 }

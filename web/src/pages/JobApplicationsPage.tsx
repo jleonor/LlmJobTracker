@@ -1,11 +1,16 @@
+import { Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { AddJobOverlay } from '@/components/app/AddJobOverlay'
+import { QueueStatusBadge } from '@/components/app/QueueStatusBadge'
 import { RunnerCheck } from '@/components/app/RunnerCheck'
 import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ApiError, fetchJobApplicationDetail, fetchJobApplications } from '@/lib/api'
-import type { JobApplication, JobApplicationDetail, JobApplicationDetailData } from '@/lib/types'
+import { queueStatusFor, type QueueState } from '@/lib/useClaudeJobs'
+import type { JobApplication, JobApplicationDetailData } from '@/lib/types'
 import { JobApplicationDetailPage } from '@/pages/JobApplicationDetailPage'
 
 type State =
@@ -15,16 +20,11 @@ type State =
 
 // Keyed by id so a stale result from the previous selection can't render as if it were current
 // (and so showing "loading" needs no setState call of its own at the top of the effect below).
+// queue_status is computed fresh at render time from `queue` below, not stored here, so the
+// badge stays live as the queue polls rather than freezing at whatever it was on fetch.
 type DetailState =
   | { kind: 'error'; id: number; message: string }
-  | { kind: 'ready'; id: number; detail: JobApplicationDetail }
-
-// Nothing computes the queue state yet (Phase 2's Claude Jobs queue isn't linked up here), so
-// the page shows it as idle rather than leaving the API response short of the shape
-// JobApplicationDetailPage expects.
-function withNotRunDefaults(data: JobApplicationDetailData): JobApplicationDetail {
-  return { ...data, queue_status: 'idle' }
-}
+  | { kind: 'ready'; id: number; detail: JobApplicationDetailData }
 
 const HEAD = 'font-mono text-[10px] uppercase tracking-wider'
 
@@ -40,10 +40,20 @@ const COLUMNS = [
   'Queue',
 ] as const
 
-export function JobApplicationsPage() {
+export function JobApplicationsPage({ queue }: { queue: QueueState }) {
   const [state, setState] = useState<State>({ kind: 'loading' })
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [detailState, setDetailState] = useState<DetailState | null>(null)
+  const [addJobOpen, setAddJobOpen] = useState(false)
+
+  function reloadApplications() {
+    fetchJobApplications()
+      .then((applications) => setState({ kind: 'ready', applications }))
+      .catch((error: unknown) => {
+        const message = error instanceof ApiError ? error.message : 'Could not load applications.'
+        setState({ kind: 'error', message })
+      })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -66,7 +76,7 @@ export function JobApplicationsPage() {
     let cancelled = false
     fetchJobApplicationDetail(selectedId)
       .then((data) => {
-        if (!cancelled) setDetailState({ kind: 'ready', id: selectedId, detail: withNotRunDefaults(data) })
+        if (!cancelled) setDetailState({ kind: 'ready', id: selectedId, detail: data })
       })
       .catch((error: unknown) => {
         if (cancelled) return
@@ -83,7 +93,7 @@ export function JobApplicationsPage() {
   function reloadDetail() {
     if (selectedId === null) return
     fetchJobApplicationDetail(selectedId)
-      .then((data) => setDetailState({ kind: 'ready', id: selectedId, detail: withNotRunDefaults(data) }))
+      .then((data) => setDetailState({ kind: 'ready', id: selectedId, detail: data }))
       .catch((error: unknown) => {
         const message = error instanceof ApiError ? error.message : 'Could not load this application.'
         setDetailState({ kind: 'error', id: selectedId, message })
@@ -94,12 +104,7 @@ export function JobApplicationsPage() {
   // so going back re-reads the list rather than leaving it stale until a full page reload.
   function backToList() {
     setSelectedId(null)
-    fetchJobApplications()
-      .then((applications) => setState({ kind: 'ready', applications }))
-      .catch((error: unknown) => {
-        const message = error instanceof ApiError ? error.message : 'Could not load applications.'
-        setState({ kind: 'error', message })
-      })
+    reloadApplications()
   }
 
   if (selectedId !== null) {
@@ -114,7 +119,10 @@ export function JobApplicationsPage() {
         )}
         {current?.kind === 'ready' && (
           <JobApplicationDetailPage
-            application={current.detail}
+            application={{
+              ...current.detail,
+              queue_status: queueStatusFor(queue.jobs, current.detail.id),
+            }}
             onBack={backToList}
             onChanged={reloadDetail}
           />
@@ -126,16 +134,32 @@ export function JobApplicationsPage() {
   return (
     <section aria-labelledby="applications-heading" className="flex flex-col gap-4">
       <div className="flex items-baseline justify-between">
-        <h1 id="applications-heading" className="text-xl font-semibold tracking-tight">
-          Job Applications
-        </h1>
-        {state.kind === 'ready' && (
-          <span className="font-mono text-xs text-muted-foreground">
-            {state.applications.length}{' '}
-            {state.applications.length === 1 ? 'application' : 'applications'}
-          </span>
-        )}
+        <div className="flex items-baseline gap-3">
+          <h1 id="applications-heading" className="text-xl font-semibold tracking-tight">
+            Job Applications
+          </h1>
+          {state.kind === 'ready' && (
+            <span className="font-mono text-xs text-muted-foreground">
+              {state.applications.length}{' '}
+              {state.applications.length === 1 ? 'application' : 'applications'}
+            </span>
+          )}
+        </div>
+        <Button onClick={() => setAddJobOpen(true)}>
+          <Plus className="size-4" aria-hidden="true" />
+          Add Job
+        </Button>
       </div>
+
+      <AddJobOverlay
+        open={addJobOpen}
+        onOpenChange={setAddJobOpen}
+        onCreated={() => reloadApplications()}
+        onOpenApplication={(applicationId) => {
+          setAddJobOpen(false)
+          setSelectedId(applicationId)
+        }}
+      />
 
       {state.kind === 'loading' && <p className="text-sm text-muted-foreground">Loading applications...</p>}
 
@@ -194,9 +218,7 @@ export function JobApplicationsPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="rounded-sm font-mono text-[11px] font-normal text-muted-foreground">
-                      idle
-                    </Badge>
+                    <QueueStatusBadge status={queueStatusFor(queue.jobs, app.id)} />
                   </TableCell>
                 </TableRow>
               ))}

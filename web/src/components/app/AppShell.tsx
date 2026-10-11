@@ -1,7 +1,6 @@
-import { BriefcaseBusiness, GitBranch, ListOrdered, Plus, Settings, UserRound } from 'lucide-react'
+import { BriefcaseBusiness, GitBranch, ListOrdered, Settings, UserRound } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 export type Screen = 'jobs' | 'profile' | 'queue'
@@ -67,10 +66,6 @@ export function AppShell({ children, current, onNavigate, queueText, userName }:
           >
             {queueText}
           </button>
-          <Button disabled title="Adding jobs comes in Phase 4">
-            <Plus className="size-4" aria-hidden="true" />
-            Add Job
-          </Button>
         </header>
         <main className="p-6">{children}</main>
       </div>
