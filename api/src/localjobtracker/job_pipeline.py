@@ -954,8 +954,26 @@ def _block_text(pattern: re.Pattern[str], text: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+_TYPOGRAPHIC_EQUIVALENTS = str.maketrans(
+    {
+        "‘": "'",
+        "’": "'",  # curly apostrophe/single quotes
+        "“": '"',
+        "”": '"',  # curly double quotes
+        "–": "-",
+        "—": "-",  # en dash, em dash
+    }
+)
+
+
 def _normalize_for_match(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
+    """Whitespace AND common typographic variants are folded to a plain equivalent before a
+    verbatim-match check (D-125/D-134's "exact substring" invariant) - a real listing (PDF, web
+    page) commonly uses curly quotes or an en dash where the model's own answer, copying the same
+    words, reasonably writes the plain ASCII form. Observed live: "You’ve" in a listing
+    matched against the model's "You've" failed twice in a row on an otherwise faithful, correct
+    answer - not a wording difference, a typography one the check wasn't tolerant of."""
+    return re.sub(r"\s+", " ", text.translate(_TYPOGRAPHIC_EQUIVALENTS)).strip()
 
 
 def _block_pattern(name: str) -> re.Pattern[str]:

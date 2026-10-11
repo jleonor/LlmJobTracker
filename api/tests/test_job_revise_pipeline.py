@@ -213,6 +213,24 @@ def test_apply_requirement_patches_rejects_non_verbatim_text() -> None:
         )
 
 
+def test_apply_requirement_patches_tolerates_typographic_quote_differences() -> None:
+    """Same live bug as job_pipeline.py's own regression test: a listing's curly apostrophe
+    must not fail a chat-revise edit that faithfully writes the plain ASCII form."""
+    listing = LISTING_TEXT + "- Production-level ML expertise: You’ve shipped models.\n"
+    result = apply_requirement_patches(
+        ["Strong SQL"],
+        [
+            RequirementPatch(
+                number="1",
+                action="EDIT",
+                text="Production-level ML expertise: You've shipped models.",
+            )
+        ],
+        listing,
+    )
+    assert result == ["Production-level ML expertise: You've shipped models."]
+
+
 def test_apply_requirement_patches_rejects_an_out_of_range_number() -> None:
     with pytest.raises(PromptRejected, match="not a current requirement"):
         apply_requirement_patches(

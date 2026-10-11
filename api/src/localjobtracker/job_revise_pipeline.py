@@ -241,8 +241,24 @@ def _block_pattern(name: str) -> re.Pattern[str]:
     return re.compile(rf"=== {name} ===\n(.*?)(?:=== END {name} ===|(?=\n=== )|\Z)", re.DOTALL)
 
 
+_TYPOGRAPHIC_EQUIVALENTS = str.maketrans(
+    {
+        "‘": "'",
+        "’": "'",  # curly apostrophe/single quotes
+        "“": '"',
+        "”": '"',  # curly double quotes
+        "–": "-",
+        "—": "-",  # en dash, em dash
+    }
+)
+
+
 def _normalize_for_match(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
+    """Same fix as job_pipeline.py's own `_normalize_for_match` (not imported from there, same
+    reason as this module's other small helpers) - a verbatim-match check must tolerate a listing
+    using curly quotes or an en dash where the model's faithful answer reasonably writes the plain
+    ASCII form, or it rejects a correct answer over typography, not wording."""
+    return re.sub(r"\s+", " ", text.translate(_TYPOGRAPHIC_EQUIVALENTS)).strip()
 
 
 _DESCRIPTION_BLOCK = _block_pattern("DESCRIPTION")

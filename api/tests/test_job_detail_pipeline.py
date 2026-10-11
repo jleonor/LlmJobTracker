@@ -246,6 +246,18 @@ def test_parse_job_details_answer_rejects_a_requirement_not_in_the_listing() -> 
         parse_job_details_answer(bad, LISTING_TEXT)
 
 
+def test_parse_job_details_answer_tolerates_typographic_quote_differences() -> None:
+    """Live bug (2026-10-11): a real listing used a curly apostrophe ("You’ve shipped..."),
+    and the model's otherwise-correct, faithful answer wrote the plain ASCII form ("You've
+    shipped..."), failing the verbatim check twice in a row over typography, not wording."""
+    listing = LISTING_TEXT + "- Production-level ML expertise: You’ve shipped models.\n"
+    answer = GOOD_JOB_DETAILS_ANSWER.replace(
+        "Strong SQL", "Production-level ML expertise: You've shipped models."
+    )
+    parsed = parse_job_details_answer(answer, listing)
+    assert "Production-level ML expertise: You've shipped models." in parsed.requirements
+
+
 def test_parse_job_details_answer_falls_back_to_unknown_for_a_bad_work_mode() -> None:
     bad = GOOD_JOB_DETAILS_ANSWER.replace("Remote", "Flexible")
     answer = parse_job_details_answer(bad, LISTING_TEXT)
