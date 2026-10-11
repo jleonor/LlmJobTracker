@@ -40,7 +40,17 @@ const COLUMNS = [
   'Queue',
 ] as const
 
-export function JobApplicationsPage({ queue }: { queue: QueueState }) {
+export function JobApplicationsPage({
+  queue,
+  resetSignal = 0,
+}: {
+  queue: QueueState
+  // Bumped by App.tsx every time "Job Applications" is clicked in the sidebar, including while
+  // this screen is already showing - the only way to tell "clicked again" apart from "nothing
+  // happened," since the screen itself never changed. 0 means never clicked, the same
+  // never-triggered convention RunTrace's own clearSignal uses.
+  resetSignal?: number
+}) {
   const [state, setState] = useState<State>({ kind: 'loading' })
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [detailState, setDetailState] = useState<DetailState | null>(null)
@@ -106,6 +116,13 @@ export function JobApplicationsPage({ queue }: { queue: QueueState }) {
     setSelectedId(null)
     reloadApplications()
   }
+
+  useEffect(() => {
+    if (resetSignal === 0) return // the initial render, not an actual click
+    backToList()
+    // backToList is stable in practice; resetSignal's own change is the real trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetSignal])
 
   if (selectedId !== null) {
     const current = detailState?.id === selectedId ? detailState : null

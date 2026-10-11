@@ -1,10 +1,11 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 
+import { RunTrace } from '@/components/app/RunTrace'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ApiError, cancelClaudeJob, resumeClaudeJob } from '@/lib/api'
-import type { ClaudeJob, ClaudeJobPrompt } from '@/lib/types'
+import type { ClaudeJob } from '@/lib/types'
 import type { QueueState } from '@/lib/useClaudeJobs'
 
 const TONE: Record<string, string> = {
@@ -28,13 +29,6 @@ const STATUS_TEXT: Record<string, string> = {
 
 // Active statuses first (they need attention), then resolved ones.
 const STATUS_ORDER = ['processing', 'paused', 'queued', 'failed', 'done', 'cancelled']
-
-// Prompt kinds, in the words the user sees on the Profile page.
-const PROMPT_LABELS: Record<string, string> = {
-  full_cv_history: 'Career history',
-  questionnaire_analysis: 'Questionnaire report',
-  strategy: 'Strategy',
-}
 
 const CAN_CANCEL = ['queued', 'paused', 'processing']
 
@@ -150,7 +144,9 @@ type CardProps = { job: ClaudeJob; position: number; onChanged: () => void }
 function JobCard({ job, position, onChanged }: CardProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState(true)
+  // Collapsed by default (the user's request) - a history page with many entries reads better as
+  // a scannable list than a wall of open traces; expand one to watch it or check what happened.
+  const [expanded, setExpanded] = useState(false)
 
   async function act(action: (id: number) => Promise<ClaudeJob>) {
     setBusy(true)
@@ -214,11 +210,7 @@ function JobCard({ job, position, onChanged }: CardProps) {
             </p>
           )}
 
-          <ol className="flex flex-col gap-1">
-            {job.prompts.map((prompt) => (
-              <PromptLine key={prompt.position} prompt={prompt} />
-            ))}
-          </ol>
+          <RunTrace job={job} />
 
           {error && (
             <p role="alert" className="text-sm text-destructive">
@@ -241,24 +233,5 @@ function JobCard({ job, position, onChanged }: CardProps) {
         </>
       )}
     </article>
-  )
-}
-
-function PromptLine({ prompt }: { prompt: ClaudeJobPrompt }) {
-  const cost = prompt.cost_usd === null ? null : `$${prompt.cost_usd.toFixed(4)}`
-  return (
-    <li className="flex items-center justify-between gap-4 text-sm">
-      <span>
-        {PROMPT_LABELS[prompt.prompt_kind] ?? prompt.prompt_kind}
-        {prompt.error && prompt.status === 'failed' && (
-          <span className="ml-2 text-xs text-destructive">{prompt.error}</span>
-        )}
-      </span>
-      <span className="shrink-0 font-mono text-xs text-muted-foreground">
-        {prompt.status}
-        {cost && ` · ${cost}`}
-        {prompt.duration_ms !== null && ` · ${(prompt.duration_ms / 1000).toFixed(1)} s`}
-      </span>
-    </li>
   )
 }

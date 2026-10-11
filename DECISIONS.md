@@ -202,6 +202,17 @@ asked for two changes.
 |---|---|---|---|---|
 | D-152 | 2026-10-11 | Note | Twice during live verification, port 5173 was found occupied by a `run.ps1` instance serving the **real** database (not `-Seed`), each time parented through what looked like a VS Code PowerShell terminal. The first time, Claude treated it as its own orphaned preview-tool process and stopped it; the second time, Claude asked first — it was the user's own terminal both times, confirmed in chat. Recorded so a future session treats this ambiguity the same way: verify what a process is actually serving (navigate and read the page) before touching anything on port 5173, and ask rather than assume ownership when a leftover's parent process isn't clearly the preview tool's own. | A process that looks like Claude's own leftover can just as easily be the user's own terminal; killing the wrong one would interrupt real work, not clean up a mess. |
 
+## Pre-migration UX fixes (2026-10-11)
+
+Written ahead of the user importing the rest of their real tracker data, from three usability
+issues they ran into.
+
+| ID | Date | Status | Decision | Reason |
+|---|---|---|---|---|
+| D-153 | 2026-10-11 | Accepted | Clicking a sidebar nav item now always takes you to that screen's own top level, even if it was already the current screen — specifically, clicking "Job Applications" while already viewing one application's detail page returns to the table. Implemented as a signal from `App.tsx`, bumped on every click of a given nav item regardless of whether `screen` itself changes, which `JobApplicationsPage` (the only screen with its own drill-down state today) watches to call its existing Back behavior. | The user's report: the sidebar looked like it should always work as a "go here" action, but a click that didn't change `screen` was a silent no-op. |
+| D-154 | 2026-10-11 | Accepted | LLM history's per-job entries now show the same `RunTrace` terminal-style trace (with live streaming text for a running prompt, and the "show the exchange with Claude" panel) that the job page's own overlays already use, replacing the page's own simpler status/cost/duration list. No backend change was needed — `GET /claude-jobs` already attaches live text to every job in the list (`_with_live_text`), not just one being viewed individually. | The user's request: a plain status list didn't show what a job was actually doing, or let the user inspect what was sent and returned, the way every other place in the app already can. |
+| D-155 | 2026-10-11 | Accepted | LLM history's per-job entries are now collapsed by default (date groups still open the most recent one, unchanged) — a blanket default, not conditional on status, so even a processing or paused job starts collapsed. | The user's request: with real usage, the history page was becoming a wall of open entries; expanding one to look at it is one click. |
+
 ## Open
 
 | ID | Question | Recommendation |
