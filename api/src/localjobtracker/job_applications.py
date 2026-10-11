@@ -4,13 +4,15 @@ A Claude Job is a different thing (D-49). It is not stored here.
 """
 
 import json
+import shutil
 import sqlite3
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
 
-from localjobtracker.job_files import JobApplicationFile, list_job_files
+from localjobtracker.job_files import JobApplicationFile, list_job_files, managed_folder
 
 DEFAULT_STATUS = "Identified"
 # D-44: forward order. A Job Application's current status (D-117) is the furthest of these it has
@@ -204,6 +206,24 @@ def insert_job_application(
 
 def count_job_applications(conn: sqlite3.Connection) -> int:
     return int(conn.execute("SELECT COUNT(*) FROM job_applications").fetchone()[0])
+
+
+def delete_job_application(conn: sqlite3.Connection, files_root: Path, application_id: int) -> bool:
+    """Removes the row and everything that belongs to it: status_history, claude_jobs (and their
+    prompts), job_files and job_revise_turns are all `ON DELETE CASCADE` on job_applications
+    (migrations.py) and so go with it in the same transaction. The managed folder's files on disk
+    are not a database row, so a DB cascade can't reach them - removed here directly, after the
+    row is gone. Returns False if there is no such application.
+    """
+    row = conn.execute(
+        "SELECT company, role_title FROM job_applications WHERE id = ?", (application_id,)
+    ).fetchone()
+    if row is None:
+        return False
+    with conn:
+        conn.execute("DELETE FROM job_applications WHERE id = ?", (application_id,))
+    shutil.rmtree(managed_folder(files_root, row["company"], row["role_title"]), ignore_errors=True)
+    return True
 
 
 def get_job_application_detail(

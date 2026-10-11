@@ -125,6 +125,7 @@ export function JobApplicationsPage({ queue }: { queue: QueueState }) {
             }}
             onBack={backToList}
             onChanged={reloadDetail}
+            onDeleted={backToList}
           />
         )}
       </>

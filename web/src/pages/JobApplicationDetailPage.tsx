@@ -23,6 +23,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import {
   ApiError,
+  deleteJobApplication,
   fetchProfileFiles,
   fetchProfileOutputs,
   generateApplicationHistory,
@@ -91,17 +92,49 @@ export function JobApplicationDetailPage({
   application,
   onBack,
   onChanged,
+  onDeleted,
 }: {
   application: JobApplicationDetail
   onBack: () => void
   onChanged: () => void
+  onDeleted: () => void
 }) {
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDelete() {
+    const ok = window.confirm(
+      `Delete ${application.company} - ${application.role_title}? This removes its listing, ` +
+        'files, status history and LLM job history, and cannot be undone.',
+    )
+    if (!ok) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteJobApplication(application.id)
+      onDeleted()
+    } catch (failure) {
+      setDeleteError(failure instanceof ApiError ? failure.message : 'This could not be deleted.')
+      setDeleting(false)
+    }
+  }
+
   return (
     <section aria-labelledby="job-detail-heading" className="flex flex-col gap-4">
-      <Button variant="ghost" size="sm" onClick={onBack} className="self-start">
-        <ArrowLeft className="size-4" aria-hidden="true" />
-        Job Applications
-      </Button>
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" size="sm" onClick={onBack} className="self-start">
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          Job Applications
+        </Button>
+        <Button variant="destructive" size="sm" disabled={deleting} onClick={() => void handleDelete()}>
+          {deleting ? 'Deleting...' : 'Delete'}
+        </Button>
+      </div>
+      {deleteError && (
+        <p role="alert" className="text-sm text-destructive">
+          {deleteError}
+        </p>
+      )}
 
       <Flags application={application} />
 

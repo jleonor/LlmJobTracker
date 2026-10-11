@@ -68,6 +68,20 @@ export function fetchJobApplicationDetail(id: number): Promise<JobApplicationDet
   return request<JobApplicationDetailData>(`/api/job-applications/${id}`)
 }
 
+// Removes the application and everything that belongs to it (status history, Claude Jobs, files,
+// chat turns) - irreversible, confirmed by the caller before this is sent.
+export async function deleteJobApplication(id: number): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`/api/job-applications/${id}`, { method: 'DELETE' })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+}
+
 // Saves one of the job page's Edit forms (D-116). Only the fields `edit` sets are written.
 export function patchJobApplication(
   id: number,

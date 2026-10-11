@@ -264,3 +264,75 @@ def test_detail_without_token_is_rejected(db_path: Path, token: str) -> None:
         conn.close()
     with TestClient(create_app(token, db_path, FakeRunner())) as bare:
         assert bare.get(f"/job-applications/{app_id}").status_code == 401
+
+
+# --- Delete -------------------------------------------------------------------------------------
+
+
+def test_delete_removes_the_row_and_its_managed_folder(db_path: Path, client: TestClient) -> None:
+    files_root = db_path.parent / "files"
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(conn, {"company": "Solo Co", "role_title": "Analyst"})
+        folder = files_root / "Solo Co" / "Analyst"
+        folder.mkdir(parents=True)
+        (folder / "Job Listing.md").write_text("Some listing text.", encoding="utf-8")
+        insert_job_file(
+            conn,
+            app_id,
+            kind="listing",
+            name="Job Listing.md",
+            stored_path="Solo Co/Analyst/Job Listing.md",
+        )
+        conn.execute(
+            "INSERT INTO claude_jobs (label, kind, job_application_id, status, created_at, "
+            "updated_at) VALUES ('Generate: Listing', 'generate_job_listing', ?, 'done', "
+            "'2026-10-11T00:00:00Z', '2026-10-11T00:00:00Z')",
+            (app_id,),
+        )
+        conn.commit()
+        assert folder.exists()
+    finally:
+        conn.close()
+
+    response = client.delete(f"/job-applications/{app_id}")
+    assert response.status_code == 204
+    assert not folder.exists()
+
+    conn = connect(db_path)
+    try:
+        assert (
+            conn.execute("SELECT 1 FROM job_applications WHERE id = ?", (app_id,)).fetchone()
+            is None
+        )
+        assert (
+            conn.execute(
+                "SELECT 1 FROM job_files WHERE job_application_id = ?", (app_id,)
+            ).fetchone()
+            is None
+        )
+        assert (
+            conn.execute(
+                "SELECT 1 FROM claude_jobs WHERE job_application_id = ?", (app_id,)
+            ).fetchone()
+            is None
+        )
+    finally:
+        conn.close()
+
+    assert client.get(f"/job-applications/{app_id}").status_code == 404
+
+
+def test_delete_of_an_unknown_id_is_not_found(client: TestClient) -> None:
+    assert client.delete("/job-applications/999").status_code == 404
+
+
+def test_delete_without_token_is_rejected(db_path: Path, token: str) -> None:
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(conn, {"company": "Solo Co", "role_title": "Analyst"})
+        conn.commit()
+    finally:
+        conn.close()
+    with TestClient(create_app(token, db_path, FakeRunner())) as bare:
+        assert bare.delete(f"/job-applications/{app_id}").status_code == 401

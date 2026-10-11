@@ -30,6 +30,7 @@ from localjobtracker.job_applications import (
     NoStatusEntries,
     StatusHistoryEdit,
     UnknownField,
+    delete_job_application,
     get_job_application_detail,
     insert_job_application,
     list_job_applications,
@@ -367,6 +368,17 @@ def create_app(
         if detail is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         return detail
+
+    @app.delete(
+        "/job-applications/{application_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_token)],
+    )
+    def delete_job_application_route(
+        application_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> None:
+        if not delete_job_application(conn, files_root, application_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
     @app.patch(
         "/job-applications/{application_id}",
