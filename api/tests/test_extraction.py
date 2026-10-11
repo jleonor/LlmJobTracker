@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.extraction import extract
+from localjobtracker.extraction import dehyphenate, extract
 from localjobtracker.runner import FakeRunner
 
 FIXTURES = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "profile"
@@ -26,6 +26,24 @@ def test_pdf_without_a_text_layer_is_reported_not_read() -> None:
     assert result.status == "no_text"
     assert result.text == ""
     assert "no text layer" in (result.message or "")
+
+
+def test_dehyphenate_rejoins_a_line_wrapped_word() -> None:
+    """Live bug (2026-10-11): a real PDF's own line wrap split "scikit-learn" into
+    "scikit-\\nlearn", which then failed generate_job_details' verbatim-match check against the
+    model's natural, unbroken "scikit-learn"."""
+    text = "ML frameworks (TensorFlow, PyTorch, scikit-\nlearn).\nCloud Experience: AWS."
+    expected = "ML frameworks (TensorFlow, PyTorch, scikit-learn).\nCloud Experience: AWS."
+    assert dehyphenate(text) == expected
+
+
+def test_dehyphenate_absorbs_trailing_and_leading_line_whitespace() -> None:
+    assert dehyphenate("scikit-  \n  learn") == "scikit-learn"
+
+
+def test_dehyphenate_leaves_an_ordinary_line_break_alone() -> None:
+    text = "Requirements:\n- Strong Python\n- Strong SQL"
+    assert dehyphenate(text) == text
 
 
 def test_docx_gives_paragraphs_and_table_cells() -> None:

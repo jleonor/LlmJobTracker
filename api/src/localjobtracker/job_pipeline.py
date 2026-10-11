@@ -972,8 +972,15 @@ def _normalize_for_match(text: str) -> str:
     page) commonly uses curly quotes or an en dash where the model's own answer, copying the same
     words, reasonably writes the plain ASCII form. Observed live: "You’ve" in a listing
     matched against the model's "You've" failed twice in a row on an otherwise faithful, correct
-    answer - not a wording difference, a typography one the check wasn't tolerant of."""
-    return re.sub(r"\s+", " ", text.translate(_TYPOGRAPHIC_EQUIVALENTS)).strip()
+    answer - not a wording difference, a typography one the check wasn't tolerant of.
+
+    The final step closes a space that directly follows a hyphen (after the collapse above, a
+    line-wrapped PDF word like "scikit-\\nlearn" reads "scikit- learn", which still would not
+    match a model's natural "scikit-learn"). extraction.py's own `_dehyphenate` fixes this at the
+    source for a PDF extracted from now on; this is the same tolerance for a listing already
+    stored before that fix existed, and for any other source with the same artifact."""
+    collapsed = re.sub(r"\s+", " ", text.translate(_TYPOGRAPHIC_EQUIVALENTS)).strip()
+    return re.sub(r"-\s+", "-", collapsed)
 
 
 def _block_pattern(name: str) -> re.Pattern[str]:

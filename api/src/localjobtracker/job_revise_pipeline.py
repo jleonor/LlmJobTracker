@@ -257,8 +257,11 @@ def _normalize_for_match(text: str) -> str:
     """Same fix as job_pipeline.py's own `_normalize_for_match` (not imported from there, same
     reason as this module's other small helpers) - a verbatim-match check must tolerate a listing
     using curly quotes or an en dash where the model's faithful answer reasonably writes the plain
-    ASCII form, or it rejects a correct answer over typography, not wording."""
-    return re.sub(r"\s+", " ", text.translate(_TYPOGRAPHIC_EQUIVALENTS)).strip()
+    ASCII form, or it rejects a correct answer over typography, not wording. The final step also
+    closes a space left after a hyphen by a PDF's own line-wrapped word (e.g. "scikit- learn"
+    from "scikit-\\nlearn"), the same tolerance job_pipeline.py's copy has."""
+    collapsed = re.sub(r"\s+", " ", text.translate(_TYPOGRAPHIC_EQUIVALENTS)).strip()
+    return re.sub(r"-\s+", "-", collapsed)
 
 
 _DESCRIPTION_BLOCK = _block_pattern("DESCRIPTION")

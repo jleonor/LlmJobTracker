@@ -258,6 +258,18 @@ def test_parse_job_details_answer_tolerates_typographic_quote_differences() -> N
     assert "Production-level ML expertise: You've shipped models." in parsed.requirements
 
 
+def test_parse_job_details_answer_tolerates_a_pdf_line_wrapped_hyphen() -> None:
+    """Live bug (2026-10-11): a real PDF's own line wrap split "scikit-learn" into
+    "scikit-\\nlearn" (already stored before extraction.py's own dehyphenate fix existed), which
+    failed the verbatim check against the model's natural, unbroken "scikit-learn"."""
+    listing = LISTING_TEXT + "- ML frameworks (TensorFlow, PyTorch, scikit-\nlearn).\n"
+    answer = GOOD_JOB_DETAILS_ANSWER.replace(
+        "Strong SQL", "ML frameworks (TensorFlow, PyTorch, scikit-learn)."
+    )
+    parsed = parse_job_details_answer(answer, listing)
+    assert "ML frameworks (TensorFlow, PyTorch, scikit-learn)." in parsed.requirements
+
+
 def test_parse_job_details_answer_falls_back_to_unknown_for_a_bad_work_mode() -> None:
     bad = GOOD_JOB_DETAILS_ANSWER.replace("Remote", "Flexible")
     answer = parse_job_details_answer(bad, LISTING_TEXT)

@@ -231,6 +231,25 @@ def test_apply_requirement_patches_tolerates_typographic_quote_differences() -> 
     assert result == ["Production-level ML expertise: You've shipped models."]
 
 
+def test_apply_requirement_patches_tolerates_a_pdf_line_wrapped_hyphen() -> None:
+    """Same live bug as job_pipeline.py's own regression test: a listing with "scikit-\\nlearn"
+    (a PDF line wrap, already stored before extraction.py's own dehyphenate fix existed) must
+    not fail a chat-revise edit that faithfully writes the unbroken "scikit-learn"."""
+    listing = LISTING_TEXT + "- ML frameworks (TensorFlow, PyTorch, scikit-\nlearn).\n"
+    result = apply_requirement_patches(
+        ["Strong SQL"],
+        [
+            RequirementPatch(
+                number="1",
+                action="EDIT",
+                text="ML frameworks (TensorFlow, PyTorch, scikit-learn).",
+            )
+        ],
+        listing,
+    )
+    assert result == ["ML frameworks (TensorFlow, PyTorch, scikit-learn)."]
+
+
 def test_apply_requirement_patches_rejects_an_out_of_range_number() -> None:
     with pytest.raises(PromptRejected, match="not a current requirement"):
         apply_requirement_patches(

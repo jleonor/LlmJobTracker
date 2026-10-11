@@ -35,6 +35,20 @@ def clean_text(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
+_LINE_WRAPPED_HYPHEN: Final = re.compile(r"-[ \t]*\n[ \t]*")
+
+
+def dehyphenate(text: str) -> str:
+    """Rejoin a word pypdf split across a line wrap in the original PDF layout (for example
+    "scikit-\\nlearn" for "scikit-learn") - a hyphen directly followed by a line break is that
+    layout artifact, not a real paragraph break, so only the break is removed; the hyphen stays,
+    since it is usually part of the real word (as here) more often than not. Found live: this
+    exact word broke generate_job_details' verbatim-match check twice on a real listing before
+    the stored text was this clean. Public, like `clean_text`, since it is a narrow, pure
+    transform worth testing directly rather than only through a PDF fixture."""
+    return _LINE_WRAPPED_HYPHEN.sub("-", text)
+
+
 def _pdf(path: Path) -> Extraction:
     reader = pypdf.PdfReader(path)
     if reader.is_encrypted:
@@ -42,7 +56,7 @@ def _pdf(path: Path) -> Extraction:
             reader.decrypt("")
         except Exception:
             return Extraction("failed", "", "This PDF is password protected.")
-    text = clean_text("\n\n".join(page.extract_text() or "" for page in reader.pages))
+    text = dehyphenate(clean_text("\n\n".join(page.extract_text() or "" for page in reader.pages)))
     if len(text) < MIN_TEXT_CHARS:
         return Extraction(
             "no_text",
