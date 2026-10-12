@@ -3,12 +3,15 @@ D-129 to D-131): the shared EDIT/INSERT AFTER/REMOVE/ADD ROW AFTER answer vocabu
 letter's punctuation/length checks, and the two steps end to end.
 """
 
+import io
 from pathlib import Path
 
 import docx
 import pytest
+from docx.enum.text import WD_BREAK
 from fastapi.testclient import TestClient
 
+from localjobtracker import docx_editor
 from localjobtracker.app import TOKEN_HEADER, create_app
 from localjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
 from localjobtracker.claude_jobs import get_claude_job
@@ -23,6 +26,7 @@ from localjobtracker.job_pipeline import (
     build_cover_letter_prompt,
     check_cover_letter_style,
     cover_letter_ready,
+    generated_file_name,
     make_pipeline,
     parse_docx_edit_answer,
     submit_generate_cover_letter,
@@ -143,6 +147,33 @@ def add_master_cv(db_path: Path, app_id: int) -> None:
         conn.close()
 
 
+def add_master_cv_with_page_break(db_path: Path, app_id: int) -> bytes:
+    """Same fixture as `add_master_cv`, with one manual page break added on a trailing blank
+    paragraph - regression setup for D-164 (the real master CV this was found against had its own
+    manual break, used to land a section on page 2 of its own, untailored length). Returns the
+    bytes stored, so a test can confirm the break is really there before checking it is gone."""
+    document = docx.Document(io.BytesIO((FIXTURES / "master_cv.docx").read_bytes()))
+    document.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    content = buffer.getvalue()
+    conn = connect(db_path)
+    try:
+        file = store_profile_file(conn, db_path.parent, "master_cv", "cv.docx", content)
+        set_master_cv(conn, app_id, file.id)
+        conn.commit()
+    finally:
+        conn.close()
+    return content
+
+
+def has_manual_page_break(content: bytes) -> bool:
+    document = docx_editor.read_document(content)
+    return any(
+        'w:type="page"' in run._r.xml for paragraph in document.paragraphs for run in paragraph.runs
+    )
+
+
 def add_pdf_master_cv(db_path: Path, app_id: int) -> None:
     """A Master CV may legitimately be a PDF (profile_files.ALLOWED_EXTENSIONS) - regression
     test for a real bug found live (2026-10-09): docx_editor can only read a real .docx, and the
@@ -254,6 +285,35 @@ def make_cover_letter_ready(db_path: Path) -> int:
     add_tailored_cv_stub(db_path, app_id)
     add_cover_letter_template(db_path)
     return app_id
+
+
+# --- generated_file_name (D-163) -----------------------------------------------------------
+
+
+def test_generated_file_name_follows_the_role_title_pattern(db_path: Path) -> None:
+    app_id = add_application(db_path)  # role_title "Analyst"
+    conn = connect(db_path)
+    try:
+        assert generated_file_name(conn, app_id, "CV", ".docx") == "Analyst - CV.docx"
+        assert (
+            generated_file_name(conn, app_id, "Cover Letter", ".docx")
+            == "Analyst - Cover Letter.docx"
+        )
+        assert generated_file_name(conn, app_id, "Listing", ".md") == "Analyst - Listing.md"
+    finally:
+        conn.close()
+
+
+def test_generated_file_name_sanitizes_a_role_title_windows_rejects(db_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(
+            conn, {"company": "Acme Inc", "role_title": "Engineer / Architect"}
+        )
+        conn.commit()
+        assert generated_file_name(conn, app_id, "CV", ".docx") == "Engineer _ Architect - CV.docx"
+    finally:
+        conn.close()
 
 
 # --- parse_docx_edit_answer ------------------------------------------------------------------
@@ -440,7 +500,7 @@ def test_generate_tailored_cv_end_to_end(db_path: Path) -> None:
         files = list_job_files(conn, app_id)
         tailored = [f for f in files if f["kind"] == "tailored_cv"]
         assert len(tailored) == 1
-        assert tailored[0]["name"] == "Tailored CV.docx"
+        assert tailored[0]["name"] == "Analyst - CV.docx"
         stored_path = db_path.parent / "files" / str(tailored[0]["stored_path"])
     finally:
         conn.close()
@@ -452,6 +512,31 @@ def test_generate_tailored_cv_end_to_end(db_path: Path) -> None:
     assert "Maintained the CRM data pipeline" not in texts  # removed
     table = document.tables[0]
     assert [c.text for c in table.rows[-1].cells] == ["Python", "Intermediate"]
+
+
+def test_generate_tailored_cv_strips_a_manual_page_break_from_the_master(db_path: Path) -> None:
+    app_id = add_application(db_path)
+    fill_job_details(db_path, app_id)
+    add_profile_documents(db_path)
+    master_bytes = add_master_cv_with_page_break(db_path, app_id)
+    add_breakdown(db_path, app_id)
+    assert has_manual_page_break(master_bytes) is True  # the fixture setup itself has one
+
+    queue = make_queue(db_path, FakeRunner(text=GOOD_CV_ANSWER))
+    conn = connect(db_path)
+    try:
+        submit_generate_tailored_cv(conn, queue, app_id)
+    finally:
+        conn.close()
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        tailored = [f for f in list_job_files(conn, app_id) if f["kind"] == "tailored_cv"][0]
+        stored_path = db_path.parent / "files" / str(tailored["stored_path"])
+    finally:
+        conn.close()
+    assert has_manual_page_break(stored_path.read_bytes()) is False
 
 
 def test_generate_tailored_cv_fails_the_job_on_an_unknown_block_id(db_path: Path) -> None:
@@ -526,7 +611,7 @@ def test_generate_cover_letter_end_to_end(db_path: Path) -> None:
         files = list_job_files(conn, app_id)
         letters = [f for f in files if f["kind"] == "cover_letter"]
         assert len(letters) == 1
-        assert letters[0]["name"] == "Cover Letter.docx"
+        assert letters[0]["name"] == "Analyst - Cover Letter.docx"
         stored_path = db_path.parent / "files" / str(letters[0]["stored_path"])
     finally:
         conn.close()
@@ -593,6 +678,12 @@ def test_cover_letter_prompt_says_none_written_yet_with_no_prior_letters(db_path
     app_id = make_cover_letter_ready(db_path)
     text = prompt_text(db_path, app_id)
     assert "(none written yet)" in text
+
+
+def test_cover_letter_prompt_tells_the_model_to_match_the_listing_language(db_path: Path) -> None:
+    app_id = make_cover_letter_ready(db_path)
+    text = prompt_text(db_path, app_id)
+    assert "same language as the JOB DESCRIPTION" in text
 
 
 def test_cover_letter_prompt_uses_the_most_recent_letter_with_no_same_company_one(

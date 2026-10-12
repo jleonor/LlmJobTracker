@@ -199,7 +199,7 @@ def test_generate_job_stores_the_document_as_the_listing_file(db_path: Path) -> 
         files = list_job_files(conn, app_id)
         assert len(files) == 1
         assert files[0]["kind"] == "listing"
-        assert files[0]["name"] == "Job Listing.md"
+        assert files[0]["name"] == "Analyst - Listing.md"
         assert files[0]["extraction_status"] == "ok"
         stored_path = db_path.parent / "files" / str(files[0]["stored_path"])
         # clean_document strips surrounding whitespace, same as every other generated document.
@@ -236,7 +236,7 @@ def test_generate_job_replaces_an_existing_listing_file(db_path: Path) -> None:
     try:
         files = list_job_files(conn, app_id)
         assert len(files) == 1  # the old PDF row and file are gone, not kept alongside the new one
-        assert files[0]["name"] == "Job Listing.md"
+        assert files[0]["name"] == "Analyst - Listing.md"
     finally:
         conn.close()
     assert not (db_path.parent / "files" / "Acme Inc" / "Analyst" / "Job Listing.pdf").exists()

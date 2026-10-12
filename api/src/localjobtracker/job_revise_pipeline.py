@@ -30,14 +30,13 @@ from localjobtracker.job_applications import update_job_application
 from localjobtracker.job_files import latest_job_file_of_kind, write_generated_job_file
 from localjobtracker.job_pipeline import (
     GENERATED_BREAKDOWN_NAME,
-    GENERATED_COVER_LETTER_NAME,
-    GENERATED_TAILORED_CV_NAME,
     RequirementScore,
     apply_docx_edits,
     breakdown_text,
     check_cover_letter_style,
     compute_match_score,
     email_blocks,
+    generated_file_name,
     profile_document_blocks,
     render_breakdown_document,
     scores_from_json,
@@ -1050,7 +1049,11 @@ def _store_docx_revision(
     check_style: bool,
 ) -> None:
     current_bytes = _current_docx_bytes(conn, files_root, application_id, kind, label)
-    revised_bytes = apply_docx_edits(current_bytes, raw_answer)
+    # D-164: only the Tailored CV's own master template can carry a manual page break sized for
+    # its own, untailored length - a cover letter template is one page by design (D-131) already.
+    revised_bytes = apply_docx_edits(
+        current_bytes, raw_answer, strip_page_breaks=kind == "tailored_cv"
+    )
     if check_style:
         assembled_text = "\n".join(
             block.text
@@ -1131,7 +1134,7 @@ def _store_job_revise_result(
             result.text,
             kind="tailored_cv",
             label="tailored CV",
-            generated_name=GENERATED_TAILORED_CV_NAME,
+            generated_name=generated_file_name(conn, application_id, "CV", ".docx"),
             check_style=False,
         )
     elif section_kind == "cover_letter":
@@ -1142,7 +1145,7 @@ def _store_job_revise_result(
             result.text,
             kind="cover_letter",
             label="cover letter",
-            generated_name=GENERATED_COVER_LETTER_NAME,
+            generated_name=generated_file_name(conn, application_id, "Cover Letter", ".docx"),
             check_style=True,
         )
     else:

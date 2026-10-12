@@ -15,6 +15,7 @@ from typing import Final, cast
 
 import docx
 from docx.document import Document
+from docx.oxml.ns import qn
 from docx.oxml.table import CT_Row
 from docx.oxml.text.paragraph import CT_P
 from docx.table import Table, _Row
@@ -201,3 +202,28 @@ def apply_operations(document: Document, operations: list[Operation]) -> None:
             assert target.row is not None
             new_row = _clone_row_with_cells(target.row, op.cells)
             target.row._tr.addnext(new_row._tr)
+
+
+def strip_manual_page_breaks(document: Document) -> None:
+    """Remove every manual page break - a `<w:br w:type="page"/>` run, or a paragraph's own
+    `pageBreakBefore` property - so the document's pages reflow naturally from its content
+    (D-164).
+
+    Found live: a real master CV template had a manual break placed to land a specific section on
+    page 2, fixed to that spot regardless of what comes before it. Tailoring legitimately adds a
+    line or two (a summary sentence, an extra bullet, D-129) ahead of it, which the fixed break
+    does not account for - the content right before the break can overflow onto an almost-empty
+    extra page, with the rest of the document still pushed one page further. Formatting
+    (`docx_editor`'s own guarantee) is unaffected: this only removes the break instruction itself,
+    nothing else about the run or paragraph it was on.
+    """
+    for paragraph in document.paragraphs:
+        p_xml = paragraph._p
+        ppr = p_xml.find(qn("w:pPr"))
+        if ppr is not None:
+            for page_break_before in ppr.findall(qn("w:pageBreakBefore")):
+                ppr.remove(page_break_before)
+        for run_xml in p_xml.findall(qn("w:r")):
+            for br in run_xml.findall(qn("w:br")):
+                if br.get(qn("w:type")) == "page":
+                    run_xml.remove(br)

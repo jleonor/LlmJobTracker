@@ -127,9 +127,11 @@ Answer with the Markdown document only. No surrounding JSON, no code fence, no c
 or after it.
 ```
 
-Code check: answer is not empty. Stored as `job_files` kind `listing`, extraction columns (see
-below) filled in directly from the generated text — no separate extraction pass needed, since the
-stored file already is the extracted text.
+Code check: answer is not empty. Stored as `job_files` kind `listing`, named "<role title> -
+Listing.md" (D-163, `generated_file_name` - every file this app writes for one specific job names
+itself after the job, not a fixed name), extraction columns (see below) filled in directly from
+the generated text — no separate extraction pass needed, since the stored file already is the
+extracted text.
 
 **A listing added by Upload instead of Generate** (D-114's Upload option, for a user who already
 has a clean listing file) still needs extraction before Job details or Positioning analysis can
@@ -562,10 +564,25 @@ line, and D-85's review-by-reading already covers the rest. There is no separate
 since every change clones existing formatting by construction, a style drift would mean a bug in
 this code, not a bad answer, so it isn't worth a second runtime check.
 
+**Manual page breaks are stripped from the tailored copy (D-164).** Found live: a real master CV
+had a manual page break on a blank spacer paragraph, placed to land a section on page 2 of its
+own, untailored length. Tailoring legitimately adding a line or two ahead of it (a summary
+sentence, an extra bullet) pushed content that used to fit just before the break onto an
+almost-empty extra page, with the rest of the document pushed one page further still - a real,
+reproducible bug, not a preview artifact, since the break is a structural part of the `.docx`
+itself. `docx_editor.strip_manual_page_breaks` removes every `<w:br w:type="page"/>` run and
+`pageBreakBefore` paragraph property once edits are applied (`apply_docx_edits`'s own
+`strip_page_breaks=True`, Tailored CV only - a cover letter template is one page by the writing
+rules already, D-131, and has no such break to begin with), so the result's pages reflow from its
+actual content instead of a fixed point that doesn't know how long the tailored version is.
+
 **Storage:** the edited `.docx` bytes replace the application's `tailored_cv` job file (D-115: at
 most one current file), the same `write_generated_job_file`-style replace Listing and the
 positioning breakdown already use, adapted for binary content. No new preview code is needed -
-`.docx` preview already works for any job file (D-107/D-109).
+`.docx` preview already works for any job file (D-107/D-109). The file's own name is
+`generated_file_name`'s "<role title> - CV.docx" (D-163), not a fixed name - every file this app
+writes for one specific job (the Listing, the CV, the Cover letter) is named this way, so a user
+looking at the managed folder can tell which job each file is for without opening it.
 
 ## 6. Cover letter (`generate_cover_letter`)
 
@@ -580,6 +597,14 @@ dashes, en dashes and semicolons used as sentence punctuation **never** appear -
 `Writing rules.md` in the reference folder, which is reasonably the ancestor of this app's own
 `writing_rules` profile upload (D-23) - the mechanical no-colon/no-dash/no-semicolon rule is
 already in force for anyone who has uploaded it, not re-specified here as a separate rule.
+
+**The letter is written in the job description's own language (D-165), stated explicitly in the
+prompt - French listing, French letter; English listing, English letter - rather than left
+implicit.** A real case (a French listing) already produced a French letter without being told to,
+but that was inferring a minority-language signal (the JOB DESCRIPTION block) against several
+English-language context blocks (career history, questionnaire analysis, strategy, writing rules)
+pulling the other way - reliable in the one case checked, not guaranteed. The instruction makes
+this a stated rule rather than an emergent default.
 
 **Gate:** the Tailored CV exists (ordering, not a content dependency - see Inputs), Job details
 filled, the three LLM profile documents populated, the positioning breakdown file exists, writing
@@ -691,7 +716,8 @@ rule the user's own review doesn't already cover more precisely). Either check f
 the whole answer (`PromptRejected`, naming which rule and, for punctuation, the offending
 snippet) - there is no partial save of a letter that breaks the user's own stated rules.
 
-**Storage:** same replace-in-slot pattern as the Tailored CV, job file kind `cover_letter`.
+**Storage:** same replace-in-slot pattern as the Tailored CV, job file kind `cover_letter`, named
+"<role title> - Cover Letter.docx" (D-163, same `generated_file_name` the Tailored CV uses).
 
 ## Scope narrowed for both of these two (D-129, D-131)
 

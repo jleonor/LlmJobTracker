@@ -40,6 +40,7 @@ from localjobtracker.file_preview import eml_to_text, msg_to_text
 from localjobtracker.job_applications import update_job_application
 from localjobtracker.job_files import (
     latest_job_file_of_kind,
+    sanitize_path_part,
     write_generated_job_file,
 )
 from localjobtracker.migrations import CONTRACT_TYPES, WORK_MODES
@@ -68,10 +69,7 @@ JOB_KIND_POSITIONING: Final = "generate_positioning"
 JOB_KIND_HISTORY: Final = "generate_application_history"
 JOB_KIND_TAILORED_CV: Final = "generate_tailored_cv"
 JOB_KIND_COVER_LETTER: Final = "generate_cover_letter"
-GENERATED_LISTING_NAME: Final = "Job Listing.md"
 GENERATED_BREAKDOWN_NAME: Final = "Positioning breakdown.md"
-GENERATED_TAILORED_CV_NAME: Final = "Tailored CV.docx"
-GENERATED_COVER_LETTER_NAME: Final = "Cover Letter.docx"
 
 
 class JobStepNotReady(Exception):
@@ -387,6 +385,10 @@ the role and a genuine reason for applying; two or three evidence paragraphs gro
 real work; one paragraph that names an actual gap between this person's background and the role
 plainly, then pivots to a transferable strength, never glossing over it; a short forward-looking
 closing with an available-start date.
+
+Write the whole letter in the same language as the JOB DESCRIPTION below (French listing, French
+letter; English listing, English letter) - never translate it to the language the career history,
+questionnaire analysis, strategy or writing rules happen to be written in.
 
 You have no tools and cannot read any file yourself. The EXISTING COVER LETTER section below is
 the most relevant letter already written for this person (the same company if one exists, the
@@ -1433,6 +1435,21 @@ def _application_id_for(conn: sqlite3.Connection, claude_job_id: int | None) -> 
     return int(row["job_application_id"])
 
 
+def generated_file_name(
+    conn: sqlite3.Connection, application_id: int, label: str, suffix: str
+) -> str:
+    """ "<role title> - <label><suffix>" (D-163) - the display name for a file this app writes
+    for one specific job: the Listing, the CV, or the Cover letter. Not used for the positioning
+    breakdown, which isn't a deliverable the user hands to an employer, so it keeps its own fixed
+    name. The role title is run through the same `sanitize_path_part` its managed folder already
+    uses, so a title with a character Windows rejects in a file name doesn't break this too."""
+    row = conn.execute(
+        "SELECT role_title FROM job_applications WHERE id = ?", (application_id,)
+    ).fetchone()
+    role_title = sanitize_path_part(row["role_title"]) if row is not None else "Untitled"
+    return f"{role_title} - {label}{suffix}"
+
+
 def _store_generated_listing(
     conn: sqlite3.Connection, files_root: Path, application_id: int, document: str
 ) -> None:
@@ -1448,7 +1465,7 @@ def _store_generated_listing(
         files_root,
         application_id,
         "listing",
-        GENERATED_LISTING_NAME,
+        generated_file_name(conn, application_id, "Listing", ".md"),
         document.encode("utf-8"),
         extracted_text=document,
         source_url=existing["source_url"] if existing is not None else None,
@@ -1541,13 +1558,22 @@ def _log_page_count_if_grown(label: str, source_bytes: bytes, result_bytes: byte
         )
 
 
-def apply_docx_edits(source_bytes: bytes, raw_answer: str) -> bytes:
+def apply_docx_edits(
+    source_bytes: bytes, raw_answer: str, *, strip_page_breaks: bool = False
+) -> bytes:
+    """`strip_page_breaks` is for the Tailored CV only (D-164): a master CV template may carry a
+    manual page break meant for its own, untailored length, which tailoring's own legitimate
+    content growth (a summary line, an extra bullet) can push past, landing an almost-empty extra
+    page in the middle of the document. A cover letter template is one page by the writing rules
+    (D-131/job-llm-steps.md §6) and has no such break to begin with, so it stays False there."""
     operations = parse_docx_edit_answer(raw_answer)
     document = docx_editor.read_document(source_bytes)
     try:
         docx_editor.apply_operations(document, operations)
     except docx_editor.DocxEditError as error:
         raise PromptRejected(str(error)) from error
+    if strip_page_breaks:
+        docx_editor.strip_manual_page_breaks(document)
     return docx_editor.document_bytes(document)
 
 
@@ -1559,14 +1585,14 @@ def _store_tailored_cv_result(
     raw_answer: str,
 ) -> None:
     master_bytes = _master_cv_bytes(conn, data_folder, application_id)
-    tailored_bytes = apply_docx_edits(master_bytes, raw_answer)
+    tailored_bytes = apply_docx_edits(master_bytes, raw_answer, strip_page_breaks=True)
     _log_page_count_if_grown("Tailored CV", master_bytes, tailored_bytes)
     write_generated_job_file(
         conn,
         files_root,
         application_id,
         "tailored_cv",
-        GENERATED_TAILORED_CV_NAME,
+        generated_file_name(conn, application_id, "CV", ".docx"),
         tailored_bytes,
     )
 
@@ -1586,7 +1612,7 @@ def _store_cover_letter_result(
         files_root,
         application_id,
         "cover_letter",
-        GENERATED_COVER_LETTER_NAME,
+        generated_file_name(conn, application_id, "Cover Letter", ".docx"),
         letter_bytes,
     )
 

@@ -4,8 +4,10 @@ blocks, and applying EDIT/INSERT AFTER/REMOVE/ADD ROW AFTER by block id.
 
 from pathlib import Path
 
+import docx
 import pytest
 from docx.document import Document
+from docx.enum.text import WD_BREAK
 
 from localjobtracker import docx_editor as de
 
@@ -135,3 +137,51 @@ def test_document_bytes_round_trips_through_a_fresh_read() -> None:
     content = de.document_bytes(document)
     reopened = de.read_document(content)
     assert reopened.paragraphs[1].text == "Platform Engineer"
+
+
+# --- strip_manual_page_breaks (D-164) ----------------------------------------------------------
+#
+# Live bug (2026-10-12): a real master CV had a manual page break on a blank spacer paragraph, to
+# land its older-roles section on page 2. Tailoring legitimately adds a line or two ahead of it
+# (a summary sentence, an extra bullet), which the break's fixed position does not account for -
+# confirmed against the real file that this pushed a handful of lines onto an almost-empty extra
+# page, with the rest of the document pushed one page further still.
+
+
+def test_strip_manual_page_breaks_removes_a_run_level_page_break() -> None:
+    document = docx.Document()
+    document.add_paragraph("Before the break.")
+    spacer = document.add_paragraph()
+    spacer.add_run().add_break(WD_BREAK.PAGE)
+    document.add_paragraph("After the break.")
+
+    de.strip_manual_page_breaks(document)
+
+    content = de.document_bytes(document)
+    reopened = de.read_document(content)
+    texts = [p.text for p in reopened.paragraphs]
+    assert texts == ["Before the break.", "", "After the break."]
+    for paragraph in reopened.paragraphs:
+        for run in paragraph.runs:
+            assert "w:br" not in run._r.xml or 'w:type="page"' not in run._r.xml
+
+
+def test_strip_manual_page_breaks_removes_a_paragraph_level_page_break_before() -> None:
+    document = docx.Document()
+    document.add_paragraph("Before the break.")
+    after = document.add_paragraph("After the break.")
+    after.paragraph_format.page_break_before = True
+
+    de.strip_manual_page_breaks(document)
+
+    content = de.document_bytes(document)
+    reopened = de.read_document(content)
+    assert reopened.paragraphs[1].paragraph_format.page_break_before is None
+
+
+def test_strip_manual_page_breaks_leaves_ordinary_text_alone() -> None:
+    document = load()
+    before = [(p.text, p.style.name if p.style else None) for p in document.paragraphs]
+    de.strip_manual_page_breaks(document)
+    after = [(p.text, p.style.name if p.style else None) for p in document.paragraphs]
+    assert before == after

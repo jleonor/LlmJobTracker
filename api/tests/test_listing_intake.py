@@ -259,7 +259,7 @@ def test_generate_route_queues_and_stores_the_listing_file(
     detail = client.get(f"/job-applications/{app_id}").json()
     assert len(detail["files"]) == 1
     assert detail["files"][0]["kind"] == "listing"
-    assert detail["files"][0]["name"] == "Job Listing.md"
+    assert detail["files"][0]["name"] == "Analyst - Listing.md"
 
 
 def test_generate_route_rejects_an_unknown_method(client: TestClient, db_path: Path) -> None:
