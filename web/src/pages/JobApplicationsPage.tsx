@@ -1,7 +1,22 @@
 import { Plus } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { AddJobOverlay } from '@/components/app/AddJobOverlay'
+import {
+  DEFAULT_FILTERS,
+  DateRangeFilterPopover,
+  MatchScoreFilterPopover,
+  SortableHeader,
+  TextFilterPopover,
+  applicationMatchesFilters,
+  compareApplications,
+  cycleSort,
+  filtersAreActive,
+  orderedOptions,
+  textOptions,
+  type Filters,
+  type SortState,
+} from '@/components/app/JobsTableFilters'
 import { QueueStatusBadge } from '@/components/app/QueueStatusBadge'
 import { RunnerCheck } from '@/components/app/RunnerCheck'
 import { StatusBadge } from '@/components/app/StatusBadge'
@@ -10,7 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ApiError, fetchJobApplicationDetail, fetchJobApplications } from '@/lib/api'
 import { queueStatusFor, type QueueState } from '@/lib/useClaudeJobs'
-import type { JobApplication, JobApplicationDetailData } from '@/lib/types'
+import { STATUS_ORDER, QUEUE_STATUS_ORDER, type JobApplication, type JobApplicationDetailData } from '@/lib/types'
 import { JobApplicationDetailPage } from '@/pages/JobApplicationDetailPage'
 
 type State =
@@ -28,18 +43,6 @@ type DetailState =
 
 const HEAD = 'font-mono text-[10px] uppercase tracking-wider'
 
-// Column order from D-46. The queue badge stays "idle" until the Claude Jobs queue exists (Phase 2).
-const COLUMNS = [
-  'Company',
-  'Title',
-  'Lane',
-  'Location',
-  'Status',
-  'Last updated',
-  'Match score',
-  'Queue',
-] as const
-
 export function JobApplicationsPage({
   queue,
   resetSignal = 0,
@@ -55,6 +58,40 @@ export function JobApplicationsPage({
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [detailState, setDetailState] = useState<DetailState | null>(null)
   const [addJobOpen, setAddJobOpen] = useState(false)
+  const [sort, setSort] = useState<SortState>(null)
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
+
+  const applications = useMemo<JobApplication[]>(
+    () => (state.kind === 'ready' ? state.applications : []),
+    [state]
+  )
+  // Each row's live queue status, computed once per render alongside the application it belongs
+  // to, so sorting/filtering by Queue and the table's own badge always agree.
+  const rows = useMemo(
+    () => applications.map((app) => ({ app, queue: queueStatusFor(queue.jobs, app.id) })),
+    [applications, queue.jobs]
+  )
+  const visibleRows = useMemo(
+    () =>
+      rows
+        .filter((row) => applicationMatchesFilters(row.app, row.queue, filters))
+        .sort((a, b) => compareApplications(a, b, sort)),
+    [rows, filters, sort]
+  )
+  // Option lists reflect the full, unfiltered set, not just what the other filters currently
+  // allow through - simpler, and stays stable while a filter popover is open.
+  const companyOptions = useMemo(() => textOptions(applications.map((app) => app.company)), [applications])
+  const titleOptions = useMemo(() => textOptions(applications.map((app) => app.role_title)), [applications])
+  const laneOptions = useMemo(() => textOptions(applications.map((app) => app.lane)), [applications])
+  const locationOptions = useMemo(() => textOptions(applications.map((app) => app.location)), [applications])
+  const statusOptions = useMemo(
+    () => orderedOptions(STATUS_ORDER, applications.map((app) => app.status)),
+    [applications]
+  )
+  const queueOptions = useMemo(
+    () => orderedOptions(QUEUE_STATUS_ORDER, rows.map((row) => row.queue)),
+    [rows]
+  )
 
   function reloadApplications() {
     fetchJobApplications()
@@ -158,9 +195,25 @@ export function JobApplicationsPage({
           </h1>
           {state.kind === 'ready' && (
             <span className="font-mono text-xs text-muted-foreground">
-              {state.applications.length}{' '}
-              {state.applications.length === 1 ? 'application' : 'applications'}
+              {filtersAreActive(filters) ? (
+                <>
+                  {visibleRows.length} of {applications.length}
+                </>
+              ) : (
+                <>
+                  {applications.length} {applications.length === 1 ? 'application' : 'applications'}
+                </>
+              )}
             </span>
+          )}
+          {filtersAreActive(filters) && (
+            <button
+              type="button"
+              onClick={() => setFilters(DEFAULT_FILTERS)}
+              className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+            >
+              Clear filters
+            </button>
           )}
         </div>
         <Button onClick={() => setAddJobOpen(true)}>
@@ -187,26 +240,133 @@ export function JobApplicationsPage({
         </div>
       )}
 
-      {state.kind === 'ready' && state.applications.length === 0 && (
+      {state.kind === 'ready' && applications.length === 0 && (
         <p className="rounded border border-border p-6 text-center text-sm text-muted-foreground">
           No job applications yet. To load synthetic ones, close this and run .\run.ps1 -Seed
         </p>
       )}
 
-      {state.kind === 'ready' && state.applications.length > 0 && (
+      {state.kind === 'ready' && applications.length > 0 && (
         <div className="overflow-x-auto rounded border border-border bg-card">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                {COLUMNS.map((column) => (
-                  <TableHead key={column} className={HEAD}>
-                    {column}
-                  </TableHead>
-                ))}
+                <TableHead className={HEAD}>
+                  <div className="flex items-center gap-1">
+                    <SortableHeader column="company" label="Company" sort={sort} onSort={(c) => setSort(cycleSort(sort, c))} />
+                    <TextFilterPopover
+                      label="Company"
+                      options={companyOptions}
+                      selected={filters.company}
+                      onChange={(next) => setFilters((f) => ({ ...f, company: next }))}
+                    />
+                  </div>
+                </TableHead>
+                <TableHead className={HEAD}>
+                  <div className="flex items-center gap-1">
+                    <SortableHeader column="role_title" label="Title" sort={sort} onSort={(c) => setSort(cycleSort(sort, c))} />
+                    <TextFilterPopover
+                      label="Title"
+                      options={titleOptions}
+                      selected={filters.role_title}
+                      onChange={(next) => setFilters((f) => ({ ...f, role_title: next }))}
+                    />
+                  </div>
+                </TableHead>
+                <TableHead className={HEAD}>
+                  <div className="flex items-center gap-1">
+                    <SortableHeader column="lane" label="Lane" sort={sort} onSort={(c) => setSort(cycleSort(sort, c))} />
+                    <TextFilterPopover
+                      label="Lane"
+                      options={laneOptions}
+                      selected={filters.lane}
+                      onChange={(next) => setFilters((f) => ({ ...f, lane: next }))}
+                    />
+                  </div>
+                </TableHead>
+                <TableHead className={HEAD}>
+                  <div className="flex items-center gap-1">
+                    <SortableHeader column="location" label="Location" sort={sort} onSort={(c) => setSort(cycleSort(sort, c))} />
+                    <TextFilterPopover
+                      label="Location"
+                      options={locationOptions}
+                      selected={filters.location}
+                      onChange={(next) => setFilters((f) => ({ ...f, location: next }))}
+                    />
+                  </div>
+                </TableHead>
+                <TableHead className={HEAD}>
+                  <div className="flex items-center gap-1">
+                    <SortableHeader column="status" label="Status" sort={sort} onSort={(c) => setSort(cycleSort(sort, c))} />
+                    <TextFilterPopover
+                      label="Status"
+                      options={statusOptions}
+                      selected={filters.status}
+                      onChange={(next) => setFilters((f) => ({ ...f, status: next }))}
+                    />
+                  </div>
+                </TableHead>
+                <TableHead className={HEAD}>
+                  <div className="flex items-center gap-1">
+                    <SortableHeader
+                      column="last_updated"
+                      label="Last updated"
+                      sort={sort}
+                      onSort={(c) => setSort(cycleSort(sort, c))}
+                    />
+                    <DateRangeFilterPopover
+                      label="Last updated"
+                      from={filters.lastUpdatedFrom}
+                      to={filters.lastUpdatedTo}
+                      onChange={(from, to) =>
+                        setFilters((f) => ({ ...f, lastUpdatedFrom: from, lastUpdatedTo: to }))
+                      }
+                    />
+                  </div>
+                </TableHead>
+                <TableHead className={HEAD}>
+                  <div className="flex items-center gap-1">
+                    <SortableHeader
+                      column="match_score"
+                      label="Match score"
+                      sort={sort}
+                      onSort={(c) => setSort(cycleSort(sort, c))}
+                    />
+                    <MatchScoreFilterPopover
+                      label="Match score"
+                      min={filters.matchScoreMin}
+                      max={filters.matchScoreMax}
+                      includeUnscored={filters.includeUnscored}
+                      onChange={(min, max, includeUnscored) =>
+                        setFilters((f) => ({ ...f, matchScoreMin: min, matchScoreMax: max, includeUnscored }))
+                      }
+                    />
+                  </div>
+                </TableHead>
+                <TableHead className={HEAD}>
+                  <div className="flex items-center gap-1">
+                    <SortableHeader column="queue" label="Queue" sort={sort} onSort={(c) => setSort(cycleSort(sort, c))} />
+                    <TextFilterPopover
+                      label="Queue"
+                      options={queueOptions}
+                      selected={filters.queue}
+                      onChange={(next) =>
+                        setFilters((f) => ({ ...f, queue: next as Filters['queue'] }))
+                      }
+                    />
+                  </div>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {state.applications.map((app) => (
+              {visibleRows.length === 0 && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={8} className="text-center text-sm text-muted-foreground">
+                    No applications match the current filters.
+                  </TableCell>
+                </TableRow>
+              )}
+              {visibleRows.map(({ app, queue: queueStatus }) => (
                 <TableRow
                   key={app.id}
                   onClick={() => setSelectedId(app.id)}
@@ -236,7 +396,7 @@ export function JobApplicationsPage({
                     )}
                   </TableCell>
                   <TableCell>
-                    <QueueStatusBadge status={queueStatusFor(queue.jobs, app.id)} />
+                    <QueueStatusBadge status={queueStatus} />
                   </TableCell>
                 </TableRow>
               ))}
