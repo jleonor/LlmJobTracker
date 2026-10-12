@@ -20,6 +20,7 @@ from localjobtracker.job_applications import (
 from localjobtracker.job_files import insert_job_file, list_job_files
 from localjobtracker.job_pipeline import (
     JobStepNotReady,
+    build_cover_letter_prompt,
     check_cover_letter_style,
     cover_letter_ready,
     make_pipeline,
@@ -29,7 +30,7 @@ from localjobtracker.job_pipeline import (
     tailored_cv_ready,
 )
 from localjobtracker.profile_files import store_profile_file
-from localjobtracker.profile_pipeline import store_output
+from localjobtracker.profile_pipeline import DEFAULT_RULES_PATH, store_output
 from localjobtracker.runner import FakeRunner
 from localjobtracker.storage import connect
 
@@ -199,6 +200,42 @@ def make_tailored_cv_ready(db_path: Path) -> int:
     add_master_cv(db_path, app_id)
     add_breakdown(db_path, app_id)
     return app_id
+
+
+def add_company_application(db_path: Path, company: str) -> int:
+    """A second application with its own company, for the reference-cover-letter tests (D-161) -
+    `add_application` always uses "Acme Inc", which is deliberately reused there for the
+    same-company case."""
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(conn, {"company": company, "role_title": "Analyst"})
+        conn.commit()
+    finally:
+        conn.close()
+    return app_id
+
+
+def add_generated_cover_letter(db_path: Path, app_id: int, paragraph_text: str) -> None:
+    """A previously-generated cover letter `.docx` for another application, filed the same way
+    `_store_cover_letter_result` files a real one - read back as reference material (D-161)."""
+    document = docx.Document()
+    document.add_paragraph(paragraph_text)
+    folder = db_path.parent / "files" / "reference"
+    folder.mkdir(parents=True, exist_ok=True)
+    stored_path = folder / f"letter-{app_id}.docx"
+    document.save(str(stored_path))
+    conn = connect(db_path)
+    try:
+        insert_job_file(
+            conn,
+            app_id,
+            kind="cover_letter",
+            name="Cover Letter.docx",
+            stored_path=str(stored_path.relative_to(db_path.parent / "files")),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def add_tailored_cv_stub(db_path: Path, app_id: int) -> None:
@@ -531,6 +568,62 @@ def test_submit_generate_cover_letter_rejects_when_not_ready(db_path: Path) -> N
             submit_generate_cover_letter(conn, queue, app_id)
     finally:
         conn.close()
+
+
+# --- Cover letter: reference letter in the prompt (D-161) ------------------------------------
+#
+# Live bug (2026-10-12): the user's own writing rules say to read 1-2 existing cover letters
+# before drafting, calibrating voice, preferring one for the same company. But every Claude run
+# here has no tools (claude_code_runner.py), so the model tried a Bash call to go look for one on
+# disk, which has nothing to call, and the whole answer was that failed attempt - no edit blocks
+# at all. Fixed by giving the model the most relevant existing letter directly in the prompt.
+
+
+def prompt_text(db_path: Path, app_id: int) -> str:
+    conn = connect(db_path)
+    try:
+        return build_cover_letter_prompt(
+            conn, db_path.parent, db_path.parent / "files", DEFAULT_RULES_PATH, app_id
+        )
+    finally:
+        conn.close()
+
+
+def test_cover_letter_prompt_says_none_written_yet_with_no_prior_letters(db_path: Path) -> None:
+    app_id = make_cover_letter_ready(db_path)
+    text = prompt_text(db_path, app_id)
+    assert "(none written yet)" in text
+
+
+def test_cover_letter_prompt_uses_the_most_recent_letter_with_no_same_company_one(
+    db_path: Path,
+) -> None:
+    app_id = make_cover_letter_ready(db_path)
+    other_id = add_company_application(db_path, "Other Co")
+    add_generated_cover_letter(db_path, other_id, "Dear Other Co, an older reference letter.")
+    text = prompt_text(db_path, app_id)
+    assert "Dear Other Co, an older reference letter." in text
+
+
+def test_cover_letter_prompt_prefers_a_same_company_letter_over_a_more_recent_one(
+    db_path: Path,
+) -> None:
+    app_id = make_cover_letter_ready(db_path)  # company "Acme Inc" (add_application)
+    other_id = add_company_application(db_path, "Other Co")
+    same_company_id = add_company_application(db_path, "Acme Inc")
+    add_generated_cover_letter(db_path, other_id, "Dear Other Co, the most recently written one.")
+    add_generated_cover_letter(db_path, same_company_id, "Dear Acme Inc, the same-company one.")
+    text = prompt_text(db_path, app_id)
+    assert "Dear Acme Inc, the same-company one." in text
+    assert "Dear Other Co, the most recently written one." not in text
+
+
+def test_cover_letter_prompt_never_references_the_applications_own_letter(db_path: Path) -> None:
+    app_id = make_cover_letter_ready(db_path)
+    add_generated_cover_letter(db_path, app_id, "Dear Acme Inc, this application's own letter.")
+    text = prompt_text(db_path, app_id)
+    assert "(none written yet)" in text
+    assert "this application's own letter" not in text
 
 
 # --- Routes -------------------------------------------------------------------------------

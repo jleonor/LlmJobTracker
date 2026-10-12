@@ -589,9 +589,23 @@ template is uploaded (D-71).
 **Inputs:** the career history, questionnaire analysis and strategy (full text); Job details'
 `description`; the positioning breakdown document (the gap-naming paragraph draws directly on
 it); the cover letter template's own `.docx` bytes (its letterhead and structure - D-71); the
-writing rules in force. The Tailored CV's own content is **not** read here - the reference
-workflow writes the letter from the same underlying research the CV draws from, independently,
-using an old letter only for its *shape*, which the template already captures for this app.
+writing rules in force; the most relevant cover letter already generated for this person, if any
+(D-161 - see below). The Tailored CV's own content is **not** read here - the reference workflow
+writes the letter from the same underlying research the CV draws from, independently, using an
+old letter only for its *shape*, which the template already captures for this app.
+
+**Existing-letter reference (D-161):** the user's own `Writing rules.md` asks the model to read
+1-2 existing cover letters before drafting to calibrate voice, preferring one for the same company
+- but every run here has no tools (`claude_code_runner.py`'s `--tools ""`), so the model cannot go
+look one up itself. Found live: the model tried a Bash call anyway ("I'll look for existing cover
+letters on disk..."), which has nothing to call, and the whole answer was that failed attempt -
+`parse_docx_edit_answer` correctly rejected it as having no edit blocks, but the real cause was
+upstream. Fixed by having `build_cover_letter_prompt` look this up in code and hand it to the
+model directly: the most recent `cover_letter` job file for an application with the *same
+company* (across any other application, never this one), or, if none, the most recent
+`cover_letter` job file for any company. "(none written yet)" when nothing has been generated
+yet. This is the app supplying the same information the user's rule says to fetch, not a new
+capability the model gets access to - the model still has no tools.
 
 **Represented and edited the same way as the Tailored CV** (`docx_editor.py`, numbered blocks,
 `EDIT`/`INSERT AFTER`/`REMOVE` operations) applied to a copy of the cover letter template rather
@@ -613,9 +627,18 @@ real work; one paragraph that names an actual gap between this person's backgrou
 plainly, then pivots to a transferable strength, never glossing over it; a short forward-looking
 closing with an available-start date.
 
+You have no tools and cannot read any file yourself. The EXISTING COVER LETTER section below is
+the most relevant letter already written for this person (the same company if one exists, the
+most recent one otherwise) - this is what "read existing cover letters to calibrate voice" means
+here. If it says "(none written yet)", this is the first one and there is nothing to match.
+
 === COVER LETTER TEMPLATE (numbered blocks) ===
 {blocks}
 === END COVER LETTER TEMPLATE ===
+
+=== EXISTING COVER LETTER (reference for voice - read, never edit) ===
+{reference_letter}
+=== END EXISTING COVER LETTER ===
 
 === CAREER HISTORY ===
 {history}

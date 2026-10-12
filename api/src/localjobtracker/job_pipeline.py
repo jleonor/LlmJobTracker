@@ -388,9 +388,18 @@ real work; one paragraph that names an actual gap between this person's backgrou
 plainly, then pivots to a transferable strength, never glossing over it; a short forward-looking
 closing with an available-start date.
 
+You have no tools and cannot read any file yourself. The EXISTING COVER LETTER section below is
+the most relevant letter already written for this person (the same company if one exists, the
+most recent one otherwise) - this is what "read existing cover letters to calibrate voice" means
+here. If it says "(none written yet)", this is the first one and there is nothing to match.
+
 === COVER LETTER TEMPLATE (numbered blocks) ===
 {blocks}
 === END COVER LETTER TEMPLATE ===
+
+=== EXISTING COVER LETTER (reference for voice - read, never edit) ===
+{reference_letter}
+=== END EXISTING COVER LETTER ===
 
 === CAREER HISTORY ===
 {history}
@@ -647,11 +656,65 @@ def build_tailored_cv_prompt(
     return _require_prompt_size(text)
 
 
+def _cover_letter_document_text(letter_bytes: bytes) -> str:
+    """A generated cover letter's `.docx`, as plain text, in block order - shared by storing a
+    freshly-generated letter (its style check needs the same assembly) and by reading an older
+    one back in as reference material below."""
+    return "\n".join(
+        block.text for block in docx_editor.list_blocks(docx_editor.read_document(letter_bytes))
+    )
+
+
+def _reference_cover_letter_text(
+    conn: sqlite3.Connection, files_root: Path, application_id: int, company: str | None
+) -> str:
+    """The most relevant cover letter already generated for this person, as plain text, for the
+    model to read as a voice/structure reference (D-161) - this person's own writing rules ask
+    for exactly this ("read 1-2 existing cover letters... to calibrate voice", "if the candidate
+    already has a cover letter for the same company, use it as the template"), but every run here
+    has no tools (claude_code_runner.py's `--tools ""`), so the model cannot look anything up
+    itself; this supplies it directly instead. Same company first, else the most recently
+    generated letter for any company - the same preference order the rules file itself states.
+    "(none written yet)" when nothing has been generated yet (this person's first cover letter, or
+    the only data is this same application's own in-progress one, excluded so a Revise run never
+    sees its own letter as "existing")."""
+    row = None
+    if company:
+        row = conn.execute(
+            """
+            SELECT jf.stored_path FROM job_files jf
+            JOIN job_applications ja ON ja.id = jf.job_application_id
+            WHERE jf.kind = 'cover_letter' AND ja.company = ? AND jf.job_application_id != ?
+            ORDER BY jf.id DESC LIMIT 1
+            """,
+            (company, application_id),
+        ).fetchone()
+    if row is None:
+        row = conn.execute(
+            """
+            SELECT stored_path FROM job_files
+            WHERE kind = 'cover_letter' AND job_application_id != ?
+            ORDER BY id DESC LIMIT 1
+            """,
+            (application_id,),
+        ).fetchone()
+    if row is None:
+        return "(none written yet)"
+    path = files_root / str(row["stored_path"])
+    if not path.exists():
+        return "(none written yet)"
+    return _cover_letter_document_text(path.read_bytes())
+
+
 def build_cover_letter_prompt(
-    conn: sqlite3.Connection, data_folder: Path, rules_path: Path, application_id: int
+    conn: sqlite3.Connection,
+    data_folder: Path,
+    files_root: Path,
+    rules_path: Path,
+    application_id: int,
 ) -> str:
     row = conn.execute(
-        "SELECT description FROM job_applications WHERE id = ?", (application_id,)
+        "SELECT company, description FROM job_applications WHERE id = ?", (application_id,)
     ).fetchone()
     if row is None:
         raise PromptRejected("This Job Application no longer exists.")
@@ -661,6 +724,9 @@ def build_cover_letter_prompt(
     )
     text = _COVER_LETTER_PROMPT.format(
         blocks=blocks,
+        reference_letter=_reference_cover_letter_text(
+            conn, files_root, application_id, row["company"]
+        ),
         description=row["description"] or "",
         breakdown=breakdown_text(conn, application_id),
         rules=writing_rules_text(conn, rules_path),
@@ -1514,10 +1580,7 @@ def _store_cover_letter_result(
 ) -> None:
     template_bytes = _cover_letter_template_bytes(conn, data_folder)
     letter_bytes = apply_docx_edits(template_bytes, raw_answer)
-    assembled_text = "\n".join(
-        block.text for block in docx_editor.list_blocks(docx_editor.read_document(letter_bytes))
-    )
-    check_cover_letter_style(assembled_text)
+    check_cover_letter_style(_cover_letter_document_text(letter_bytes))
     write_generated_job_file(
         conn,
         files_root,
@@ -1553,7 +1616,9 @@ def make_pipeline(
             return RenderedPrompt(text=text)
         if prompt.prompt_kind == JOB_KIND_COVER_LETTER:
             application_id = _application_id_for(conn, prompt.claude_job_id)
-            text = build_cover_letter_prompt(conn, data_folder, rules_path, application_id)
+            text = build_cover_letter_prompt(
+                conn, data_folder, files_root, rules_path, application_id
+            )
             return RenderedPrompt(text=text)
         return revise_render(conn, prompt)
 
