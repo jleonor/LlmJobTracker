@@ -1,3 +1,4 @@
+import { Download, FolderOpen } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -7,8 +8,10 @@ import { ReviseOverlay } from '@/components/app/ReviseOverlay'
 import {
   ApiError,
   deleteProfileFile,
+  downloadProfileFile,
   fetchProfileFiles,
   openProfileFile,
+  revealProfileFile,
   saveSettings,
   uploadProfileFile,
 } from '@/lib/api'
@@ -394,6 +397,30 @@ function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void
     }
   }
 
+  async function reveal() {
+    setBusy(true)
+    setError(null)
+    try {
+      await revealProfileFile(file.id)
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The folder could not be opened.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function download() {
+    setBusy(true)
+    setError(null)
+    try {
+      await downloadProfileFile(file.id, file.original_name)
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The file could not be downloaded.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function remove() {
     const ok = window.confirm(`Remove "${file.original_name}"? Its copy in the app is deleted.`)
     if (!ok) return
@@ -427,6 +454,26 @@ function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void
             </Button>
             <Button variant="outline" size="sm" disabled={busy} onClick={() => void open()}>
               Open
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={busy}
+              title="Download"
+              aria-label={`Download ${file.original_name}`}
+              onClick={() => void download()}
+            >
+              <Download className="size-3.5" aria-hidden="true" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={busy}
+              title="Show in folder"
+              aria-label={`Show ${file.original_name} in folder`}
+              onClick={() => void reveal()}
+            >
+              <FolderOpen className="size-3.5" aria-hidden="true" />
             </Button>
           </div>
           <Button

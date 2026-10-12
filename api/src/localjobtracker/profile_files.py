@@ -185,6 +185,15 @@ def profile_file_path(conn: sqlite3.Connection, data_folder: Path, file_id: int)
     return None if row is None else data_folder / str(row["stored_path"])
 
 
+def profile_file_name(conn: sqlite3.Connection, file_id: int) -> str | None:
+    """The file's own readable name, for a download - `stored_path`'s own file name is a content
+    hash (this module's own docstring), not something to hand the user back."""
+    row = conn.execute(
+        "SELECT original_name FROM profile_files WHERE id = ?", (file_id,)
+    ).fetchone()
+    return None if row is None else str(row["original_name"])
+
+
 def open_in_default_app(path: Path) -> None:
     """Open a file in the program the system uses for it (D-82)."""
     if sys.platform == "win32":
@@ -193,6 +202,21 @@ def open_in_default_app(path: Path) -> None:
         subprocess.run(["open", str(path)], check=False)
     else:
         subprocess.run(["xdg-open", str(path)], check=False)
+
+
+def reveal_in_file_manager(path: Path) -> None:
+    """Open the file's containing folder in the system's file manager, with the file selected
+    where the file manager supports that (D-160) - a second way to get to a file besides opening
+    it, for a user who wants the folder itself (to move, rename, or see what else is there)."""
+    if sys.platform == "win32":
+        # Explorer's own `/select,` flag wants no space before the path, and explorer.exe often
+        # exits 1 even on a successful select - not a real failure, so the result isn't checked.
+        subprocess.run(["explorer", f"/select,{path}"], check=False)
+    elif sys.platform == "darwin":
+        subprocess.run(["open", "-R", str(path)], check=False)
+    else:
+        # No universal "select this file" command across Linux file managers; open its folder.
+        subprocess.run(["xdg-open", str(path.parent)], check=False)
 
 
 def delete_profile_file(conn: sqlite3.Connection, data_folder: Path, file_id: int) -> ProfileFile:

@@ -207,6 +207,61 @@ def test_open_of_a_file_from_another_application_is_not_found(
     assert response.status_code == 404
 
 
+def test_reveal_shows_the_copy_in_the_file_manager(
+    client: TestClient, db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app_id = add_application(db_path)
+    uploaded = client.post(
+        f"/job-applications/{app_id}/files/listing",
+        headers={"X-File-Name": "listing.txt"},
+        content=b"A listing.",
+    ).json()
+    revealed: list[Path] = []
+    monkeypatch.setattr(app_module, "reveal_in_file_manager", revealed.append)
+
+    response = client.post(f"/job-applications/{app_id}/files/{uploaded['id']}/reveal")
+
+    assert response.status_code == 204
+    assert revealed == [db_path.parent / "files" / "Co" / "Analyst" / "listing.txt"]
+
+
+def test_reveal_of_a_file_from_another_application_is_not_found(
+    client: TestClient, db_path: Path
+) -> None:
+    app_id = add_application(db_path, "Co", "Analyst")
+    other_id = add_application(db_path, "Other Co", "Analyst")
+    uploaded = client.post(
+        f"/job-applications/{app_id}/files/listing",
+        headers={"X-File-Name": "listing.txt"},
+        content=b"A listing.",
+    ).json()
+
+    response = client.post(f"/job-applications/{other_id}/files/{uploaded['id']}/reveal")
+
+    assert response.status_code == 404
+
+
+def test_download_returns_the_files_own_bytes_and_name(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+    uploaded = client.post(
+        f"/job-applications/{app_id}/files/listing",
+        headers={"X-File-Name": "listing.txt"},
+        content=b"A listing.",
+    ).json()
+
+    response = client.get(f"/job-applications/{app_id}/files/{uploaded['id']}/download")
+
+    assert response.status_code == 200
+    assert response.content == b"A listing."
+    assert 'filename="listing.txt"' in response.headers["content-disposition"]
+
+
+def test_download_of_an_unknown_file_is_not_found(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+    response = client.get(f"/job-applications/{app_id}/files/999999/download")
+    assert response.status_code == 404
+
+
 def test_a_txt_upload_previews_as_text(client: TestClient, db_path: Path) -> None:
     app_id = add_application(db_path)
     uploaded = client.post(

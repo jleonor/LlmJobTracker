@@ -10,6 +10,7 @@ from typing import Annotated, Final
 from urllib.parse import unquote
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from localjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
@@ -90,8 +91,10 @@ from localjobtracker.profile_files import (
     delete_profile_file,
     list_profile_files,
     open_in_default_app,
+    profile_file_name,
     profile_file_path,
     profile_file_text,
+    reveal_in_file_manager,
     store_profile_file,
 )
 from localjobtracker.profile_pipeline import (
@@ -479,6 +482,27 @@ def create_app(
     ) -> None:
         path = _job_file_or_404(conn, files_root, application_id, file_id)
         open_in_default_app(path)
+
+    @app.post(
+        "/job-applications/{application_id}/files/{file_id}/reveal",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_token)],
+    )
+    def reveal_job_file(
+        application_id: int, file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> None:
+        path = _job_file_or_404(conn, files_root, application_id, file_id)
+        reveal_in_file_manager(path)
+
+    @app.get(
+        "/job-applications/{application_id}/files/{file_id}/download",
+        dependencies=[Depends(require_token)],
+    )
+    def download_job_file(
+        application_id: int, file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> FileResponse:
+        path = _job_file_or_404(conn, files_root, application_id, file_id)
+        return FileResponse(path, filename=path.name)
 
     @app.get(
         "/job-applications/{application_id}/files/{file_id}/preview",
@@ -904,6 +928,30 @@ def create_app(
         if path is None or not path.exists():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         open_in_default_app(path)
+
+    @app.post(
+        "/profile/files/{file_id}/reveal",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_token)],
+    )
+    def reveal_profile_file(file_id: int, conn: Annotated[Connection, Depends(get_db)]) -> None:
+        path = profile_file_path(conn, db_path.parent, file_id)
+        if path is None or not path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        reveal_in_file_manager(path)
+
+    @app.get(
+        "/profile/files/{file_id}/download",
+        dependencies=[Depends(require_token)],
+    )
+    def download_profile_file(
+        file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> FileResponse:
+        path = profile_file_path(conn, db_path.parent, file_id)
+        if path is None or not path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        name = profile_file_name(conn, file_id) or path.name
+        return FileResponse(path, filename=name)
 
     @app.delete(
         "/profile/files/{file_id}",

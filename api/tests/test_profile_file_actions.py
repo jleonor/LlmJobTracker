@@ -64,6 +64,39 @@ def test_open_of_an_unknown_file_is_not_found(client: TestClient) -> None:
     assert client.post("/profile/files/999/open").status_code == 404
 
 
+def test_reveal_shows_the_copy_in_the_file_manager(
+    client: TestClient, db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    file_id, copy = upload_one(db_path, "older_letter", "letter.txt", b"A letter.")
+    revealed: list[Path] = []
+    monkeypatch.setattr(app_module, "reveal_in_file_manager", revealed.append)
+
+    response = client.post(f"/profile/files/{file_id}/reveal")
+
+    assert response.status_code == 204
+    assert revealed == [copy]
+
+
+def test_reveal_of_an_unknown_file_is_not_found(client: TestClient) -> None:
+    assert client.post("/profile/files/999/reveal").status_code == 404
+
+
+def test_download_returns_the_files_own_bytes_and_original_name(
+    client: TestClient, db_path: Path
+) -> None:
+    file_id, _copy = upload_one(db_path, "older_letter", "letter.txt", b"A letter.")
+
+    response = client.get(f"/profile/files/{file_id}/download")
+
+    assert response.status_code == 200
+    assert response.content == b"A letter."
+    assert 'filename="letter.txt"' in response.headers["content-disposition"]
+
+
+def test_download_of_an_unknown_file_is_not_found(client: TestClient) -> None:
+    assert client.get("/profile/files/999/download").status_code == 404
+
+
 def test_a_second_upload_to_a_single_file_kind_replaces_the_first(
     client: TestClient, db_path: Path
 ) -> None:

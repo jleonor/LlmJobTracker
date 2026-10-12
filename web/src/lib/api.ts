@@ -58,6 +58,30 @@ async function errorMessage(response: Response): Promise<string> {
   return detail ?? `The API returned HTTP ${response.status}.`
 }
 
+// Shared by downloadJobFile and downloadProfileFile (D-160): fetches the file as a blob (so a
+// failed request surfaces as a normal ApiError, instead of a browser-navigated 404 page) and
+// saves it under its own name via a throwaway link, the same way a plain <a download> would.
+async function downloadFile(path: string, name: string): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(path)
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
 export function fetchJobApplications(): Promise<JobApplication[]> {
   return request<JobApplication[]>('/api/job-applications')
 }
@@ -158,6 +182,26 @@ export async function openJobFile(applicationId: number, fileId: number): Promis
   if (!response.ok) {
     throw new ApiError(await errorMessage(response), response.status)
   }
+}
+
+// Reveals one of a Job Application's own files in the system's file manager (D-160), the same
+// way revealProfileFile does. The API answers 204 with no body.
+export async function revealJobFile(applicationId: number, fileId: number): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`/api/job-applications/${applicationId}/files/${fileId}/reveal`, {
+      method: 'POST',
+    })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+}
+
+export function downloadJobFile(applicationId: number, fileId: number, name: string): Promise<void> {
+  return downloadFile(`/api/job-applications/${applicationId}/files/${fileId}/download`, name)
 }
 
 // Reads the preview the API built for one of a Job Application's own files (D-116), the same
@@ -477,6 +521,23 @@ export async function openProfileFile(id: number): Promise<void> {
   if (!response.ok) {
     throw new ApiError(await errorMessage(response), response.status)
   }
+}
+
+// Reveals the uploaded copy in the system's file manager (D-160). The API answers 204 with no body.
+export async function revealProfileFile(id: number): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`/api/profile/files/${id}/reveal`, { method: 'POST' })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+}
+
+export function downloadProfileFile(id: number, name: string): Promise<void> {
+  return downloadFile(`/api/profile/files/${id}/download`, name)
 }
 
 // Reads the preview the API built for one profile file (D-107), picked by its response's
