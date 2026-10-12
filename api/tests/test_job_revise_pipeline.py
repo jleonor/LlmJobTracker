@@ -250,6 +250,35 @@ def test_apply_requirement_patches_tolerates_a_pdf_line_wrapped_hyphen() -> None
     assert result == ["ML frameworks (TensorFlow, PyTorch, scikit-learn)."]
 
 
+def test_apply_requirement_patches_tolerates_a_pdf_accent_spacing_artifact() -> None:
+    """Same live bug as job_pipeline.py's own regression test: a real French listing PDF's font
+    encoding inserted a stray space on both sides of accented letters, which must not fail a
+    chat-revise edit that faithfully writes the correctly-spelled French text."""
+    listing = (
+        LISTING_TEXT
+        + "- Vous d é butez votre parcours professionnel ou disposez de 0 à 2 ans\n"
+        + "d'exp é rience dans un domaine technique.\n"
+    )
+    result = apply_requirement_patches(
+        ["Strong SQL"],
+        [
+            RequirementPatch(
+                number="1",
+                action="EDIT",
+                text=(
+                    "Vous débutez votre parcours professionnel ou disposez de 0 à 2 ans "
+                    "d'expérience dans un domaine technique."
+                ),
+            )
+        ],
+        listing,
+    )
+    assert result == [
+        "Vous débutez votre parcours professionnel ou disposez de 0 à 2 ans "
+        "d'expérience dans un domaine technique."
+    ]
+
+
 def test_apply_requirement_patches_rejects_an_out_of_range_number() -> None:
     with pytest.raises(PromptRejected, match="not a current requirement"):
         apply_requirement_patches(

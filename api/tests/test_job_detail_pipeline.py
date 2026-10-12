@@ -270,6 +270,27 @@ def test_parse_job_details_answer_tolerates_a_pdf_line_wrapped_hyphen() -> None:
     assert "ML frameworks (TensorFlow, PyTorch, scikit-learn)." in parsed.requirements
 
 
+def test_parse_job_details_answer_tolerates_a_pdf_accent_spacing_artifact() -> None:
+    """Live bug (2026-10-12): a real French listing PDF's font encoding inserted a stray space on
+    both sides of accented letters ("d é butez" for "débutez", "exp é rience" for "expérience"),
+    which failed the verbatim check against the model's own, correctly-spelled French answer."""
+    listing = (
+        LISTING_TEXT
+        + "- Vous d é butez votre parcours professionnel ou disposez de 0 à 2 ans\n"
+        + "d'exp é rience dans un domaine technique.\n"
+    )
+    answer = GOOD_JOB_DETAILS_ANSWER.replace(
+        "Strong SQL",
+        "Vous débutez votre parcours professionnel ou disposez de 0 à 2 ans "
+        "d'expérience dans un domaine technique.",
+    )
+    parsed = parse_job_details_answer(answer, listing)
+    assert (
+        "Vous débutez votre parcours professionnel ou disposez de 0 à 2 ans "
+        "d'expérience dans un domaine technique."
+    ) in parsed.requirements
+
+
 def test_parse_job_details_answer_falls_back_to_unknown_for_a_bad_work_mode() -> None:
     bad = GOOD_JOB_DETAILS_ANSWER.replace("Remote", "Flexible")
     answer = parse_job_details_answer(bad, LISTING_TEXT)
