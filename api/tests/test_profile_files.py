@@ -160,3 +160,32 @@ def test_cover_letter_template_is_stored_as_its_own_kind(
     response = upload(upload_client, "cover_letter_template", "letter template.docx", SYNTHETIC_CV)
     assert response.status_code == 201
     assert rows(db_path)[0]["kind"] == "cover_letter_template"
+
+
+# --- reveal_in_file_manager (D-160, D-161) -----------------------------------------------------
+
+
+def test_reveal_on_windows_quotes_the_path_as_a_single_command_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Live bug (2026-10-12): passed as a list (`["explorer", f"/select,{path}"]`), subprocess's
+    own Windows quoting wraps the whole `/select,<path>` token in quotes whenever the path has a
+    space - which is almost always, since a managed folder is named after the company/role
+    (D-146). explorer.exe can't parse that and silently falls back to its default folder instead
+    of the one requested. Passing one pre-built string, with the path quoted on its own right
+    after the comma, is the syntax explorer.exe actually wants."""
+    import subprocess as subprocess_module
+    import sys
+
+    from localjobtracker import profile_files
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    calls: list[object] = []
+    monkeypatch.setattr(subprocess_module, "run", lambda *args, **kwargs: calls.append(args))
+
+    path = Path(r"C:\Users\jonat\files\Acme Inc\Senior Analyst\listing.txt")
+    profile_files.reveal_in_file_manager(path)
+
+    assert calls == [
+        (r'explorer /select,"C:\Users\jonat\files\Acme Inc\Senior Analyst\listing.txt"',)
+    ]

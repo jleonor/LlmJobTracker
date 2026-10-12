@@ -209,9 +209,15 @@ def reveal_in_file_manager(path: Path) -> None:
     where the file manager supports that (D-160) - a second way to get to a file besides opening
     it, for a user who wants the folder itself (to move, rename, or see what else is there)."""
     if sys.platform == "win32":
-        # Explorer's own `/select,` flag wants no space before the path, and explorer.exe often
-        # exits 1 even on a successful select - not a real failure, so the result isn't checked.
-        subprocess.run(["explorer", f"/select,{path}"], check=False)
+        # Passed as a list, subprocess's own Windows quoting wraps the whole `/select,<path>`
+        # token in quotes whenever the path has a space in it (almost always, since a managed
+        # folder is named after the company/role, D-146) - explorer.exe can't parse that, and
+        # silently opens its default folder instead of failing loudly. A plain string is passed
+        # to CreateProcess as-is, with the path quoted on its own right after the comma, which is
+        # the syntax explorer.exe actually wants. Found live: this is why "Show in folder" always
+        # opened the same default-Documents folder rather than the requested file's folder.
+        # explorer.exe often exits 1 even on a successful select, so the result isn't checked.
+        subprocess.run(f'explorer /select,"{path}"', check=False)
     elif sys.platform == "darwin":
         subprocess.run(["open", "-R", str(path)], check=False)
     else:
