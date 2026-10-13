@@ -36,16 +36,21 @@ JOB_FILE_KINDS = (
     "msg",
     "other",
 )
-# The job page's five chat-revised sections (D-136, Agent/specs/job-revise-steps.md). Only
-# "job_details" has an implemented answer grammar so far (job_revise_pipeline.py); the rest are
-# reserved here so the table's CHECK constraint doesn't need a later migration to widen it.
-JOB_REVISE_SECTION_KINDS = (
+# The five chat-revised sections migration 18 originally reserved (D-136). Frozen here, same
+# reason _V2_STATUSES is kept above: this is what migration 18's own CREATE TABLE actually applied,
+# and must stay exactly that regardless of what's added later.
+_V18_JOB_REVISE_SECTION_KINDS = (
     "job_details",
     "positioning",
     "application_history",
     "tailored_cv",
     "cover_letter",
 )
+# The current, full set - migration 22 (D-169) widens job_revise_turns.section_kind's CHECK to add
+# "interview_prep", which wasn't reserved by migration 18 since Interview preparation didn't exist
+# yet. Used everywhere else in the app (job_revise_pipeline.py) and by migration 22's own new
+# table shape; migration 18's table keeps using the frozen tuple above.
+JOB_REVISE_SECTION_KINDS = (*_V18_JOB_REVISE_SECTION_KINDS, "interview_prep")
 
 # Phase 2 values (D-62, D-64, D-66; Agent/specs/profile-steps.md).
 CLAUDE_JOB_STATUSES = ("queued", "processing", "paused", "cancelled", "done", "failed")
@@ -365,7 +370,36 @@ _V18_JOB_REVISE_TURNS = f"""
 CREATE TABLE job_revise_turns (
     id INTEGER PRIMARY KEY,
     job_application_id INTEGER NOT NULL REFERENCES job_applications(id) ON DELETE CASCADE,
+    section_kind TEXT NOT NULL CHECK (section_kind IN ({_in_list(_V18_JOB_REVISE_SECTION_KINDS)})),
+    claude_job_id INTEGER NOT NULL REFERENCES claude_jobs(id) ON DELETE CASCADE,
+    message TEXT NOT NULL CHECK (message <> ''),
+    attachment_job_file_id INTEGER REFERENCES job_files(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT ({_NOW})
+)
+"""
+
+# Migration 22 (D-169): widens section_kind's CHECK to add "interview_prep" - a table rebuild,
+# since SQLite can't ALTER a CHECK. Nothing else references job_revise_turns as a parent, so this
+# doesn't need migration 13's FK-toggling (rebuild=True): dropping a table only matters for FK
+# enforcement when something else points at it, and nothing does here.
+_V22_JOB_REVISE_TURNS_NEW = f"""
+CREATE TABLE job_revise_turns_new (
+    id INTEGER PRIMARY KEY,
+    job_application_id INTEGER NOT NULL REFERENCES job_applications(id) ON DELETE CASCADE,
     section_kind TEXT NOT NULL CHECK (section_kind IN ({_in_list(JOB_REVISE_SECTION_KINDS)})),
+    claude_job_id INTEGER NOT NULL REFERENCES claude_jobs(id) ON DELETE CASCADE,
+    message TEXT NOT NULL CHECK (message <> ''),
+    attachment_job_file_id INTEGER REFERENCES job_files(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT ({_NOW})
+)
+"""
+
+# migration 22's down step: back to migration 18's own five-kind shape.
+_V22_JOB_REVISE_TURNS_OLD = f"""
+CREATE TABLE job_revise_turns_old (
+    id INTEGER PRIMARY KEY,
+    job_application_id INTEGER NOT NULL REFERENCES job_applications(id) ON DELETE CASCADE,
+    section_kind TEXT NOT NULL CHECK (section_kind IN ({_in_list(_V18_JOB_REVISE_SECTION_KINDS)})),
     claude_job_id INTEGER NOT NULL REFERENCES claude_jobs(id) ON DELETE CASCADE,
     message TEXT NOT NULL CHECK (message <> ''),
     attachment_job_file_id INTEGER REFERENCES job_files(id) ON DELETE SET NULL,
@@ -791,6 +825,40 @@ MIGRATIONS: tuple[Migration, ...] = (
         name="add source_url to job_files, for Add Job's duplicate detection (D-146)",
         up=("ALTER TABLE job_files ADD COLUMN source_url TEXT",),
         down=("ALTER TABLE job_files DROP COLUMN source_url",),
+    ),
+    Migration(
+        version=21,
+        name="add interview_prep, Interview preparation's ten question/answer pairs (D-168)",
+        up=("ALTER TABLE job_applications ADD COLUMN interview_prep TEXT NOT NULL DEFAULT '[]'",),
+        down=("ALTER TABLE job_applications DROP COLUMN interview_prep",),
+    ),
+    Migration(
+        version=22,
+        name="widen job_revise_turns.section_kind to add interview_prep (D-169)",
+        up=(
+            _V22_JOB_REVISE_TURNS_NEW,
+            "INSERT INTO job_revise_turns_new "
+            "(id, job_application_id, section_kind, claude_job_id, message, "
+            "attachment_job_file_id, created_at) "
+            "SELECT id, job_application_id, section_kind, claude_job_id, message, "
+            "attachment_job_file_id, created_at FROM job_revise_turns",
+            "DROP TABLE job_revise_turns",
+            "ALTER TABLE job_revise_turns_new RENAME TO job_revise_turns",
+            "CREATE INDEX job_revise_turns_by_section "
+            "ON job_revise_turns (job_application_id, section_kind, id)",
+        ),
+        down=(
+            _V22_JOB_REVISE_TURNS_OLD,
+            "INSERT INTO job_revise_turns_old "
+            "(id, job_application_id, section_kind, claude_job_id, message, "
+            "attachment_job_file_id, created_at) "
+            "SELECT id, job_application_id, section_kind, claude_job_id, message, "
+            "attachment_job_file_id, created_at FROM job_revise_turns",
+            "DROP TABLE job_revise_turns",
+            "ALTER TABLE job_revise_turns_old RENAME TO job_revise_turns",
+            "CREATE INDEX job_revise_turns_by_section "
+            "ON job_revise_turns (job_application_id, section_kind, id)",
+        ),
     ),
 )
 
