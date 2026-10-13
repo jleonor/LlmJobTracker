@@ -639,6 +639,50 @@ Scope
 - Evaluate LangChain/LangGraph as a replacement for, or wrapper around, the `Runner` interface (D-19/D-20) and the Claude Jobs queue (D-49 to D-52): would it make orchestration leaner, and would it ease a future local-model path (D-22/D-34/D-39)? Record the decision (accept, reject, or defer) in `DECISIONS.md` with reasons either way.
 - Decide, in light of the audit, where the Parked items that are still real wanted features — the Job workspace's revision-chain model, Emails and chat, Question memory (D-185) — resume relative to the rest of this plan.
 
+Step list (drafted 2026-10-13, awaiting approval; the LangGraph proof-of-concept in step 5 is
+this phase's one required "concrete reuse or SOLID improvement actually implemented" — the
+inventory in step 2 may surface other duplication worth fixing, but nothing else here is required
+to be acted on this phase, only noted, per the scope above)
+
+1. Cut `phase-6-tech-debt` from `main` (D-61).
+2. Write `planning/phase-6-inventory.md`: for each of the six functionality areas (profile
+   onboarding, tracker, job intake, job workspace generate/revise, LLM history, the Claude Jobs
+   queue), the backend and frontend modules behind it — file, one-line responsibility, rough size
+   — covering at least `runner.py`, `claude_code_runner.py`, `claude_job_queue.py`, `claude_jobs.py`,
+   `profile_pipeline.py`, `job_pipeline.py`, `job_revise_pipeline.py`, `revise_pipeline.py` on the
+   backend, and `AnalysisOverlay.tsx`, `ReviseOverlay.tsx`, `GenerateSectionOverlay.tsx`,
+   `JobReviseOverlay.tsx`, `GenerateListingOverlay.tsx`, `FilePreview.tsx` plus the per-page
+   components on the frontend. Note what's already shared (D-104, D-135, D-137) versus what's
+   still duplicated. A short closing section maps each Parked item (the revision-chain model,
+   Emails and chat, Question memory, D-185) to the module(s) it would touch if resumed, as the
+   input to this phase's resume-scheduling decision. Docs only, no code.
+3. Spike, outside the app: read LangGraph's state-graph/checkpointer/interrupt model against
+   `ClaudeJobQueue`/`claude_jobs.py`'s existing shape (serial dispatch, one job at a time,
+   persisted prompts, pause/resume on a rate limit, restart survival) and confirm a LangGraph node
+   can call `Runner.run()` directly, keeping `Runner` as the only Claude-Code/Codex-aware seam
+   (D-19/D-20) rather than pulling in LangChain's model/prompt classes, which assume direct API
+   access and don't fit the CLI-subprocess shape `Runner` already wraps. Record the decision in
+   `DECISIONS.md`: LangGraph accepted for orchestration (with reasons), LangChain rejected (with
+   reasons), and what's deferred to Phase 7 (migrating the remaining pipelines once Codex exists,
+   where a per-node/per-edge runner choice becomes a real need) versus done now (one
+   proof-of-concept step, below — which, having no pause/resume/interrupt need of its own, can run
+   as a stateless single-node graph with no checkpointer; a persisted checkpointer is a Phase 7
+   question once a migrated step actually needs to survive a restart mid-run).
+4. Add `langgraph` to `api/pyproject.toml`; `uv lock`. No other dependency changes.
+5. Migrate the listing sanity-check step (`submit_check_job_listing_text` / `build_check_prompt` /
+   `parse_check_answer`, `job_pipeline.py`, around lines 546-1191) — the smallest one-shot step: no
+   DB reads at render time, a one-line prompt, a single regex-parsed boolean answer, and an
+   `on_result` that already does nothing for this job kind (`job_pipeline.py` ~line 1952) — to a
+   minimal LangGraph graph (one node, calling `Runner.run()`), run through the existing
+   `ClaudeJobQueue` dispatch path unchanged from the outside: same `claude_jobs` row shape, same
+   API routes, same frontend. Tests with `FakeRunner`: the same yes/no/malformed cases
+   `job_pipeline.py` already covers for this step, now exercised through the graph, plus a
+   regression check that every other step's behavior (still calling `Runner` directly, unmigrated)
+   is untouched.
+6. Checks: `scripts/check.py` output; a screenshot confirming the Listing sanity-check banner
+   still fires correctly (a deliberately bad paste) now that it runs through LangGraph; personal-
+   data scan.
+
 Done when
 - [ ] A written inventory of key functionalities and their components exists in `planning/`.
 - [ ] The LangChain/LangGraph question has a recorded decision in `DECISIONS.md` (Accepted or Proposed, not left Open).
