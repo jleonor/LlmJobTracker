@@ -684,9 +684,9 @@ to be acted on this phase, only noted, per the scope above)
    data scan.
 
 Done when
-- [ ] A written inventory of key functionalities and their components exists in `planning/`.
-- [ ] The LangChain/LangGraph question has a recorded decision in `DECISIONS.md` (Accepted or Proposed, not left Open).
-- [ ] At least one concrete reuse or SOLID improvement the audit identifies is actually implemented, not only noted.
+- [x] A written inventory of key functionalities and their components exists in `planning/`. (2026-10-13: `planning/phase-6-inventory.md` — all six areas' backend/frontend modules, what's already shared vs. duplicated, and the Parked-item resume mapping.)
+- [x] The LangChain/LangGraph question has a recorded decision in `DECISIONS.md` (Accepted or Proposed, not left Open). (2026-10-13: D-191, Accepted — LangGraph in for orchestration, LangChain rejected, full pipeline migration deferred to Phase 7.)
+- [x] At least one concrete reuse or SOLID improvement the audit identifies is actually implemented, not only noted. (2026-10-13: the listing sanity check (`JOB_KIND_CHECK`) now runs through `LangGraphCheckRunner`, a one-node LangGraph graph, via a new `runner_overrides` hook in `claude_job_queue.py`. `python scripts/check.py`: 7/7 steps pass, 490 API tests pass. Verified live against the real Claude Code CLI: a deliberately bad paste (cookie-banner-only text) through Add Job still correctly shows "This might not be a job posting," routed through the graph, with no server errors.)
 
 ---
 
