@@ -473,3 +473,62 @@ def test_a_rejected_answer_is_still_kept_with_the_prompt(db_path: Path, runner: 
     assert exchange.prompt_text == "the sent text"
     assert exchange.result_text == "a wrong answer"
     assert exchange.error == "history item: id must look like H-."
+
+
+def test_runner_overrides_routes_one_prompt_kind_to_its_own_runner(db_path: Path) -> None:
+    """D-191: a prompt kind registered in `runner_overrides` runs against its own Runner, every
+    other kind keeps using the default one, unchanged."""
+
+    class RecordingRunner:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.prompts: list[str] = []
+
+        def run(
+            self,
+            prompt: str,
+            cancel: threading.Event | None = None,
+            json_schema: dict[str, Any] | None = None,
+            on_text: Any = None,
+        ) -> RunResult:
+            self.prompts.append(prompt)
+            return RunResult(ok=True, text=f"{self.name}: {prompt}")
+
+    default_runner = RecordingRunner("default")
+    override_runner = RecordingRunner("override")
+    queue = ClaudeJobQueue(db_path, default_runner, runner_overrides={"special": override_runner})
+    conn = connect(db_path)
+    try:
+        job_id = queue.submit(
+            conn,
+            "mixed kinds",
+            "profile",
+            [("ordinary", "goes to default"), ("special", "goes to override")],
+        )
+    finally:
+        conn.close()
+
+    while queue.process_next():
+        pass
+
+    assert default_runner.prompts == ["goes to default"]
+    assert override_runner.prompts == ["goes to override"]
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None
+    assert job.status == "done"
+    conn = connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT result_text FROM claude_job_prompts WHERE claude_job_id = ? ORDER BY position",
+            (job_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    assert [row["result_text"] for row in rows] == [
+        "default: goes to default",
+        "override: goes to override",
+    ]

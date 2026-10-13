@@ -51,6 +51,7 @@ from llmjobtracker.job_files import (
 )
 from llmjobtracker.job_pipeline import (
     ADD_JOB_WORKFLOWS,
+    JOB_KIND_CHECK,
     JobIdentityAnswer,
     JobStepNotReady,
     parse_identity_answer,
@@ -77,6 +78,7 @@ from llmjobtracker.job_revise_turns import (
 from llmjobtracker.job_revise_turns import (
     turn_for_job as job_revise_turn_for_job,
 )
+from llmjobtracker.langgraph_check_runner import LangGraphCheckRunner
 from llmjobtracker.listing_intake import (
     ListingExtraction,
     ListingFetchError,
@@ -223,7 +225,15 @@ def create_app(
     # alongside but separate from profile/ (db_path.parent is the data folder itself).
     files_root = db_path.parent / "files"
     render, on_result = make_pipeline(db_path.parent, files_root)
-    queue = ClaudeJobQueue(db_path, runner, on_result=on_result, render=render)
+    # The listing sanity check runs through a LangGraph proof of concept (D-191); every other
+    # job kind still calls `runner` directly.
+    queue = ClaudeJobQueue(
+        db_path,
+        runner,
+        on_result=on_result,
+        render=render,
+        runner_overrides={JOB_KIND_CHECK: LangGraphCheckRunner(runner)},
+    )
 
     # A stopped worker can leave jobs half done. Put them back in the queue (D-62).
     startup_conn = connect(db_path)

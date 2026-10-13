@@ -11,7 +11,7 @@ lands during a run wins over the worker's own update.
 import logging
 import sqlite3
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, timedelta
 from pathlib import Path
@@ -90,11 +90,16 @@ class ClaudeJobQueue:
         runner: Runner,
         on_result: OnResult | None = None,
         render: Renderer | None = None,
+        runner_overrides: Mapping[str, Runner] | None = None,
     ) -> None:
         self._db_path = db_path
         self._runner = runner
         self._on_result = on_result
         self._render = render
+        # A prompt kind in here runs against its own Runner instead of the default one (D-191's
+        # LangGraph proof of concept uses this to route one job kind through a graph without
+        # touching how every other kind is dispatched).
+        self._runner_overrides = dict(runner_overrides) if runner_overrides else {}
         self._lock = threading.Lock()
         self._current: tuple[int, threading.Event] | None = None
         self._wake = threading.Event()
@@ -239,11 +244,10 @@ class ClaudeJobQueue:
 
             with self._lock:
                 self._live[key] = ""
+            runner = self._runner_overrides.get(prompt.prompt_kind, self._runner)
             try:
                 try:
-                    result = self._runner.run(
-                        text, cancel=cancel, json_schema=schema, on_text=on_text
-                    )
+                    result = runner.run(text, cancel=cancel, json_schema=schema, on_text=on_text)
                 except RateLimitError as limit:
                     if self._stop.is_set():
                         return

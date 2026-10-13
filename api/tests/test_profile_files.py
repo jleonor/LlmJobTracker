@@ -2,11 +2,11 @@ import hashlib
 import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import Response
 
 from llmjobtracker.app import TOKEN_HEADER, create_app
 from llmjobtracker.profile_files import MAX_UPLOAD_BYTES, profile_folder
@@ -24,13 +24,15 @@ def upload_client(db_path: Path) -> Iterator[TestClient]:
         yield test_client
 
 
-def upload(client: TestClient, kind: str, name: str, content: bytes) -> Response:
-    response: Response = client.post(
+def upload(client: TestClient, kind: str, name: str, content: bytes) -> Any:
+    # Not pinned to httpx.Response: starlette's TestClient now prefers httpx2 when it's
+    # installed (D-192, pulled in transitively by langgraph/langsmith), which returns its own
+    # Response class instead.
+    return client.post(
         f"/profile/files/{kind}",
         content=content,
         headers={"X-File-Name": quote(name)},
     )
-    return response
 
 
 def rows(db_path: Path) -> list[sqlite3.Row]:
