@@ -1048,19 +1048,24 @@ function InterviewPrepRow({ pair }: { pair: InterviewPrepPair }) {
     <li>
       <button
         type="button"
-        className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-sm hover:bg-muted/50"
+        className="flex w-full items-start justify-between gap-4 px-3 py-2 text-left text-sm hover:bg-muted/50"
         onClick={() => setExpanded((current) => !current)}
         aria-expanded={expanded}
       >
-        <span className="flex min-w-0 items-center gap-2">
+        <span className="flex min-w-0 items-start gap-2">
           <ChevronRight
             className={cn(
-              'size-3.5 shrink-0 text-muted-foreground transition-transform',
+              'mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform',
               expanded && 'rotate-90',
             )}
             aria-hidden="true"
           />
-          <span className="truncate font-medium">{pair.question}</span>
+          {/* Collapsed: single-line, truncated with an ellipsis. Expanded: the question can be
+          long - shown in full, wrapped, rather than staying cut off once the user asked to see
+          more (D-176). */}
+          <span className={cn('font-medium', expanded ? 'whitespace-normal' : 'truncate')}>
+            {pair.question}
+          </span>
         </span>
         {pair.score !== null && (
           <Badge

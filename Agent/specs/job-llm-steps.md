@@ -730,7 +730,9 @@ Positioning analysis and Application history: ten likely interview questions, ea
 and a score, generated the same no-tools way as every other section here. Shown as ten collapsed
 rows (D-174) — the question and its score, click to reveal the answer below — not a two-column
 table, which was the original shape before the user asked for the row/score layout and the score
-itself in the same round of feedback.
+itself in the same round of feedback. A collapsed question still truncates to one line with an
+ellipsis, but an expanded one wraps in full (D-176) — truncating it there too left a long question
+cut off exactly when the user asked to see more of it.
 
 **Gate:** the same as Positioning analysis's own (D-128, §3 above), and independent of whether
 Positioning has actually been run (D-167) — all of:
