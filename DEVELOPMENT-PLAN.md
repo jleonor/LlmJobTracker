@@ -1,6 +1,6 @@
 # LocalJobTracker: Development Plan
 
-**Current phase: 4, in progress.** Phases 0 through 3 are done; `main` is fast-forwarded to Phase 3's end (D-61, D-142). Phase 4's step list is approved (2026-10-10, D-143 to D-146).
+**Current phase: 5, not started.** Phases 0 through 4 are done; `main` is fast-forwarded to Phase 4's end (D-61, D-187). Phase 5's step list is not yet drafted.
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -595,6 +595,14 @@ Done when
 - [x] A repeat of an added listing is detected. (2026-10-11: verified live against the real Claude Code CLI, seeded dev database. Pasting the same text a second time showed "This looks like a repeat of Acme Testing Co - Senior Data Analyst (same text)" with a working "Open it instead" link, which closed the overlay and navigated straight to the existing application.)
 - [x] Adding a listing creates its tracker row with status Identified and queues Claude Jobs, which the queue badge shows. (2026-10-11: verified live, basic workflow — the row was created as "Identified" with today's date in its status history, the progress tabs auto-followed Listing through Job details to completion, and both the table's and the detail page's "LLM: idle"/real-time badges reflected actual queue state throughout, not the hardcoded placeholder found and fixed during this step (D-148). The "positioning" and "full" workflows, and the URL/upload intake methods, reuse already-tested code paths but were not independently re-driven live this round.)
 - [ ] Synthetic fixtures for each input type exist under `tests/fixtures/synthetic/`.
+
+**Phase 4 closed 2026-10-13 (D-187).** Confirmed by the user in chat despite five items left
+unchecked above - the raw text/URL/saved-HTML-page/text-layer-PDF intake checks, the scanned-PDF
+and JavaScript-only-page fallback checks, the blocked-URL fallback, editing extracted text before
+Claude runs, and the synthetic fixtures under `tests/fixtures/synthetic/` - none of which were
+touched by the unplanned work (Interview preparation, D-166 to D-176; lane and Application
+history's notes, D-177/D-178) that extended this branch before closing. Each stays a known gap,
+not silently dropped, same as D-142's own precedent for Phase 3.
 
 ---
 
