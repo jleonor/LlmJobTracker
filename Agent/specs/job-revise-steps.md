@@ -79,20 +79,25 @@ just as much as a model-generated one does, so it is not exempt. An answer that 
 turn. A rejected turn leaves `description`/`requirements` exactly as they were — no retry, no
 partial apply.
 
-## Application history's answer grammar (D-138)
+## Application history's answer grammar (D-138, notes added D-177)
 
-What goes into the prompt: the job description; the application's already-filed emails, read the
-same way `generate_application_history` already reads them (`email_blocks`, now a shared,
-public helper of `job_pipeline.py` rather than that step's own private one); this turn's
-attachment, if any (its own labelled block, read fresh each turn — `.eml`/`.msg` through the same
-email-text parsing, anything else through `extraction.py`'s general-purpose `extract()`, since
-only the listing kind is extracted at upload time); the current `next_action` and `due_date`; the
-conversation so far; the new message. `notes` is never part of the prompt, same as the one-shot
-step (D-127: user-only).
+What goes into the prompt: the job description; the application's `status_history`
+(`status_history_block`, a shared, public helper of `job_pipeline.py`, D-177 — the same way
+`email_blocks` already is); the application's already-filed emails, read the same way
+`generate_application_history` already reads them (`email_blocks`); this turn's attachment, if any
+(its own labelled block, read fresh each turn — `.eml`/`.msg` through the same email-text parsing,
+anything else through `extraction.py`'s general-purpose `extract()`, since only the listing kind is
+extracted at upload time); the current `notes`, `next_action` and `due_date`; the conversation so
+far; the new message. `notes` was never part of the prompt before D-177 (D-127: user-only) — now
+patched the same `unchanged`/`none`/value way as the other two.
 
-The answer patches the two fields independently:
+The answer patches all three fields independently:
 
 ```
+=== NOTES ===
+unchanged, none to clear it, or the full replacement text
+=== END NOTES ===
+
 === NEXT ACTION ===
 unchanged, none to clear it, or the new next action
 === END NEXT ACTION ===
@@ -103,11 +108,12 @@ unchanged, none to clear it, or a new date as YYYY-MM-DD
 ```
 
 `unchanged` leaves the stored field untouched; `none` clears it — unlike the one-shot generate
-step, which never clears a field (its own caution about a weak LLM proposal overwriting a real
-value), a human-directed chat edit can reasonably ask for a field to be cleared, so the chat
-grammar allows it. A `DUE DATE` that is neither of those two words is checked as `YYYY-MM-DD`;
-anything else rejects the whole turn, both fields left as they were. An answer that changes
-neither field is rejected, same as Job details' "did not change anything" guard.
+step, which never clears `next_action`/`due_date` (its own caution about a weak LLM proposal
+overwriting a real value; `notes` itself has no such carve-out even in the one-shot step, D-177), a
+human-directed chat edit can reasonably ask for a field to be cleared, so the chat grammar allows
+it for all three. A `DUE DATE` that is neither of those two words is checked as `YYYY-MM-DD`;
+anything else rejects the whole turn, every field left as it was. An answer that changes none of
+the three is rejected, same as Job details' "did not change anything" guard.
 
 ## Positioning analysis's answer grammar (D-139)
 

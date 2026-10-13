@@ -298,6 +298,18 @@ def test_edit_updates_only_the_fields_sent(client: TestClient, db_path: Path) ->
     assert body["notes"] == "Follow up Friday."
 
 
+def test_edit_writes_lane(client: TestClient, db_path: Path) -> None:
+    """D-178: lane becomes manually editable through Job details, like every other field there."""
+    app_id = add_application(db_path)
+
+    response = client.patch(
+        f"/job-applications/{app_id}", json={"lane": "AI Product/Applied AI Engineer"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["lane"] == "AI Product/Applied AI Engineer"
+
+
 def test_edit_writes_requirements_and_manual_positioning_fields(
     client: TestClient, db_path: Path
 ) -> None:

@@ -18,7 +18,7 @@ const ACTIVE_POLL_MS = 1000
 // opening the prompt itself. Only the implemented sections (D-136's build order) are listed.
 const JOB_REVISE_CONTEXT: Record<string, string[]> = {
   job_details: ['Listing'],
-  application_history: ['Filed emails'],
+  application_history: ['Status history', 'Filed emails'],
   positioning: ['Career history', 'Questionnaire report', 'Strategy', 'Job details'],
   tailored_cv: ['Career history', 'Questionnaire report', 'Strategy', 'Positioning breakdown'],
   cover_letter: ['Career history', 'Questionnaire report', 'Strategy', 'Positioning breakdown'],

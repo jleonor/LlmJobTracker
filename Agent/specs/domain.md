@@ -9,7 +9,9 @@ repeat either.
 One tracker row for one listing (D-46, D-56). Table `job_applications`.
 
 - `company`, `role_title`: required text.
-- `lane`: free text, set by the positioning strategy (O-12) or left blank until it is.
+- `lane`: free text, set by the positioning strategy (O-12) or left blank until it is. Manually
+  editable through Job details' Edit dialog (D-178), the same as the rest of that section's
+  fields — the strategy's own suggestion is a starting point, not the only way it can be set.
 - `location`: free text (D-53). A Job Application's own suggestion-and-confirm flow is Phase 4.
 - `work_mode`: Onsite, Hybrid, Remote, Unknown (D-54).
 - `contract_type`: Full-Time, Part-Time, Contract/Short Term, Other, Unknown (D-54).
@@ -28,7 +30,11 @@ One tracker row for one listing (D-46, D-56). Table `job_applications`.
   already decided the richer per-requirement weight/match detail lives in the positioning
   breakdown document, not a structured table, and a plain requirements list does not need one
   either).
-- `notes`: free text, the user's own, never generated.
+- `notes`: free text. Previously the user's own, never generated (D-127); superseded by D-177 —
+  Application history's Generate/Revise (LLM) now writes it too, a readable record of the
+  application's status history plus whatever the filed emails add, the same replace-in-slot
+  convention every other generated field in this app uses. Still manually editable through
+  Application history's Edit dialog at any time.
 - `next_action`, `due_date`: free text / date, edited on the Job Application page (D-56).
 - `master_cv_profile_file_id`: nullable, references `profile_files(id)` ON DELETE SET NULL
   (D-116). Which Profile page master CV this application uses — a reference, not a copied file:

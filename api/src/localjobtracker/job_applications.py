@@ -26,10 +26,12 @@ END_STATUSES = ("Rejected", "Withdrawn")
 # typed in by hand, and a status change goes through status_history, not a bare column write
 # (D-45). interview_prep (D-168) added alongside the other three - the structured per-requirement
 # positioning_scores stays deliberately out of this set, since it has no manual Edit form of its
-# own (D-47 computes match_score from it, never the user by hand).
+# own (D-47 computes match_score from it, never the user by hand). lane (D-178) lives in Job
+# details' own Edit dialog, free text, same as the rest of that form.
 _EDITABLE_JSON_COLUMNS = frozenset({"requirements", "fit", "gaps", "unclear", "interview_prep"})
 _EDITABLE_COLUMNS = frozenset(
     {
+        "lane",
         "portal_name",
         "portal_url",
         "location",
@@ -120,6 +122,7 @@ class JobApplicationEdit(BaseModel):
     ever needs to send the fields its own section owns.
     """
 
+    lane: str | None = None
     portal_name: str | None = None
     portal_url: str | None = None
     location: str | None = None

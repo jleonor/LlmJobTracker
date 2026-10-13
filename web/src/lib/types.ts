@@ -103,6 +103,7 @@ export type JobApplicationDetailData = JobApplication & {
 // written server-side, so a field left out here leaves that column untouched, not cleared.
 // Matches the API's JobApplicationEdit.
 export type JobApplicationEdit = Partial<{
+  lane: string | null
   portal_name: string | null
   portal_url: string | null
   location: string | null

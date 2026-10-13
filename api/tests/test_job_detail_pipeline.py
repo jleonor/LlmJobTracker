@@ -733,9 +733,11 @@ def test_submit_generate_positioning_rejects_when_not_ready(db_path: Path) -> No
 # --- Application history: end to end --------------------------------------------------------
 
 
-def test_generate_application_history_end_to_end_reads_the_email_but_never_writes_notes(
+def test_generate_application_history_end_to_end_writes_notes_too(
     db_path: Path,
 ) -> None:
+    """D-177 supersedes D-127: notes is now written by this step, from the status history plus
+    whatever the filed emails add."""
     app_id = add_application(db_path)
     fill_job_details(db_path, app_id, ["Strong SQL"])
     add_email(
@@ -745,7 +747,8 @@ def test_generate_application_history_end_to_end_reads_the_email_but_never_write
         "We'd like to schedule a phone screen for Oct 20, 2026.",
     )
     answer_text = (
-        "=== NOTES ===\nThe recruiter scheduled a phone screen for Oct 20.\n=== END NOTES ===\n\n"
+        "=== NOTES ===\nIdentified, then the recruiter scheduled a phone screen for Oct 20."
+        "\n=== END NOTES ===\n\n"
         "=== NEXT ACTION ===\nPrepare for the phone screen\n=== END NEXT ACTION ===\n\n"
         "=== DUE DATE ===\n2026-10-20\n=== END DUE DATE ===\n"
     )
@@ -760,6 +763,7 @@ def test_generate_application_history_end_to_end_reads_the_email_but_never_write
 
     assert "Phone screen scheduled" in runner.prompts[0]
     assert "We'd like to schedule a phone screen" in runner.prompts[0]
+    assert "Identified" in runner.prompts[0]  # the status history block
 
     conn = connect(db_path)
     try:
@@ -769,14 +773,14 @@ def test_generate_application_history_end_to_end_reads_the_email_but_never_write
         row = conn.execute(
             "SELECT notes, next_action, due_date FROM job_applications WHERE id = ?", (app_id,)
         ).fetchone()
-        assert row["notes"] is None  # D-127: never written, regardless of the answer's NOTES
+        assert row["notes"] == "Identified, then the recruiter scheduled a phone screen for Oct 20."
         assert row["next_action"] == "Prepare for the phone screen"
         assert row["due_date"] == "2026-10-20"
     finally:
         conn.close()
 
 
-def test_generate_application_history_leaves_existing_fields_untouched_when_answer_is_empty(
+def test_generate_application_history_leaves_next_action_and_due_date_untouched_when_empty(
     db_path: Path,
 ) -> None:
     app_id = add_application(db_path)
@@ -804,8 +808,9 @@ def test_generate_application_history_leaves_existing_fields_untouched_when_answ
     conn = connect(db_path)
     try:
         row = conn.execute(
-            "SELECT next_action, due_date FROM job_applications WHERE id = ?", (app_id,)
+            "SELECT notes, next_action, due_date FROM job_applications WHERE id = ?", (app_id,)
         ).fetchone()
+        assert row["notes"] == "Nothing new from the emails."  # notes always replaces, D-177
         assert row["next_action"] == "Follow up Friday"
         assert row["due_date"] == "2026-10-15"
     finally:

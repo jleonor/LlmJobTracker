@@ -117,27 +117,38 @@ def submit(
 
 
 def fill_application_history(
-    db_path: Path, app_id: int, next_action: str | None, due_date: str | None
+    db_path: Path,
+    app_id: int,
+    next_action: str | None,
+    due_date: str | None,
+    notes: str | None = None,
 ) -> None:
     conn = connect(db_path)
     try:
-        update_job_application(conn, app_id, {"next_action": next_action, "due_date": due_date})
+        update_job_application(
+            conn, app_id, {"notes": notes, "next_action": next_action, "due_date": due_date}
+        )
     finally:
         conn.close()
 
 
-def read_application_history(db_path: Path, app_id: int) -> tuple[str | None, str | None]:
+def read_application_history(
+    db_path: Path, app_id: int
+) -> tuple[str | None, str | None, str | None]:
     conn = connect(db_path)
     try:
         detail = get_job_application_detail(conn, app_id)
     finally:
         conn.close()
     assert detail is not None
-    return detail.next_action, detail.due_date
+    return detail.notes, detail.next_action, detail.due_date
 
 
-def history_answer(next_action: str = "unchanged", due_date: str = "unchanged") -> str:
+def history_answer(
+    notes: str = "unchanged", next_action: str = "unchanged", due_date: str = "unchanged"
+) -> str:
     return (
+        f"=== NOTES ===\n{notes}\n=== END NOTES ===\n\n"
         f"=== NEXT ACTION ===\n{next_action}\n=== END NEXT ACTION ===\n\n"
         f"=== DUE DATE ===\n{due_date}\n=== END DUE DATE ==="
     )
@@ -456,59 +467,82 @@ def test_route_400s_when_theres_nothing_to_revise_yet(db_path: Path) -> None:
 # --- Application history: parse_application_history_revision, pure-function tests ---
 
 
-def test_parse_application_history_revision_reads_both_fields() -> None:
+def test_parse_application_history_revision_reads_all_three_fields() -> None:
     revision = parse_application_history_revision(
-        history_answer("Follow up with the recruiter.", "2026-11-01")
+        history_answer("Applied, then screened.", "Follow up with the recruiter.", "2026-11-01")
     )
     assert revision == ApplicationHistoryRevision(
-        True, "Follow up with the recruiter.", True, "2026-11-01"
+        True, "Applied, then screened.", True, "Follow up with the recruiter.", True, "2026-11-01"
     )
 
 
 def test_parse_application_history_revision_none_clears_a_field() -> None:
-    revision = parse_application_history_revision(history_answer("unchanged", "none"))
+    revision = parse_application_history_revision(history_answer(due_date="none"))
     assert revision.due_date_changed is True
     assert revision.due_date is None
+    assert revision.notes_changed is False
     assert revision.next_action_changed is False
 
 
 def test_parse_application_history_revision_rejects_a_bad_date() -> None:
     with pytest.raises(PromptRejected, match="YYYY-MM-DD"):
-        parse_application_history_revision(history_answer("unchanged", "next Tuesday"))
+        parse_application_history_revision(history_answer(due_date="next Tuesday"))
 
 
 def test_parse_application_history_revision_rejects_a_no_op_answer() -> None:
     with pytest.raises(PromptRejected, match="did not change anything"):
-        parse_application_history_revision(history_answer("unchanged", "unchanged"))
+        parse_application_history_revision(history_answer())
 
 
 # --- submit_job_revise_turn / the pipeline, end to end with FakeRunner ---
 
 
-def test_a_turn_updates_next_action_and_leaves_due_date_unchanged(db_path: Path) -> None:
+def test_a_turn_updates_next_action_and_leaves_the_rest_unchanged(db_path: Path) -> None:
     app_id = add_application(db_path)
-    fill_application_history(db_path, app_id, "Wait for a reply.", "2026-10-20")
-    runner = FakeRunner(text=history_answer("Call the recruiter back.", "unchanged"))
+    fill_application_history(
+        db_path, app_id, "Wait for a reply.", "2026-10-20", "Applied on Oct 5."
+    )
+    runner = FakeRunner(text=history_answer(next_action="Call the recruiter back."))
     queue = make_queue(db_path, runner)
 
     submit(db_path, queue, app_id, "application_history", "They called - update the next step.")
     run_all(queue)
 
-    next_action, due_date = read_application_history(db_path, app_id)
+    notes, next_action, due_date = read_application_history(db_path, app_id)
+    assert notes == "Applied on Oct 5."
     assert next_action == "Call the recruiter back."
+    assert due_date == "2026-10-20"
+
+
+def test_a_turn_replaces_the_notes(db_path: Path) -> None:
+    app_id = add_application(db_path)
+    fill_application_history(
+        db_path, app_id, "Wait for a reply.", "2026-10-20", "Applied on Oct 5."
+    )
+    runner = FakeRunner(
+        text=history_answer(notes="Applied on Oct 5. Screening call scheduled for Oct 20.")
+    )
+    queue = make_queue(db_path, runner)
+
+    submit(db_path, queue, app_id, "application_history", "Add the screening call to the notes.")
+    run_all(queue)
+
+    notes, next_action, due_date = read_application_history(db_path, app_id)
+    assert notes == "Applied on Oct 5. Screening call scheduled for Oct 20."
+    assert next_action == "Wait for a reply."  # untouched by a notes-only turn
     assert due_date == "2026-10-20"
 
 
 def test_a_turn_can_clear_the_due_date(db_path: Path) -> None:
     app_id = add_application(db_path)
     fill_application_history(db_path, app_id, "Wait for a reply.", "2026-10-20")
-    runner = FakeRunner(text=history_answer("unchanged", "none"))
+    runner = FakeRunner(text=history_answer(due_date="none"))
     queue = make_queue(db_path, runner)
 
     submit(db_path, queue, app_id, "application_history", "There's no deadline after all.")
     run_all(queue)
 
-    next_action, due_date = read_application_history(db_path, app_id)
+    _, next_action, due_date = read_application_history(db_path, app_id)
     assert next_action == "Wait for a reply."
     assert due_date is None
 
@@ -516,13 +550,13 @@ def test_a_turn_can_clear_the_due_date(db_path: Path) -> None:
 def test_a_bad_date_leaves_application_history_unchanged(db_path: Path) -> None:
     app_id = add_application(db_path)
     fill_application_history(db_path, app_id, "Wait for a reply.", "2026-10-20")
-    runner = FakeRunner(text=history_answer("unchanged", "soonish"))
+    runner = FakeRunner(text=history_answer(due_date="soonish"))
     queue = make_queue(db_path, runner)
 
     submit(db_path, queue, app_id, "application_history", "Push the date out a bit.")
     run_all(queue)
 
-    next_action, due_date = read_application_history(db_path, app_id)
+    _, next_action, due_date = read_application_history(db_path, app_id)
     assert (next_action, due_date) == ("Wait for a reply.", "2026-10-20")
 
 
@@ -544,7 +578,7 @@ def test_an_attached_eml_shows_up_in_the_sent_prompt(db_path: Path) -> None:
         )
     finally:
         conn.close()
-    runner = FakeRunner(text=history_answer("Confirm Thursday at 2pm.", "unchanged"))
+    runner = FakeRunner(text=history_answer(next_action="Confirm Thursday at 2pm."))
     queue = make_queue(db_path, runner)
 
     submit(
@@ -558,7 +592,7 @@ def test_an_attached_eml_shows_up_in_the_sent_prompt(db_path: Path) -> None:
     run_all(queue)
 
     assert "Can you do Thursday at 2pm?" in runner.prompts[0]
-    next_action, _ = read_application_history(db_path, app_id)
+    _, next_action, _ = read_application_history(db_path, app_id)
     assert next_action == "Confirm Thursday at 2pm."
 
 
@@ -577,7 +611,7 @@ def test_an_attached_other_file_is_read_with_the_general_extractor(db_path: Path
         )
     finally:
         conn.close()
-    runner = FakeRunner(text=history_answer("unchanged", "unchanged"))
+    runner = FakeRunner(text=history_answer())
     queue = make_queue(db_path, runner)
 
     submit(
@@ -598,6 +632,20 @@ def test_submit_rejects_when_application_history_has_nothing_to_revise(db_path: 
     queue = make_queue(db_path, FakeRunner())
     with pytest.raises(JobReviseNotReady, match="no Application history yet"):
         submit(db_path, queue, app_id, "application_history", "What's next?")
+
+
+def test_submit_is_ready_when_only_notes_has_a_value(db_path: Path) -> None:
+    """D-177: notes alone (no next_action/due_date) is now enough to unlock the chat."""
+    app_id = add_application(db_path)
+    fill_application_history(db_path, app_id, None, None, "Identified on 2026-10-11.")
+    runner = FakeRunner(text=history_answer(notes="Identified on 2026-10-11. Applied on Oct 12."))
+    queue = make_queue(db_path, runner)
+
+    submit(db_path, queue, app_id, "application_history", "Add that I applied.")
+    run_all(queue)
+
+    notes, _, _ = read_application_history(db_path, app_id)
+    assert notes == "Identified on 2026-10-11. Applied on Oct 12."
 
 
 # --- Positioning analysis: helpers ---

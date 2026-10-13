@@ -339,6 +339,7 @@ function JobDetails({
       }
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Field label="Lane">{application.lane ?? EMPTY}</Field>
         <Field label="URL">
           {application.portal_name ? (
             application.portal_url ? (
@@ -451,6 +452,7 @@ function JobDetailsEditDialog({
   onOpenChange: (open: boolean) => void
   onSaved: () => void
 }) {
+  const [lane, setLane] = useState('')
   const [portalName, setPortalName] = useState('')
   const [portalUrl, setPortalUrl] = useState('')
   const [location, setLocation] = useState('')
@@ -465,6 +467,7 @@ function JobDetailsEditDialog({
   // never leaks into the next one.
   useEffect(() => {
     if (!open) return
+    setLane(application.lane ?? '')
     setPortalName(application.portal_name ?? '')
     setPortalUrl(application.portal_url ?? '')
     setLocation(application.location ?? '')
@@ -480,6 +483,7 @@ function JobDetailsEditDialog({
     setBusy(true)
     setError(null)
     const edit: JobApplicationEdit = {
+      lane: lane.trim() || null,
       portal_name: portalName.trim() || null,
       portal_url: portalUrl.trim() || null,
       location: location.trim() || null,
@@ -506,6 +510,9 @@ function JobDetailsEditDialog({
           <DialogTitle>Edit job details</DialogTitle>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          <FormField label="Lane">
+            <Input value={lane} onChange={(event) => setLane(event.target.value)} />
+          </FormField>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FormField label="Portal name">
               <Input value={portalName} onChange={(event) => setPortalName(event.target.value)} />
@@ -1300,10 +1307,13 @@ function ApplicationHistory({
 }) {
   const [editOpen, setEditOpen] = useState(false)
   const [generateOpen, setGenerateOpen] = useState(false)
-  // Generate (LLM) never touches notes (D-127) or status_history directly - next_action/due_date
-  // are the fields it actually writes, so whether either has a value is what "has data" means
-  // here, the same way Job details' own hasData tracks description/requirements.
-  const hasData = application.next_action !== null || application.due_date !== null
+  // D-177 supersedes D-127: Generate (LLM) now writes notes too, from the status history plus
+  // whatever the filed emails add - so hasData tracks all three fields it can write, the same
+  // way Job details' own hasData tracks description/requirements.
+  const hasData =
+    application.notes !== null ||
+    application.next_action !== null ||
+    application.due_date !== null
   const ready = application.description !== null && application.requirements.length > 0
   return (
     <Section
@@ -1348,6 +1358,7 @@ function ApplicationHistory({
           title="Application history"
           leftPane={
             <CurrentApplicationHistoryPane
+              notes={application.notes}
               nextAction={application.next_action}
               dueDate={application.due_date}
             />
@@ -1371,21 +1382,23 @@ function ApplicationHistory({
   )
 }
 
-// JobReviseOverlay's left pane for Application history (D-138): next_action and due_date exactly
-// as the chat prompt presents them. notes is left out - the chat never reads or writes it
-// (D-127), so showing it here would suggest otherwise.
+// JobReviseOverlay's left pane for Application history (D-138, notes added D-177): notes,
+// next_action and due_date exactly as the chat prompt presents them.
 function CurrentApplicationHistoryPane({
+  notes,
   nextAction,
   dueDate,
 }: {
+  notes: string | null
   nextAction: string | null
   dueDate: string | null
 }) {
-  if (!nextAction && !dueDate) {
+  if (!notes && !nextAction && !dueDate) {
     return <p className="text-sm text-muted-foreground">Nothing to revise yet.</p>
   }
   return (
     <div className="flex flex-col gap-3 text-sm">
+      <Field label="Notes">{notes ?? EMPTY}</Field>
       <Field label="Next action">{nextAction ?? EMPTY}</Field>
       <Field label="Due date">{dueDate ?? EMPTY}</Field>
     </div>
