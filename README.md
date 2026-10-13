@@ -1,4 +1,4 @@
-# LocalJobTracker
+# LlmJobTracker
 
 A local, single-user desktop app for a job search. It keeps a tracker, takes in job listings, and produces the positioning, tailored CV and cover letter for each application. You review and approve every result. Nothing is sent or saved as final without you.
 
@@ -18,13 +18,13 @@ If PowerShell blocks the script, use `powershell -ExecutionPolicy Bypass -File .
 
 Under the hood, `scripts/dev.py` starts both servers with one launch token. The browser never sees the token: the dev server adds it to each `/api` request.
 
-To run with the synthetic jobs, use `-Seed`. The jobs go to a separate folder, `%LOCALAPPDATA%\LocalJobTracker-dev`, so the real app database stays untouched:
+To run with the synthetic jobs, use `-Seed`. The jobs go to a separate folder, `%LOCALAPPDATA%\LlmJobTracker-dev`, so the real app database stays untouched:
 
 ```powershell
 .\run.ps1 -Seed
 ```
 
-Without `-Seed`, the app uses `%LOCALAPPDATA%\LocalJobTracker`.
+Without `-Seed`, the app uses `%LOCALAPPDATA%\LlmJobTracker`.
 
 Checks: `python scripts/check.py` runs lint, format, types and tests for both halves.
 
@@ -39,4 +39,4 @@ Checks: `python scripts/check.py` runs lint, format, types and tests for both ha
 - `Agent/`: skills, default rules and specs that the in-app Claude uses.
 - `planning/`: Stitch mockups and notes for building the UI.
 
-Personal data is never stored in this repo. It lives under `%LOCALAPPDATA%\LocalJobTracker\`.
+Personal data is never stored in this repo. It lives under `%LOCALAPPDATA%\LlmJobTracker\`.

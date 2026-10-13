@@ -1,4 +1,4 @@
-# LocalJobTracker: rules for Claude
+# LlmJobTracker: rules for Claude
 
 Read first, in this order:
 1. `DEVELOPMENT-PLAN.md`: phases, the current phase (top of file), and the step list for it.
@@ -22,7 +22,7 @@ A local, single-user desktop app. It takes job listings and produces what an app
 
 - Backend: Python 3.12, FastAPI on 127.0.0.1 with a per-launch token. Managed with `uv`.
 - UI: React, TypeScript, Vite, Tailwind v4, shadcn/ui. Not Next.js.
-- Data: SQLite under `%LOCALAPPDATA%\LocalJobTracker\`.
+- Data: SQLite under `%LOCALAPPDATA%\LlmJobTracker\`.
 - Documents: `.docx` edited with python-docx. Preview through a Word-free converter (`dxpdf` candidate). No Word automation.
 - Listing text extraction: `pypdf` (or PyMuPDF) for PDF, an HTML-to-text extractor for URLs and HTML files, `python-docx` for DOCX. Libraries are confirmed in Phase 4.
 - Agent runtime: headless Claude Code behind a `Runner` interface. Nothing Claude-Code-specific appears outside the runner layer.
@@ -54,7 +54,7 @@ A local, single-user desktop app. It takes job listings and produces what an app
 | `Agent/specs/` | Step contracts and output schemas for each LLM step | Yes |
 | `planning/` | Stitch prompts and mockups, plus notes for building (`runner-notes.md`, `mockup-notes.md`). Read a mockup's `code.html` before building its screen | Ignored by `.gitignore` for now (see Open in DECISIONS.md) |
 | `archive/` | Old plans. Local only and ignored. Don't rely on it: copy anything still needed into `planning/` or `Agent/specs/` | No |
-| `%LOCALAPPDATA%\LocalJobTracker\` | Database, managed job files, uploaded profile files, the user's own rules, and the FAISS index when it is added | No, never in the repo |
+| `%LOCALAPPDATA%\LlmJobTracker\` | Database, managed job files, uploaded profile files, the user's own rules, and the FAISS index when it is added | No, never in the repo |
 
 Two rules about the table:
 - The user's own rules and uploads go to app data, not to `Agent/rules/`. The defaults in `Agent/rules/` are overridden by the user's copies.

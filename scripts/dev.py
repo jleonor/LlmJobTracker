@@ -58,7 +58,7 @@ def main() -> int:
     env = {**os.environ, "LJT_TOKEN": token}
     processes: list[subprocess.Popen[bytes]] = []
     try:
-        processes.append(start([str(python), "-m", "localjobtracker"], API_DIR, env))
+        processes.append(start([str(python), "-m", "llmjobtracker"], API_DIR, env))
         processes.append(
             start([npm, "run", "dev", "--", "--port", "5173", "--strictPort"], WEB_DIR, env)
         )

@@ -6,7 +6,7 @@ and filed emails.
 
 ## Managed folder layout
 
-    %LOCALAPPDATA%\LocalJobTracker\files\<company>\<role_title>\<name>
+    %LOCALAPPDATA%\LlmJobTracker\files\<company>\<role_title>\<name>
 
 `<company>` and `<role_title>` are the Job Application's own fields, sanitised for the
 filesystem: each of `< > : " / \ | ? *` becomes `_`, and the result is trimmed of trailing dots
@@ -35,7 +35,7 @@ One row per file. Columns:
 - `name`: the display name, matching the frontend's `JobApplicationFile.name` (D-111's Emails
   column strips a trailing `.eml`/`.msg` for display; the stored name keeps it).
 - `stored_path`: the file's path under the managed folder above, relative to
-  `%LOCALAPPDATA%\LocalJobTracker\files\` (not absolute — the data directory itself can move,
+  `%LOCALAPPDATA%\LlmJobTracker\files\` (not absolute — the data directory itself can move,
   D-21's `LJT_DATA_DIR` override).
 - `date`: nullable. Set for `eml`/`msg` (when the email was sent/received, D-111's sort key);
   null for every other kind today. Matches the frontend's optional `JobApplicationFile.date`.

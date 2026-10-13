@@ -1,4 +1,4 @@
-# LocalJobTracker: Development Plan
+# LlmJobTracker: Development Plan
 
 **Current phase: 5, in progress.** Phases 0 through 4 are done; `main` is fast-forwarded to Phase 4's end (D-61, D-187). Phase 5 is being built on branch `phase-5-repo-rename`.
 
@@ -65,7 +65,7 @@ Scope
 - Vite, React, TypeScript, Tailwind v4 and shadcn/ui. Fonts self-hosted.
 - App shell, and a Jobs table page with synthetic seed jobs in `tests/fixtures/synthetic/`. The table columns change to the D-46 list (added 2026-10-06).
 - `Runner` interface with `FakeRunner` and `ClaudeCodeRunner`. One real Claude call started from a button, with its output shown in the UI.
-- SQLite database at `%LOCALAPPDATA%\LocalJobTracker\` with a first migration.
+- SQLite database at `%LOCALAPPDATA%\LlmJobTracker\` with a first migration.
 - One `check` command that runs lint, type checks and tests. Add its command to `CLAUDE.md`.
 
 Done when
@@ -74,7 +74,7 @@ Done when
 - [x] The browser's network log shows no requests to external hosts. (2026-10-05: dev server and production build (`vite preview`) both contacted only 127.0.0.1. Fonts are local. The check button's call goes to the local API, which calls Claude Code.)
 - [x] The table shows the D-46 columns (Company, Title, Lane, Location, Status, Last updated, Match score, queue badge), with synthetic data in each. (2026-10-06: screenshot at 1400 px, six synthetic applications, each column filled or a dash where empty. Migration 2 also run on the existing dev database: six rows kept, each with a history row. Empty state checked. Commits 677722d and dc8cc45.)
 - [x] The Jobs table matches the look of the table mockup in `planning/`. You compare the two. (2026-10-06: you confirmed in chat that the table looks good. Accepted differences: triage cards, search, filters and footer are left out (D-03, D-04, Phase 3). Icons are Lucide, not Material Symbols. The columns follow D-46, not the mockup.) (Built as the first column set and screenshotted. Known differences: triage cards, search, filters and footer left out (D-03, D-04, Phase 3). Icons are Lucide, not Material Symbols. Waiting for your comparison, after the D-46 columns are in.)
-- [x] Stopping the backend leaves no orphan process. (2026-10-05: stopped the API under `scripts/dev.py`. The launcher exited and stopped Vite. No `localjobtracker`, `vite` or `node` process was left, and ports 5173 and 8765 were free.)
+- [x] Stopping the backend leaves no orphan process. (2026-10-05: stopped the API under `scripts/dev.py`. The launcher exited and stopped Vite. No `llmjobtracker`, `vite` or `node` process was left, and ports 5173 and 8765 were free.)
 
 ---
 
@@ -99,7 +99,7 @@ Step list (approved in chat 2026-10-06; starts when you say go. Steps 7 to 9 and
 2. Migration 3: `claude_jobs` (kind, optional `job_application_id`, status), `claude_job_prompts` (ordered), `profile_files` (kind, app-data path, SHA-256, upload date, extracted text), `profile_outputs` (versioned `FULL_CV_HISTORY`, Fact Sheet, questionnaire analysis, strategy), `facts` (text, source file, location, date, status unverified, verified or rejected). Tests: applies on a copy of the dev database, and an empty database. (2026-10-07: migration 10 drops the Fact Sheet's part of this schema; see step 7.)
 3. Runner: a `RateLimitError` type in the `Runner` interface. `FakeRunner` can simulate it. `ClaudeCodeRunner` maps the CLI's `rate_limit` events to it (runner-notes). Check whether the CLI reports a reset time: record the result in `planning/runner-notes.md`. The only outcome the app relies on is Resume (D-63).
 4. Claude Jobs queue as an app module between the API and the `Runner` (D-51). One job at a time, in creation order, all prompts before the next. Stored in SQLite (D-62). On startup, a job left `processing` returns to `queued`, and its interrupted prompt runs again from the start. Pause on `RateLimitError`. Resume and Cancel endpoints. Cancel sends SIGTERM and marks the job cancelled (runner-notes). Tests with `FakeRunner`: pause at a simulated limit, resume, restart survival, cancel.
-5. Upload endpoints and screen for master CVs (EN and FR), older CVs, older cover letters, and the questionnaire. Files are copied into `%LOCALAPPDATA%\LocalJobTracker\`, with a SHA-256 hash. Upload of your own writing rules, also in app data. Test: the source file is unchanged after upload.
+5. Upload endpoints and screen for master CVs (EN and FR), older CVs, older cover letters, and the questionnaire. Files are copied into `%LOCALAPPDATA%\LlmJobTracker\`, with a SHA-256 hash. Upload of your own writing rules, also in app data. Test: the source file is unchanged after upload.
 6. Text extraction by code: `pypdf` for PDF, `python-docx` for DOCX, plain text for `.txt`. The result is stored with the file, and any file with no text is reported. Synthetic fixtures under `tests/fixtures/synthetic/`.
 7. (Revised 2026-10-07, D-85/D-86.) Three Claude Jobs, one per document, in order: the career history, the questionnaire analysis, the strategy. Each makes only what is missing, and uses the user's own upload as-is where one exists, with no reformatting call (D-69, D-86). Each is a headless prompt with no schema; the answer is Markdown, checked only for being non-empty against `Agent/specs/profile-steps.md`. Migration 10 drops the Fact Sheet's schema: the `facts` table, the `fact_sheet` and `own_fact_sheet` kinds.
 8. (Revised 2026-10-07, D-85/D-86. Replaces the Fact Sheet review screen.) The career history, questionnaire analysis and strategy are each read and edited as a document on the Profile page, the way `full_cv_history` and `strategy` already could. No per-claim verify or reject step.
@@ -608,22 +608,22 @@ not silently dropped, same as D-142's own precedent for Phase 3.
 
 ## Phase 5: Repo rename
 
-**Goal:** the repo is renamed from LocalJobTracker to LlmJobTracker. Nothing is pushed by Claude (D-61); the user pushes when ready.
+**Goal:** the repo was renamed from the old name to LlmJobTracker. Nothing is pushed by Claude (D-61); the user pushes when ready.
 
 Step list (approved 2026-10-13)
 0. Branch `phase-5-repo-rename` from local `main`.
 1. `DECISIONS.md`: add a decision superseding D-39 (the app no longer starts with "Local"; model calls go through a subscription CLI login — Claude Code now, Codex later per Phase 7 — never a per-token API key; local storage/backend architecture is unchanged) and a decision recording the app-data folder migration (below).
-2. Rename the Python package `api/src/localjobtracker/` to `api/src/llmjobtracker/`; update every import in `api/src` and `api/tests`, `pyproject.toml`'s `name`/`description`, and regenerate `api/uv.lock` via `uv lock`.
-3. Replace every literal `LocalJobTracker`/`localjobtracker` reference in `CLAUDE.md`, `DECISIONS.md` (title only — historical decision rows stay as written, append-only), `DEVELOPMENT-PLAN.md`, `README.md`, `Agent/specs/files.md`, `run.ps1`, `web/index.html`.
-4. One-time migration: move `%LOCALAPPDATA%\LocalJobTracker\` to `%LOCALAPPDATA%\LlmJobTracker\` intact (DB, managed files, uploads), run through the Terminal panel (not Claude's own shell tools, which get this path redirected on this machine).
+2. Rename the Python package to `api/src/llmjobtracker/`; update every import in `api/src` and `api/tests`, `pyproject.toml`'s `name`/`description`, and regenerate `api/uv.lock` via `uv lock`.
+3. Replace every remaining literal reference to the old name in `CLAUDE.md`, `DECISIONS.md` (title only — historical decision rows stay as written, append-only), `DEVELOPMENT-PLAN.md`, `README.md`, `Agent/specs/files.md`, `run.ps1`, `web/index.html`.
+4. One-time migration: move the real app-data folder to `%LOCALAPPDATA%\LlmJobTracker\` intact (DB, managed files, uploads), run through the Terminal panel (not Claude's own shell tools, which get this path redirected on this machine).
 5. `git remote set-url origin` on the working copy to the new GitHub URL. No push.
 6. Run `python scripts/check.py`; fix fallout.
-7. Grep-verify zero remaining case-insensitive `LocalJobTracker` matches in tracked files (outside historical commit messages and append-only decision rows).
+7. Grep-verify zero remaining case-insensitive matches of the old name in tracked files (outside historical commit messages and append-only decision rows).
 8. Merge `phase-5-repo-rename` into local `main` with `git merge --ff-only`.
 9. User: rename the folder on disk, delete the redundant empty clone, push when ready.
 
 Done when
-- [ ] Every tracked reference to "LocalJobTracker" reads "LlmJobTracker" (screenshot or grep output showing zero remaining matches, outside of historical commit messages).
+- [ ] Every tracked reference to the old name reads "LlmJobTracker" (screenshot or grep output showing zero remaining matches, outside of historical commit messages).
 - [ ] `python scripts/check.py` is still green after the rename.
 - [ ] A private GitHub repo named LlmJobTracker exists.
 
