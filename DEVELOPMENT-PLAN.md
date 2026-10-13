@@ -1,6 +1,6 @@
 # LocalJobTracker: Development Plan
 
-**Current phase: 5, not started.** Phases 0 through 4 are done; `main` is fast-forwarded to Phase 4's end (D-61, D-187). Phase 5's step list is not yet drafted.
+**Current phase: 5, in progress.** Phases 0 through 4 are done; `main` is fast-forwarded to Phase 4's end (D-61, D-187). Phase 5 is being built on branch `phase-5-repo-rename`.
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -608,14 +608,19 @@ not silently dropped, same as D-142's own precedent for Phase 3.
 
 ## Phase 5: Repo rename
 
-**Goal:** the repo is renamed from LocalJobTracker to LlmJobTracker while nothing is pushed anywhere yet, so the rename is cheap.
+**Goal:** the repo is renamed from LocalJobTracker to LlmJobTracker. Nothing is pushed by Claude (D-61); the user pushes when ready.
 
-Scope
-- Rename every tracked reference to the old name: the repo folder/remote name, `CLAUDE.md`, `DECISIONS.md`, `DEVELOPMENT-PLAN.md`, `README.md`, package/config names, and any UI text that shows the app's name.
-- Decide, as part of this phase's own step list, whether the app-data folder (`%LOCALAPPDATA%\LocalJobTracker\`) moves to match, including a one-time move of the real data already there, or stays as-is for now. Not decided here — this is a placeholder for that step list.
-- Decide whether D-39's explanation of "Local" in the app's name needs rewording now that the name no longer starts with it — the underlying architecture (local storage, outbound traffic only for model calls) is unchanged.
-- Create a private GitHub repo named LlmJobTracker. It stays private; making it public is a later step (see "Public release" below), not part of this phase.
-- No functional/behavioural code change — this is a renaming and documentation pass.
+Step list (approved 2026-10-13)
+0. Branch `phase-5-repo-rename` from local `main`.
+1. `DECISIONS.md`: add a decision superseding D-39 (the app no longer starts with "Local"; model calls go through a subscription CLI login — Claude Code now, Codex later per Phase 7 — never a per-token API key; local storage/backend architecture is unchanged) and a decision recording the app-data folder migration (below).
+2. Rename the Python package `api/src/localjobtracker/` to `api/src/llmjobtracker/`; update every import in `api/src` and `api/tests`, `pyproject.toml`'s `name`/`description`, and regenerate `api/uv.lock` via `uv lock`.
+3. Replace every literal `LocalJobTracker`/`localjobtracker` reference in `CLAUDE.md`, `DECISIONS.md` (title only — historical decision rows stay as written, append-only), `DEVELOPMENT-PLAN.md`, `README.md`, `Agent/specs/files.md`, `run.ps1`, `web/index.html`.
+4. One-time migration: move `%LOCALAPPDATA%\LocalJobTracker\` to `%LOCALAPPDATA%\LlmJobTracker\` intact (DB, managed files, uploads), run through the Terminal panel (not Claude's own shell tools, which get this path redirected on this machine).
+5. `git remote set-url origin` on the working copy to the new GitHub URL. No push.
+6. Run `python scripts/check.py`; fix fallout.
+7. Grep-verify zero remaining case-insensitive `LocalJobTracker` matches in tracked files (outside historical commit messages and append-only decision rows).
+8. Merge `phase-5-repo-rename` into local `main` with `git merge --ff-only`.
+9. User: rename the folder on disk, delete the redundant empty clone, push when ready.
 
 Done when
 - [ ] Every tracked reference to "LocalJobTracker" reads "LlmJobTracker" (screenshot or grep output showing zero remaining matches, outside of historical commit messages).
