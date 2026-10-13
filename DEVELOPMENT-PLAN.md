@@ -21,11 +21,17 @@ This plan says what gets built, in what order, and how we know a phase is done. 
 | 2 | Profile onboarding | Your files in, a reviewed career history, questionnaire analysis and strategy out, and the Claude Jobs queue running |
 | 3 | Tracker | Real data in a table with status history, editable, with file preview |
 | 4 | Add job | A listing (text, URL, HTML file or PDF) becomes a file, a tracker row and a queued positioning Claude Job |
-| 5 | Job workspace | Job page with positioning and match score, tailored CV and cover letter, revised by comment |
-| 6 | Emails and chat | Email history on the job page; chat proposes actions you confirm |
-| 7 | Question memory | Answered clarifying questions are found again |
-| 8 | Shell and hardening | Electron shell, backups, run log, optional board |
-| Parked | Not scheduled | Browser assist, managed agent loop, form filling, the real spreadsheet dry-run/apply import (D-142) |
+| 5 | Repo rename | Renamed to LlmJobTracker; a private GitHub repo exists |
+| 6 | Technical debt audit | Key functionality and components reviewed for SOLID structure; LangChain/LangGraph decided |
+| 7 | Multi-LLM support | Codex selectable in Settings; "Open LLM app" opens a read-only context bundle |
+| 8 | Lanes | Profile page gets a named, described Lanes section, sourced from the positioning strategy |
+| 9 | Font and UI audit | One consistent font and a reviewed, modern layout across the table and main pages |
+| 10 | Memory function | A revise chat that surfaces a new background fact proposes a profile-document update |
+| 11 | Dashboard | Slicer-driven charts, a calendar heatmap, and per-lane strengths/weaknesses |
+| 12 | Shell and hardening | Electron shell, backups, run log, and an in-app LLM + browser pane |
+| Parked | Not scheduled | Job workspace's revision-chain model, Emails and chat, Question memory, board view, browser assist, managed agent loop, form filling, the real spreadsheet dry-run/apply import (D-142, D-179, D-185) |
+
+Phases 5 to 12 were reordered on 2026-10-13 (D-179), from a planning discussion with the user about what to build after Phase 4. The previous Phase 5 (Job workspace's remaining scope), Phase 6 (Emails and chat), Phase 7 (Question memory) and part of the old Phase 8 (board view) are not dropped — they move to Parked, to be rescheduled once Phase 6's technical debt audit decides where each resumes (D-185). "Public release" (updating `README.md` and making the GitHub repo public) is a checklist item after Phase 9, not a numbered phase, matching how the user wants it sequenced.
 
 ---
 
@@ -592,95 +598,156 @@ Done when
 
 ---
 
-## Phase 5: Job workspace and documents
+## Phase 5: Repo rename
 
-**Goal:** for one job, the positioning, tailored CV and cover letter are produced and revised by comment.
-
-**Most of this phase's primary goal was pulled forward onto `phase-3-tracker` and built there**
-(D-129 to D-131, Phase 3's "Step list, continued" for steps 35-39): positioning analysis, the
-Tailored CV and the Cover letter all generate for real, each gated and wired through the job
-page's Generate/Revise (LLM) buttons. What's still genuinely this phase's own, not yet built: the
-version-chain/comment-based revision model below (D-131 narrowed what shipped to a one-shot
-regenerate instead), the "Prepare all" button, and clarifying-question storage. The scope below is
-kept as originally written, for the record; see D-129 to D-131 for what narrowed and why.
+**Goal:** the repo is renamed from LocalJobTracker to LlmJobTracker while nothing is pushed anywhere yet, so the rename is cheap.
 
 Scope
-- Job page, top to bottom (D-56): header with title and company; the "not done yet" flags for positioning, tailored CV and cover letter (D-48); job details (portal, description, requirements, location, work mode, contract type); application history (status timeline with achieved statuses dated and the rest greyed out, notes, next action, due date); positioning analysis; files.
-- Positioning runs automatically when a Job Application is added (D-49). Each requirement gets a weight (0 to 10) and a match (0 to 10), each with evidence. Code computes the fit % (D-47). The analysis also gives fit bullets, gap bullets and a job-specific strategy. The match score shows in the table too.
-- Buttons: Re-run positioning, Write tailored CV, Write cover letter, and Prepare all. Each button queues a Claude Job. Positioning comes first in the chain.
-- Files (D-57): Claude proposes a master CV when the listing is added, and the user can change it. Tailored CV and cover letter each have a button to write one.
-- Each output is a new version file. Nothing is overwritten. **Narrowed by D-131: what shipped replaces the file in its slot on each run (D-115), not a kept version chain.**
-- A comment on any version produces a new version. Comments are kept with the versions. **Not built (D-131) — left for a later, separate iterative-revision design.**
-- Positioning may ask clarifying questions. Answers go into the job's record. (Storage of answers for reuse is Phase 7.) **Not built — the `unclear` column (D-102/D-116) shows what's unclear; nothing captures an answer to it yet.**
-- ~~Every claim cites a verified fact id. Code checks that each cited id exists and is verified.~~ **Stale (D-131): this described the Fact Sheet/fact-id system D-85/D-86 already replaced with honesty-by-review.**
-- Cover letter checks in code: no colon or dash used as sentence punctuation, and the length limit. **Built (D-130/D-131): no colon/em dash/en dash/sentence-punctuation dash, 200-400 words.**
-- CV: a copy of the chosen master (English or French), with edits. The formatting-preservation check compares page count and styles against the master. **Built (D-130): numbered-block edits via `docx_editor.py`; the check narrowed to a logged page-count comparison, not a gate — see job-llm-steps.md §5.**
-- Create `Agent/specs/steps.md` (positioning, CV and letter contracts) and `Agent/skills/edit-docx/`. **Narrowed (D-131): the contracts live in `job-llm-steps.md` instead; no `Agent/skills/edit-docx/` was needed since editing is plain code (`docx_editor.py`), not a Claude Code skill.**
+- Rename every tracked reference to the old name: the repo folder/remote name, `CLAUDE.md`, `DECISIONS.md`, `DEVELOPMENT-PLAN.md`, `README.md`, package/config names, and any UI text that shows the app's name.
+- Decide, as part of this phase's own step list, whether the app-data folder (`%LOCALAPPDATA%\LocalJobTracker\`) moves to match, including a one-time move of the real data already there, or stays as-is for now. Not decided here — this is a placeholder for that step list.
+- Decide whether D-39's explanation of "Local" in the app's name needs rewording now that the name no longer starts with it — the underlying architecture (local storage, outbound traffic only for model calls) is unchanged.
+- Create a private GitHub repo named LlmJobTracker. It stays private; making it public is a later step (see "Public release" below), not part of this phase.
+- No functional/behavioural code change — this is a renaming and documentation pass.
 
 Done when
-- [ ] On a real listing, you judge the positioning, CV and letter. Quality is your call. (Positioning verified live, D-124 to D-128. CV/letter: see Phase 3's own Done-when item, D-129 to D-131, once steps 35-39 are built and verified.)
-- [x] The fit % matches a hand calculation from the stored weights and matches. (2026-10-09: 58.1% hand-verified, see Phase 3's Done-when list.)
-- [ ] The "not done yet" flags clear as each output is written. (Positioning's flag already clears on `match_score`, D-98's `hasPositioningData`; Tailored CV/Cover letter's flags are unconditional today, D-103 — not yet wired to clear once a file exists.)
-- [ ] A comment produces v2, and v1 is kept. (Not built, D-131 — see above.)
-- [x] ~~Every cited fact id exists and is verified (automated check).~~ N/A — superseded by D-85/D-86; honesty is instruction plus user review everywhere in this app, not a fact-id check.
-- [ ] Cover letter checks pass on positive and negative samples. (D-130's design; not yet built.)
-- [ ] CV formatting checks pass against the master. (D-130's design; not yet built.)
+- [ ] Every tracked reference to "LocalJobTracker" reads "LlmJobTracker" (screenshot or grep output showing zero remaining matches, outside of historical commit messages).
+- [ ] `python scripts/check.py` is still green after the rename.
+- [ ] A private GitHub repo named LlmJobTracker exists.
 
 ---
 
-## Phase 6: Emails and chat
+## Phase 6: Technical debt audit
 
-**Goal:** email files attach to a job, and chat can propose changes that you confirm.
+**Goal:** the app's key functionality and components are reviewed for SOLID structure, and the LangChain/LangGraph question is settled before more runners and features are built on top of the Runner/Claude Jobs layer.
 
 Scope
-- "Add email" button on a job. The email history on the job page lists each email by title as a preview, and clicking one expands it (D-57).
-- Parse `.eml` (standard library) and `.msg` (`extract-msg`). Store each file in the job's correspondence folder.
-- Claude proposes status or next-action changes from the email. Each proposal shows as a preview with Confirm.
-- Chat panel: slide-out on the right, scoped to a job or to General. It can only propose actions. Nothing runs without Confirm.
+- Inventory the app's key functionalities (profile onboarding, tracker, job intake, job workspace generate/revise, LLM history, the Claude Jobs queue) and the modules/components behind each, in `planning/` (no `docs/` folder, CLAUDE.md).
+- Identify which UI components should be reusable rather than duplicated. Several already are (shared overlay shells, `FilePreview`, `GenerateSectionOverlay`/`JobReviseOverlay`, per D-104, D-135, D-137) — the audit checks what's left.
+- Evaluate LangChain/LangGraph as a replacement for, or wrapper around, the `Runner` interface (D-19/D-20) and the Claude Jobs queue (D-49 to D-52): would it make orchestration leaner, and would it ease a future local-model path (D-22/D-34/D-39)? Record the decision (accept, reject, or defer) in `DECISIONS.md` with reasons either way.
+- Decide, in light of the audit, where the Parked items that are still real wanted features — the Job workspace's revision-chain model, Emails and chat, Question memory (D-185) — resume relative to the rest of this plan.
 
 Done when
-- [ ] Injection text in an email changes nothing without Confirm.
-- [ ] A proposed update applies only after Confirm.
-- [ ] Email previews list by title and expand on click (screenshot).
-- [ ] Three real emails are filed to the right jobs (you check).
+- [ ] A written inventory of key functionalities and their components exists in `planning/`.
+- [ ] The LangChain/LangGraph question has a recorded decision in `DECISIONS.md` (Accepted or Proposed, not left Open).
+- [ ] At least one concrete reuse or SOLID improvement the audit identifies is actually implemented, not only noted.
 
 ---
 
-## Phase 7: Question memory
+## Phase 7: Multi-LLM support and Open LLM app
 
-**Goal:** answered clarifying questions are found again instead of asked twice.
+**Goal:** a second runner (Codex) can be selected in Settings for the app's reasoning tasks, and a job's page can hand an external LLM app a read-only bundle of context.
 
 Scope
-- Questions and answers are stored in SQLite, which is the source of truth.
-- Retrieval starts with keyword search. A FAISS index is added only if keyword search misses real questions in testing. The index is built from SQLite and lives in app data.
-- Choosing an embedding model is a decision (see DECISIONS.md, Open). Claude does not offer an embeddings API.
+- Settings screen: choose the backend/model used for reasoning tasks (Claude Code or Codex to start, extendable later), built on the Runner seam (D-19/D-20, CLAUDE.md rule 6), revised to match whatever Phase 6 decided about LangChain/LangGraph.
+- A second `Runner` implementation (Codex), confirmed against a real call the same way `ClaudeCodeRunner` was confirmed in Phase 0.
+- "Open LLM app" button (sidebar and/or job page): exports a read-only context bundle — the profile documents (career history, questionnaire analysis, strategy, lanes) always included, plus whichever job(s) the user chooses to expose — to a throwaway, OS-level read-only folder or briefing file, then launches the user's configured external LLM desktop app (Claude Desktop or Codex) pointed at it. The bundle, never the live managed folder or database, is what the external app sees, so it has no path to edit the tracker (D-181).
+- Decide the bundle's job scope: just the job page the user clicked from, or a chosen set (for example a whole lane).
 
 Done when
-- [ ] Questions asked in Phase 5 are stored with their answers.
-- [ ] Five paraphrases of a stored question are each matched, or the misses are recorded.
+- [ ] A reasoning task runs successfully through both Claude Code and Codex, selected from Settings, and the choice persists across a restart.
+- [ ] "Open LLM app" launches the configured app pointed at an exported bundle containing the profile documents and the chosen job(s).
+- [ ] Writing into the bundle's source files (profile documents, job files) is confirmed not to touch the live tracker.
 
 ---
 
-## Phase 8: Shell and hardening
+## Phase 8: Lanes
 
-**Goal:** the app is safe to use every day.
+**Goal:** the positioning strategy's lanes become a named, described list on the Profile page, used as the source of truth when adding a job.
 
 Scope
-- Electron shell that starts and stops the backend.
-- Backup: copy the database and managed files on a schedule. A restore drill.
-- Run log: each Claude call with its token count and cost.
-- Log redaction and a secrets scan.
-- Board view, if you still want it after using the table.
+- Profile page: a "Lanes" section below the LLM Generated Profile files — each lane's name, description and the reasoning for why it fits the user, read from the positioning strategy document.
+- Add Job's lane field (currently free text, manually editable since D-178) becomes a selection from this list.
+- Decide how a lane is edited: inline on the Profile page, or only through Revise (LLM) on the strategy document, with the Lanes section as a read view extracted from it.
+
+Done when
+- [ ] The Lanes section lists each lane with its name, description and reasoning, matching the positioning strategy document.
+- [ ] Adding a job selects a lane from this list instead of free text.
+- [ ] A lane change, through whichever edit path is chosen, shows up in both the Lanes section and Add Job's picker.
+
+---
+
+## Phase 9: Font and UI audit
+
+**Goal:** consistent typography and a reviewed, modern layout across the Job Applications table, the Job Application page, the Profile page and the LLM history page.
+
+Scope
+- Audit which font is used where today (table, page body, headings) and decide one consistent choice — candidate: Poppins throughout the table, confirmed or revised once the audit is done.
+- Review each page's layout for UX issues: the Job Applications table, the Job Application detail page, the Profile page, the LLM history page.
+- Apply the agreed font and fix the layout issues the audit finds, each confirmed in the browser with before/after screenshots (CLAUDE.md rule 5).
+
+Done when
+- [ ] A written audit lists every font currently in use and where (screenshot evidence).
+- [ ] One consistent font choice is applied across the table and all four pages above (screenshot).
+- [ ] Each layout issue the audit found is either fixed or explicitly deferred with a reason.
+
+---
+
+## Phase 10: Memory function
+
+**Goal:** a revise chat on positioning or interview preparation that surfaces a new fact about the user's background proposes a profile-document update, instead of leaving the profile stale.
+
+Scope
+- Detect, during a Revise (LLM) chat turn on Positioning analysis or Interview preparation, when the user's message supplies new factual information about their career history, not just a stylistic or strategy change.
+- Propose an update to the relevant profile document (career history, questionnaire analysis, or strategy) from that new information, shown as a preview the user must confirm before anything in the profile changes (CLAUDE.md's existing product rules — nothing is saved as final without approval).
+- Decide the trigger: every revise turn is checked, or only turns a lightweight classification step flags.
+
+Done when
+- [ ] A chat turn on Positioning analysis or Interview preparation stating a new background fact produces a proposed profile-document update, shown as a preview.
+- [ ] Declining the preview changes nothing in the profile files.
+- [ ] Confirming the preview updates the right document, visible in LLM history like any other profile revise turn.
+
+---
+
+## Phase 11: Dashboard
+
+**Goal:** a dashboard answers questions about the job search as a whole, not just one application at a time.
+
+Scope
+- Dashboard page with slicers — lane, stage, match-score bucket (10% buckets), location — filtering every chart on the page at once.
+- Charts: proportion of jobs by lane, by stage, by match-score bucket; average time between Identified and Applied; average jobs identified and applications sent per working day and per week; a calendar heatmap of applications sent (GitHub-commits style).
+- Strengths and weaknesses per lane: a new LLM-generated field analysing the fit/gap patterns across every job in a lane, shown as a summary table next to each lane's average match score.
+- This is a distinct idea from the still-parked Kanban board (D-02) — an analytics view, not a replacement for the table.
+
+Done when
+- [ ] Every chart responds to each slicer, alone and combined.
+- [ ] The calendar heatmap matches the real application dates in the tracker.
+- [ ] The strengths/weaknesses table is generated for at least one lane with enough jobs, and the user judges its quality (CLAUDE.md rule 4).
+
+---
+
+## Phase 12: Shell, hardening, and in-app LLM + browser
+
+**Goal:** the app runs as its own desktop window, is safe for daily use, and a job page can open a split chat/browser pane for help applying to a listing directly.
+
+Scope
+- Electron shell that starts and stops the backend (D-17).
+- Backup: copy the database and managed files on a schedule; a restore drill.
+- Run log: each Claude/Codex call with its token count and cost. Log redaction and a secrets scan.
+- "Open LLM with browser": a button on the job page opening a split view — chat on one side, an in-app browser on the other — so the user can log into a job portal with the LLM's help reading and acting on the page. This is the fuller version of Phase 7's "Open LLM app", and revisits the parked "Apply with AI" idea (D-14, narrowed by D-184) now that it runs inside the app's own shell.
 
 Done when
 - [ ] The restore drill recovers a deleted database.
 - [ ] Secrets and personal-data scans are clean.
-- [ ] A week of real use, and your go or no-go.
+- [ ] "Open LLM with browser" opens the split view and the LLM can read the page the user navigated to.
+- [ ] A week of real use, and the user's go or no-go.
+
+---
+
+## Public release
+
+Not a numbered phase — a checklist revisited once the user judges the above is far enough along (at minimum, Phase 5's rename and Phase 9's UI audit).
+
+- [ ] `README.md` is rewritten for the new name and current state.
+- [ ] The GitHub repo is switched from private to public.
 
 ---
 
 ## Parked (not scheduled)
 
-- **Apply with AI** (browser beside a job). Conflicts with the form-filling non-goal. A narrower, read-only version can be reconsidered after Phase 8.
-- **Managed agent loop** (replacing one step with our own loop, to compare). A learning goal. Optional, after Phase 8, with its own design note.
+- **Job workspace's revision-chain model**: the comment-based, kept-version revision model originally planned for Phase 5, the "Prepare all" button, and clarifying-question storage (what shipped instead: a one-shot regenerate per output, D-131). Still wanted; revisit scheduling during Phase 6's technical debt audit (D-185).
+- **Emails and chat**: the "Add email" button, parsed `.eml`/`.msg` filed to a job, Claude proposing status/next-action changes from an email with Confirm, and a general chat panel. Still wanted — CLAUDE.md's own description of the app includes "the record of emails." Revisit scheduling during Phase 6 (D-185).
+- **Question memory**: SQLite keyword search (and FAISS if needed) so an answered clarifying question is found again instead of asked twice. Still wanted. Revisit scheduling during Phase 6 (D-185).
+- **Board view** (Kanban, D-02): a kanban alternative to the table. Distinct from the Dashboard (Phase 11), which is an analytics view, not a table replacement.
+- **Apply with AI** (browser beside a job, D-14): the narrower, read-only version is now scheduled as Phase 7's "Open LLM app"; the fuller in-app version is Phase 12's "Open LLM with browser" (D-184).
+- **Managed agent loop** (replacing one step with our own loop, to compare). A learning goal, worth another look once Phase 7's second runner exists. Optional, with its own design note.
 - **Form filling and auto-submission.** Out of scope.
