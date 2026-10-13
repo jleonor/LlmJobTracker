@@ -1,23 +1,27 @@
 # Job-page revise steps: the contract for a job-section chat turn
 
 Extends Phase 3 (D-136). A job-page revise conversation is scoped to one Job Application and one
-of its five sections: `job_details`, `positioning`, `application_history`, `tailored_cv`,
-`cover_letter`. Each turn the user sends is one new Claude Job, with one prompt, run through the
-`Runner` with no JSON schema and no tools (`--tools ""`, same as every other job-page prompt). The
-answer is a true incremental patch against the section's own current content, not a full
-replacement — mirrors `revise-steps.md`'s OLD/NEW model in spirit, but each section needs its own
-answer grammar, since none of the five is a single plain-text document the way a profile output
-is.
+of its six sections: `job_details`, `positioning`, `application_history`, `tailored_cv`,
+`cover_letter`, `interview_prep` (the last added later, D-169, once Interview preparation itself
+existed — job-llm-steps.md §7). Each turn the user sends is one new Claude Job, with one prompt,
+run through the `Runner` with no JSON schema and no tools (`--tools ""`, same as every other
+job-page prompt). The answer is a true incremental patch against the section's own current
+content, not a full replacement — mirrors `revise-steps.md`'s OLD/NEW model in spirit, but each
+section needs its own answer grammar, since none of the six is a single plain-text document the
+way a profile output is.
 
-All five sections now have a grammar: `job_details`, `application_history` and `positioning`
+All six sections now have a grammar: `job_details`, `application_history` and `positioning`
 each have their own (D-137 to D-140); `tailored_cv` and `cover_letter` (D-141) reuse D-130's
-existing block-id operations almost unchanged, built against the *current* file's own blocks.
+existing block-id operations almost unchanged, built against the *current* file's own blocks;
+`interview_prep` (D-169) has its own, a `NUMBER`-indexed patch mirroring `job_details`'
+`REQUIREMENT PATCH` grammar.
 
 ## Job kind, table, and prompt shape
 
 - **Kind:** `revise_<section kind>` — `revise_job_details`, `revise_application_history`,
-  `revise_positioning`, `revise_tailored_cv`, `revise_cover_letter`. Each links to the
-  `job_application_id` it's revising, unlike a profile revise turn (which links to none).
+  `revise_positioning`, `revise_tailored_cv`, `revise_cover_letter`, `revise_interview_prep`
+  (D-169). Each links to the `job_application_id` it's revising, unlike a profile revise turn
+  (which links to none).
 - **Table:** `job_revise_turns` (migration 18) — one shared table with a `section_kind` column,
   the same single-table-many-kinds shape `revise_turns` already uses for the three profile
   documents, kept separate from it since `revise_turns`'s `output_kind` CHECK and lack of a
@@ -25,6 +29,13 @@ existing block-id operations almost unchanged, built against the *current* file'
   the `job_files` row a turn optionally carries — filed for real *before* the turn is queued (the
   route's caller uploads it first through the existing `/job-applications/{id}/files/{kind}`
   endpoint, the same as any other upload), not a separate attachment-storage mechanism of its own.
+  `section_kind`'s own CHECK constraint was deliberately pre-reserved for exactly the five kinds
+  known when migration 18 was written (`migrations.py`'s own comment: "so the table's CHECK
+  constraint doesn't need a later migration to widen it") — `interview_prep` wasn't one of them,
+  since Interview preparation didn't exist yet. Widening a CHECK is not a plain `ALTER TABLE ADD
+  COLUMN` in SQLite, so migration 22 rebuilds the table (create-new/copy/drop/rename, the same
+  technique migration 13 already used for a CHECK change on `job_applications`/`status_history`),
+  rather than attempting an in-place `ALTER`.
 - **One prompt per turn**, built when the job runs, not when queued — same rule as every other
   revise/generate prompt in this app, so it always reflects the latest stored content and the
   latest conversation, even if an earlier turn in the same conversation failed.
@@ -154,6 +165,36 @@ updated list and re-renders the breakdown document (`render_breakdown_document`,
 function the one-shot step uses) — if every resulting weight would be `0`, the whole turn is
 rejected, the same guard the one-shot step already has. An answer that changes nothing (every
 field `unchanged` and no patches) is rejected, same as the other two sections' grammars.
+
+## Interview preparation's answer grammar (D-169)
+
+What goes into the prompt: the three profile documents (career history, questionnaire analysis,
+strategy — `profile_document_blocks`, the same shared helper Positioning/Tailored CV/Cover letter
+already use); the selected Master CV's own plain text (job-llm-steps.md §7's own addition — read
+here too, the same way the one-shot step does); the job description and the stored `requirements`
+list, numbered 1-based, background only; the current `interview_prep` list, numbered 1-based, each
+shown as its stored question and answer; the conversation so far; the new message.
+
+Only for a pair actually being changed — a pair not mentioned stays exactly as it is:
+
+```
+=== QA PATCH ===
+NUMBER: <a number from the list above, or NEW to add a pair>
+ACTION: EDIT, REMOVE, or ADD
+QUESTION: <for ADD, or an EDIT that changes the question — otherwise omit>
+ANSWER: <for ADD, or an EDIT that changes the answer — otherwise omit>
+=== END QA PATCH ===
+```
+
+Code applies every patch against the *stored* `interview_prep` list (not the order the model gave
+them in): `EDIT`/`REMOVE` resolve `NUMBER` against the list's current length (out of range,
+non-integer, or patched more than once rejects the whole turn, the same guarantee Job details' and
+Positioning's own `NUMBER`-indexed patches already give); `ADD` requires both `QUESTION` and
+`ANSWER`; an `EDIT` that gives only one of the two leaves the other exactly as stored, the same
+per-field independence Application history's `NEXT ACTION`/`DUE DATE` patch already allows. An
+answer that changes nothing (no patches at all) is rejected, the same "did nothing" guard every
+other chat grammar here already has. A rejected turn leaves `interview_prep` exactly as it was —
+no retry, no partial apply.
 
 ## Tailored CV's and Cover letter's answer grammar (D-141)
 

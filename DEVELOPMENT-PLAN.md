@@ -543,6 +543,43 @@ Step list (approved in chat 2026-10-10, D-143 to D-146)
 11. Checks: `scripts/check.py` output; personal-data scan; synthetic fixtures for each input type
     under `tests/fixtures/synthetic/`; screenshots per the Done-when list below.
 
+Step list, continued (added 2026-10-13, D-166 to D-171): a seventh Generate/Revise (LLM) section,
+Interview preparation, added to the job page out of the step list approved 2026-10-10 — the user
+asked for it directly, before closing the phase. Full contracts in `Agent/specs/job-llm-steps.md`
+§7 and `Agent/specs/job-revise-steps.md`'s own addition. Appended here rather than reopening steps
+1-11, following D-104's pattern.
+
+12. Migration 21: `job_applications.interview_prep` (JSON `[{question, answer}]`, default `'[]'`).
+    Migration 22: widen `job_revise_turns.section_kind`'s CHECK to add `interview_prep` — a table
+    rebuild (create-new/copy/drop/rename), since SQLite can't `ALTER` a CHECK constraint, the same
+    technique migration 13 already used. Tests: both apply and roll back on a copy of the dev
+    database and an empty database.
+13. Backend: `generate_interview_prep` in `job_pipeline.py` (job-llm-steps.md §7) — submit/
+    render/on_result, gated server-side the same as `generate_positioning` (the three LLM profile
+    documents, a Master CV selected, Job details filled, the listing file exists), independent of
+    whether positioning has run. Reads the selected Master CV's own text (D-167) alongside the
+    three profile documents. Parses exactly ten `QA` blocks, rejecting the answer if the count is
+    wrong or any `QUESTION`/`ANSWER` is empty. Writes `interview_prep` in full. Tests with
+    `FakeRunner`: a good ten-pair answer; fewer than ten blocks (rejected); an empty `ANSWER`
+    (rejected).
+14. Backend: `revise_interview_prep` in `job_revise_pipeline.py` (job-revise-steps.md's own
+    addition) — the `QA PATCH` grammar (`NUMBER`/`ACTION`/`QUESTION`/`ANSWER`), applied against
+    the stored `interview_prep` list the same `NUMBER`-indexed way Job details' own chat already
+    patches `requirements`. Tests with `FakeRunner`: an edit, a remove, an add, and the "changed
+    nothing" guard.
+15. Frontend: `InterviewPreparation` section in `JobApplicationDetailPage.tsx`, between
+    Positioning analysis and Application history — a Question/Answer `<table>`, an Edit dialog
+    using a structured row editor (Question/Answer textarea pairs, add/remove row, not the
+    one-line-per-item textarea convention `PositioningEditDialog` uses), and `GenerateSectionOverlay`/
+    `JobReviseOverlay` wired the same way Positioning analysis's own pair is, gated client-side to
+    mirror the backend gate (D-120's pattern). Added to the Flags row (D-170). Not wired into Add
+    Job's workflow chains (D-171) — a manual button only, like Job details/Positioning/Application
+    history are outside that picker.
+16. Checks: `scripts/check.py` output; personal-data scan; a screenshot of Interview preparation
+    populated with ten pairs from a real application (quality judged by the user, CLAUDE.md), the
+    Edit dialog adding/removing a pair by hand, and a chat turn editing one pair without disturbing
+    the other nine.
+
 Done when
 - [ ] Raw text, one URL, one saved HTML page and one text-layer PDF each produce listing text, and you check the output.
 - [ ] A scanned PDF and a JavaScript-only page each show the fallback message, not an empty listing.
