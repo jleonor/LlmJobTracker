@@ -173,7 +173,11 @@ strategy — `profile_document_blocks`, the same shared helper Positioning/Tailo
 already use); the selected Master CV's own plain text (job-llm-steps.md §7's own addition — read
 here too, the same way the one-shot step does); the job description and the stored `requirements`
 list, numbered 1-based, background only; the current `interview_prep` list, numbered 1-based, each
-shown as its stored question and answer; the conversation so far; the new message.
+shown as its stored question and answer; the conversation so far; the new message. Any pair the
+turn adds or rewrites is answered the same way the one-shot step is (D-172): identify what the
+question actually tests, check the material for direct/transferable/no evidence, and answer with
+STAR, STAR + Bridge, or an acknowledged hypothetical accordingly — restated in the chat prompt
+itself, not merely assumed to carry over from the first generation.
 
 Only for a pair actually being changed — a pair not mentioned stays exactly as it is:
 
