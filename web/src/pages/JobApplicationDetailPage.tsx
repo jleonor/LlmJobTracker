@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, FolderOpen } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Download, FolderOpen } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
@@ -20,7 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import {
   ApiError,
@@ -1029,33 +1028,55 @@ function InterviewPreparation({
 
   return (
     <Section title="Interview preparation" actions={actions}>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="w-2/5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-              Question
-            </TableHead>
-            <TableHead className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-              Answer
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {application.interview_prep.map((pair, index) => (
-            <TableRow key={index} className="hover:bg-transparent">
-              <TableCell className="align-top font-medium whitespace-normal">
-                {pair.question}
-              </TableCell>
-              <TableCell className="align-top whitespace-normal text-muted-foreground">
-                {pair.answer}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <ul className="flex flex-col divide-y divide-border rounded border border-border">
+        {application.interview_prep.map((pair, index) => (
+          <InterviewPrepRow key={index} pair={pair} />
+        ))}
+      </ul>
       {dialog}
       {generateOverlay}
     </Section>
+  )
+}
+
+// D-174: a row per pair, collapsed to its question (plus its score, D-173, so the user can scan
+// answer strength without opening each one) - clicking it reveals the answer below, rather than
+// showing both columns of a table at once.
+function InterviewPrepRow({ pair }: { pair: InterviewPrepPair }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <li>
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-sm hover:bg-muted/50"
+        onClick={() => setExpanded((current) => !current)}
+        aria-expanded={expanded}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <ChevronRight
+            className={cn(
+              'size-3.5 shrink-0 text-muted-foreground transition-transform',
+              expanded && 'rotate-90',
+            )}
+            aria-hidden="true"
+          />
+          <span className="truncate font-medium">{pair.question}</span>
+        </span>
+        {pair.score !== null && (
+          <Badge
+            variant="outline"
+            className="shrink-0 rounded-sm font-mono text-[11px] font-normal text-muted-foreground"
+          >
+            {pair.score}/10
+          </Badge>
+        )}
+      </button>
+      {expanded && (
+        <p className="px-3 pb-3 pl-9 text-sm whitespace-pre-wrap text-muted-foreground">
+          {pair.answer}
+        </p>
+      )}
+    </li>
   )
 }
 
@@ -1072,6 +1093,11 @@ function CurrentInterviewPrepPane({ pairs }: { pairs: InterviewPrepPair[] }) {
         <li key={index} className="flex flex-col gap-1">
           <span className="font-medium">
             {index + 1}. {pair.question}
+            {pair.score !== null && (
+              <span className="ml-2 font-mono text-xs text-muted-foreground">
+                {pair.score}/10
+              </span>
+            )}
           </span>
           <span className="text-muted-foreground">{pair.answer}</span>
         </li>
@@ -1117,8 +1143,13 @@ function InterviewPrepEditDialog({
     )
   }
 
+  function setScore(index: number, value: string) {
+    const score = value.trim() === '' ? null : Math.max(0, Math.min(10, Number(value)))
+    setPairs((current) => current.map((pair, i) => (i === index ? { ...pair, score } : pair)))
+  }
+
   function addRow() {
-    setPairs((current) => [...current, { question: '', answer: '' }])
+    setPairs((current) => [...current, { question: '', answer: '', score: null }])
   }
 
   function removeRow(index: number) {
@@ -1131,7 +1162,11 @@ function InterviewPrepEditDialog({
     try {
       await patchJobApplication(application.id, {
         interview_prep: pairs
-          .map((pair) => ({ question: pair.question.trim(), answer: pair.answer.trim() }))
+          .map((pair) => ({
+            question: pair.question.trim(),
+            answer: pair.answer.trim(),
+            score: pair.score,
+          }))
           .filter((pair) => pair.question || pair.answer),
       })
       onOpenChange(false)
@@ -1156,14 +1191,26 @@ function InterviewPrepEditDialog({
                 <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
                   {index + 1}
                 </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeRow(index)}
-                >
-                  Remove
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Label
+                    htmlFor={`interview-prep-score-${index}`}
+                    className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground"
+                  >
+                    Score
+                  </Label>
+                  <Input
+                    id={`interview-prep-score-${index}`}
+                    type="number"
+                    min={0}
+                    max={10}
+                    className="h-7 w-14"
+                    value={pair.score ?? ''}
+                    onChange={(event) => setScore(index, event.target.value)}
+                  />
+                  <Button type="button" variant="ghost" size="sm" onClick={() => removeRow(index)}>
+                    Remove
+                  </Button>
+                </div>
               </div>
               <FormField label="Question">
                 <Textarea

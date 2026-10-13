@@ -332,7 +332,8 @@ def test_edit_writes_interview_prep_pairs(client: TestClient, db_path: Path) -> 
         f"/job-applications/{app_id}",
         json={
             "interview_prep": [
-                {"question": "Why this role?", "answer": "The SQL work lines up."},
+                {"question": "Why this role?", "answer": "The SQL work lines up.", "score": 8},
+                # A pair added by hand, with no score (D-173: null for an unscored pair).
                 {"question": "Biggest gap?", "answer": "No retail experience."},
             ]
         },
@@ -341,8 +342,8 @@ def test_edit_writes_interview_prep_pairs(client: TestClient, db_path: Path) -> 
     assert response.status_code == 200
     body = response.json()
     assert body["interview_prep"] == [
-        {"question": "Why this role?", "answer": "The SQL work lines up."},
-        {"question": "Biggest gap?", "answer": "No retail experience."},
+        {"question": "Why this role?", "answer": "The SQL work lines up.", "score": 8},
+        {"question": "Biggest gap?", "answer": "No retail experience.", "score": None},
     ]
 
 

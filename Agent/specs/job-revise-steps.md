@@ -173,11 +173,12 @@ strategy — `profile_document_blocks`, the same shared helper Positioning/Tailo
 already use); the selected Master CV's own plain text (job-llm-steps.md §7's own addition — read
 here too, the same way the one-shot step does); the job description and the stored `requirements`
 list, numbered 1-based, background only; the current `interview_prep` list, numbered 1-based, each
-shown as its stored question and answer; the conversation so far; the new message. Any pair the
-turn adds or rewrites is answered the same way the one-shot step is (D-172): identify what the
-question actually tests, check the material for direct/transferable/no evidence, and answer with
-STAR, STAR + Bridge, or an acknowledged hypothetical accordingly — restated in the chat prompt
-itself, not merely assumed to carry over from the first generation.
+shown as its stored question, answer and score (or "(not scored)" if null); the conversation so
+far; the new message. Any pair the turn adds or rewrites is answered the same way the one-shot
+step is (D-172): identify what the question actually tests, check the material for
+direct/transferable/no evidence, and answer with STAR, STAR + Bridge, or an acknowledged
+hypothetical accordingly — restated in the chat prompt itself, not merely assumed to carry over
+from the first generation. It is scored out of 10 the same way too (D-173).
 
 Only for a pair actually being changed — a pair not mentioned stays exactly as it is:
 
@@ -187,18 +188,24 @@ NUMBER: <a number from the list above, or NEW to add a pair>
 ACTION: EDIT, REMOVE, or ADD
 QUESTION: <for ADD, or an EDIT that changes the question — otherwise omit>
 ANSWER: <for ADD, or an EDIT that changes the answer — otherwise omit>
+SCORE: <0-10, required for ADD, or an EDIT that changes the answer — otherwise omit>
 === END QA PATCH ===
 ```
 
 Code applies every patch against the *stored* `interview_prep` list (not the order the model gave
 them in): `EDIT`/`REMOVE` resolve `NUMBER` against the list's current length (out of range,
 non-integer, or patched more than once rejects the whole turn, the same guarantee Job details' and
-Positioning's own `NUMBER`-indexed patches already give); `ADD` requires both `QUESTION` and
-`ANSWER`; an `EDIT` that gives only one of the two leaves the other exactly as stored, the same
-per-field independence Application history's `NEXT ACTION`/`DUE DATE` patch already allows. An
-answer that changes nothing (no patches at all) is rejected, the same "did nothing" guard every
+Positioning's own `NUMBER`-indexed patches already give); `ADD` requires `QUESTION`, `ANSWER` and
+`SCORE` all three (D-173 — a new pair should be scored like any other); an `EDIT` that gives only
+some of the three leaves the rest exactly as stored (`SCORE` omitted on an answer-only edit, for
+instance, keeps the previous score rather than clearing it), the same per-field independence
+Application history's `NEXT ACTION`/`DUE DATE` patch already allows. `SCORE`, when given, is
+checked the same way the one-shot step's own is (a whole number 0-10, `PromptRejected` otherwise).
+An answer that changes nothing (no patches at all) is rejected, the same "did nothing" guard every
 other chat grammar here already has. A rejected turn leaves `interview_prep` exactly as it was —
-no retry, no partial apply.
+no retry, no partial apply. `_split_qa_patch`'s own field boundaries use `[ \t]*`, the same fix
+job-llm-steps.md §7 explains for `_QA_BLOCK` — the same greedy-`\s*`-eats-the-boundary-newline risk
+applies to an empty `QUESTION`/`ANSWER` value here too.
 
 ## Tailored CV's and Cover letter's answer grammar (D-141)
 

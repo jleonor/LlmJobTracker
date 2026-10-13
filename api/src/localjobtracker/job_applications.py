@@ -63,10 +63,16 @@ class StatusHistoryEntry(BaseModel):
 
 
 class InterviewPrepPair(BaseModel):
-    """One of Interview preparation's ten question/answer pairs (D-166, job-llm-steps.md §7)."""
+    """One of Interview preparation's ten question/answer pairs (D-166, job-llm-steps.md §7).
+
+    `score` (D-173) is out of 10, how strong the answer is for this role - set by Claude when the
+    pair is generated or revised, null for a pair added by hand through the Edit dialog, which has
+    no model judgment behind it.
+    """
 
     question: str
     answer: str
+    score: int | None = None
 
 
 class JobApplicationDetail(BaseModel):

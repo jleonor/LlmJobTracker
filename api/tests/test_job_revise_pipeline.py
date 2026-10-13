@@ -886,48 +886,54 @@ def add_master_cv(db_path: Path, app_id: int, text: str) -> None:
         conn.close()
 
 
-def fill_interview_prep(db_path: Path, app_id: int, pairs: list[tuple[str, str]]) -> None:
+def fill_interview_prep(
+    db_path: Path, app_id: int, pairs: list[tuple[str, str, int | None]]
+) -> None:
     conn = connect(db_path)
     try:
         update_job_application(
             conn,
             app_id,
-            {"interview_prep": [{"question": q, "answer": a} for q, a in pairs]},
+            {"interview_prep": [{"question": q, "answer": a, "score": s} for q, a, s in pairs]},
         )
     finally:
         conn.close()
 
 
-def read_interview_prep(db_path: Path, app_id: int) -> list[tuple[str, str]]:
+def read_interview_prep(db_path: Path, app_id: int) -> list[tuple[str, str, int | None]]:
     conn = connect(db_path)
     try:
         detail = get_job_application_detail(conn, app_id)
     finally:
         conn.close()
     assert detail is not None
-    return [(pair.question, pair.answer) for pair in detail.interview_prep]
+    return [(pair.question, pair.answer, pair.score) for pair in detail.interview_prep]
 
 
-def qa_patch(number: str, action: str, question: str = "", answer: str = "") -> str:
+def qa_patch(
+    number: str, action: str, question: str = "", answer: str = "", score: str = ""
+) -> str:
     body = f"=== QA PATCH ===\nNUMBER: {number}\nACTION: {action}\n"
     if question:
         body += f"QUESTION: {question}\n"
     if answer:
         body += f"ANSWER: {answer}\n"
+    if score:
+        body += f"SCORE: {score}\n"
     return body + "=== END QA PATCH ==="
 
 
 TWO_PAIRS = [
-    InterviewPrepPair(question="Why this role?", answer="The SQL work lines up."),
-    InterviewPrepPair(question="Biggest gap?", answer="No retail experience."),
+    InterviewPrepPair(question="Why this role?", answer="The SQL work lines up.", score=8),
+    InterviewPrepPair(question="Biggest gap?", answer="No retail experience.", score=5),
 ]
 
 
 def test_parse_interview_prep_revision_reads_patches() -> None:
-    text = qa_patch("1", "EDIT", answer="A sharper answer.")
+    text = qa_patch("1", "EDIT", answer="A sharper answer.", score="9")
     patches = parse_interview_prep_revision(text)
     assert patches == [
-        QAPatch(number="1", action="EDIT", question=None, answer="A sharper answer.")
+        QAPatch(number="1", action="EDIT", question=None, answer="A sharper answer.", score="9")
     ]
 
 
@@ -937,41 +943,57 @@ def test_parse_interview_prep_revision_rejects_an_empty_answer() -> None:
 
 
 def test_parse_interview_prep_revision_rejects_add_missing_fields() -> None:
-    with pytest.raises(PromptRejected, match="missing QUESTION or ANSWER"):
+    with pytest.raises(PromptRejected, match="missing QUESTION, ANSWER, or SCORE"):
         parse_interview_prep_revision(qa_patch("NEW", "ADD", question="Only a question"))
 
 
 def test_apply_qa_patches_edits_removes_and_adds() -> None:
     patches = [
-        QAPatch(number="1", action="EDIT", question=None, answer="A sharper answer."),
-        QAPatch(number="2", action="REMOVE", question=None, answer=None),
-        QAPatch(number="NEW", action="ADD", question="New one?", answer="New answer."),
+        QAPatch(number="1", action="EDIT", question=None, answer="A sharper answer.", score="9"),
+        QAPatch(number="2", action="REMOVE", question=None, answer=None, score=None),
+        QAPatch(number="NEW", action="ADD", question="New one?", answer="New answer.", score="7"),
     ]
     result = apply_qa_patches(TWO_PAIRS, patches)
     assert result == [
-        InterviewPrepPair(question="Why this role?", answer="A sharper answer."),
-        InterviewPrepPair(question="New one?", answer="New answer."),
+        InterviewPrepPair(question="Why this role?", answer="A sharper answer.", score=9),
+        InterviewPrepPair(question="New one?", answer="New answer.", score=7),
     ]
 
 
+def test_apply_qa_patches_keeps_the_current_score_when_not_given() -> None:
+    patches = [
+        QAPatch(number="1", action="EDIT", question="A reworded question?", answer=None, score=None)
+    ]
+    result = apply_qa_patches(TWO_PAIRS, patches)
+    assert result[0] == InterviewPrepPair(
+        question="A reworded question?", answer="The SQL work lines up.", score=8
+    )
+
+
 def test_apply_qa_patches_rejects_an_out_of_range_number() -> None:
-    patches = [QAPatch(number="9", action="EDIT", question=None, answer="x")]
+    patches = [QAPatch(number="9", action="EDIT", question=None, answer="x", score="5")]
     with pytest.raises(PromptRejected, match="not a current pair"):
         apply_qa_patches(TWO_PAIRS, patches)
 
 
 def test_apply_qa_patches_rejects_patching_the_same_pair_twice() -> None:
     patches = [
-        QAPatch(number="1", action="EDIT", question=None, answer="x"),
-        QAPatch(number="1", action="REMOVE", question=None, answer=None),
+        QAPatch(number="1", action="EDIT", question=None, answer="x", score="5"),
+        QAPatch(number="1", action="REMOVE", question=None, answer=None, score=None),
     ]
     with pytest.raises(PromptRejected, match="patched more than once"):
         apply_qa_patches(TWO_PAIRS, patches)
 
 
 def test_apply_qa_patches_rejects_add_without_new_number() -> None:
-    patches = [QAPatch(number="1", action="ADD", question="q", answer="a")]
+    patches = [QAPatch(number="1", action="ADD", question="q", answer="a", score="5")]
     with pytest.raises(PromptRejected, match="must use NUMBER: NEW"):
+        apply_qa_patches(TWO_PAIRS, patches)
+
+
+def test_apply_qa_patches_rejects_an_out_of_range_score() -> None:
+    patches = [QAPatch(number="1", action="EDIT", question=None, answer="x", score="11")]
+    with pytest.raises(PromptRejected, match="out of range 0-10"):
         apply_qa_patches(TWO_PAIRS, patches)
 
 
@@ -979,8 +1001,10 @@ def test_a_turn_edits_one_answer(db_path: Path) -> None:
     app_id = add_application(db_path)
     add_profile_documents(db_path)
     add_master_cv(db_path, app_id, "Jordan Doe - Senior Data Analyst, five years SQL.")
-    fill_interview_prep(db_path, app_id, [(p.question, p.answer) for p in TWO_PAIRS])
-    runner = FakeRunner(text=qa_patch("2", "EDIT", answer="A longer, more specific answer."))
+    fill_interview_prep(db_path, app_id, [(p.question, p.answer, p.score) for p in TWO_PAIRS])
+    runner = FakeRunner(
+        text=qa_patch("2", "EDIT", answer="A longer, more specific answer.", score="9")
+    )
     queue = make_queue(db_path, runner)
 
     submit(db_path, queue, app_id, "interview_prep", "Make the second answer more specific.")
@@ -988,8 +1012,8 @@ def test_a_turn_edits_one_answer(db_path: Path) -> None:
 
     pairs = read_interview_prep(db_path, app_id)
     assert pairs == [
-        ("Why this role?", "The SQL work lines up."),
-        ("Biggest gap?", "A longer, more specific answer."),
+        ("Why this role?", "The SQL work lines up.", 8),
+        ("Biggest gap?", "A longer, more specific answer.", 9),
     ]
     assert "Jordan Doe - Senior Data Analyst" in runner.prompts[0]
 
@@ -998,15 +1022,17 @@ def test_a_turn_adds_a_pair(db_path: Path) -> None:
     app_id = add_application(db_path)
     add_profile_documents(db_path)
     add_master_cv(db_path, app_id, "Jordan Doe - Senior Data Analyst, five years SQL.")
-    fill_interview_prep(db_path, app_id, [(p.question, p.answer) for p in TWO_PAIRS])
-    runner = FakeRunner(text=qa_patch("NEW", "ADD", question="Why leave?", answer="Growth."))
+    fill_interview_prep(db_path, app_id, [(p.question, p.answer, p.score) for p in TWO_PAIRS])
+    runner = FakeRunner(
+        text=qa_patch("NEW", "ADD", question="Why leave?", answer="Growth.", score="6")
+    )
     queue = make_queue(db_path, runner)
 
     submit(db_path, queue, app_id, "interview_prep", "Add a question about why I'm leaving.")
     run_all(queue)
 
     pairs = read_interview_prep(db_path, app_id)
-    assert pairs[-1] == ("Why leave?", "Growth.")
+    assert pairs[-1] == ("Why leave?", "Growth.", 6)
     assert len(pairs) == 3
 
 
@@ -1014,15 +1040,15 @@ def test_a_bad_patch_leaves_interview_prep_unchanged(db_path: Path) -> None:
     app_id = add_application(db_path)
     add_profile_documents(db_path)
     add_master_cv(db_path, app_id, "Jordan Doe - Senior Data Analyst, five years SQL.")
-    fill_interview_prep(db_path, app_id, [(p.question, p.answer) for p in TWO_PAIRS])
-    runner = FakeRunner(text=qa_patch("9", "EDIT", answer="x"))
+    fill_interview_prep(db_path, app_id, [(p.question, p.answer, p.score) for p in TWO_PAIRS])
+    runner = FakeRunner(text=qa_patch("9", "EDIT", answer="x", score="5"))
     queue = make_queue(db_path, runner)
 
     submit(db_path, queue, app_id, "interview_prep", "Edit a pair that doesn't exist.")
     run_all(queue)
 
     pairs = read_interview_prep(db_path, app_id)
-    assert pairs == [(p.question, p.answer) for p in TWO_PAIRS]
+    assert pairs == [(p.question, p.answer, p.score) for p in TWO_PAIRS]
 
 
 def test_submit_rejects_when_interview_prep_has_nothing_to_revise(db_path: Path) -> None:

@@ -897,7 +897,10 @@ the question is really testing, check the material for direct evidence, transfer
 no real evidence of it, then answer with STAR (a direct example), STAR + Bridge (acknowledge the
 example isn't an exact match, walk through it anyway, then connect it to what the question asks),
 or an acknowledged, reasoned-through hypothetical - whichever fits the evidence actually
-available. Never claim direct experience the material does not support.
+available. Never claim direct experience the material does not support. Score it out of 10 the
+same way too - 10 means the kind of answer the ideal candidate for this role would give; an honest
+acknowledged-hypothetical answer should usually score lower, which is a true reflection of the
+evidence, not a flaw to disguise.
 
 {history_doc}
 
@@ -934,6 +937,7 @@ NUMBER: <a number from the list above, or NEW to add a pair>
 ACTION: EDIT, REMOVE, or ADD
 QUESTION: <for ADD, or an EDIT that changes the question - otherwise omit>
 ANSWER: <for ADD, or an EDIT that changes the answer - otherwise omit>
+SCORE: <0-10, required for ADD, or an EDIT that changes the answer - otherwise omit>
 === END QA PATCH ===
 
 Give one QA PATCH block per changed pair, in any order."""
@@ -947,34 +951,54 @@ class QAPatch:
     action: str  # EDIT | REMOVE | ADD
     question: str | None  # Only for ADD, or an EDIT that changes the question.
     answer: str | None  # Only for ADD, or an EDIT that changes the answer.
+    score: str | None  # Raw text; only for ADD, or an EDIT that changes the answer.
 
 
-def _split_qa_patch(body: str) -> tuple[str, str, str | None, str | None]:
+def _split_qa_patch(body: str) -> tuple[str, str, str | None, str | None, str | None]:
+    # `[ \t]*`, not `\s*`, right after each label (job_pipeline.py's own `_QA_BLOCK` comment
+    # explains why): otherwise an empty QUESTION/ANSWER value lets `\s*` eat the newline the next
+    # label's boundary needs, and the lazy capture overruns into whatever follows.
     match = re.match(
-        r"NUMBER:\s*(.*?)\nACTION:\s*(.*?)(?:\nQUESTION:\s*(.*?))?(?:\nANSWER:\s*(.*))?\s*\Z",
+        r"NUMBER:[ \t]*(.*?)\nACTION:[ \t]*(.*?)"
+        r"(?:\nQUESTION:[ \t]*(.*?))?(?:\nANSWER:[ \t]*(.*?))?(?:\nSCORE:[ \t]*(.*))?\s*\Z",
         body,
         re.DOTALL,
     )
     if match is None:
         raise PromptRejected(f"A QA PATCH block was malformed: {body[:100]!r}")
-    number_text, action_text, question_value, answer_value = match.groups()
+    number_text, action_text, question_value, answer_value, score_value = match.groups()
     question = question_value.strip() if question_value else None
     answer = answer_value.strip() if answer_value else None
-    return number_text.strip(), action_text.strip().upper(), question, answer
+    score = score_value.strip() if score_value else None
+    return number_text.strip(), action_text.strip().upper(), question, answer, score
 
 
 def parse_interview_prep_revision(text: str) -> list[QAPatch]:
     patches = []
     for body in _QA_PATCH_BLOCK.findall(text):
-        number, action, question, answer = _split_qa_patch(body)
+        number, action, question, answer, score = _split_qa_patch(body)
         if action not in _ALLOWED_ACTIONS:
             raise PromptRejected(f"Unknown QA PATCH action: {action!r}")
-        if action == "ADD" and (not question or not answer):
-            raise PromptRejected("A QA PATCH with ACTION: ADD is missing QUESTION or ANSWER.")
-        patches.append(QAPatch(number=number, action=action, question=question, answer=answer))
+        if action == "ADD" and (not question or not answer or not score):
+            raise PromptRejected(
+                "A QA PATCH with ACTION: ADD is missing QUESTION, ANSWER, or SCORE."
+            )
+        patches.append(
+            QAPatch(number=number, action=action, question=question, answer=answer, score=score)
+        )
     if not patches:
         raise PromptRejected("The answer did not change anything.")
     return patches
+
+
+def _parse_qa_score(value: str) -> int:
+    try:
+        score = int(value.strip())
+    except ValueError as error:
+        raise PromptRejected(f"SCORE is not a whole number: {value!r}") from error
+    if not (0 <= score <= 10):
+        raise PromptRejected(f"SCORE is out of range 0-10: {value!r}")
+    return score
 
 
 def apply_qa_patches(
@@ -990,9 +1014,15 @@ def apply_qa_patches(
         if patch.number.upper() == "NEW":
             if patch.action != "ADD":
                 raise PromptRejected("NUMBER: NEW must use ACTION: ADD.")
-            if not patch.question or not patch.answer:
-                raise PromptRejected("A new pair needs both QUESTION and ANSWER.")
-            additions.append(InterviewPrepPair(question=patch.question, answer=patch.answer))
+            if not patch.question or not patch.answer or not patch.score:
+                raise PromptRejected("A new pair needs a QUESTION, ANSWER and SCORE.")
+            additions.append(
+                InterviewPrepPair(
+                    question=patch.question,
+                    answer=patch.answer,
+                    score=_parse_qa_score(patch.score),
+                )
+            )
             continue
         if patch.action == "ADD":
             raise PromptRejected(f"ACTION: ADD must use NUMBER: NEW, not {patch.number!r}.")
@@ -1011,6 +1041,7 @@ def apply_qa_patches(
             edits[index] = InterviewPrepPair(
                 question=patch.question or current.question,
                 answer=patch.answer or current.answer,
+                score=_parse_qa_score(patch.score) if patch.score is not None else current.score,
             )
     kept = [edits.get(index, pair) for index, pair in enumerate(pairs) if index not in removals]
     return kept + additions
@@ -1030,7 +1061,9 @@ def _build_interview_prep_revise_prompt(conn: sqlite3.Connection, turn: JobRevis
     )
     pairs = interview_prep_from_json(row["interview_prep"])
     numbered_pairs = "\n".join(
-        f"{index + 1}. Q: {pair.question}\n   A: {pair.answer}" for index, pair in enumerate(pairs)
+        f"{index + 1}. Q: {pair.question}\n   A: {pair.answer}\n"
+        f"   SCORE: {pair.score if pair.score is not None else '(not scored)'}"
+        for index, pair in enumerate(pairs)
     )
     history = prior_messages(conn, application_id, "interview_prep", turn.id)
     docs = profile_document_blocks(conn)
@@ -1061,7 +1094,11 @@ def _store_interview_prep_revision(
     update_job_application(
         conn,
         application_id,
-        {"interview_prep": [{"question": p.question, "answer": p.answer} for p in new_pairs]},
+        {
+            "interview_prep": [
+                {"question": p.question, "answer": p.answer, "score": p.score} for p in new_pairs
+            ]
+        },
     )
 
 

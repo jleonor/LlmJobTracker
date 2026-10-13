@@ -15,10 +15,13 @@ export type StatusHistoryEntry = {
   changed_at: string
 }
 
-// One of Interview preparation's ten question/answer pairs (D-166, job-llm-steps.md §7).
+// One of Interview preparation's ten question/answer pairs (D-166, job-llm-steps.md §7). score
+// (D-173) is out of 10, how strong the answer is for this role - null for a pair added by hand
+// through the Edit dialog, which has no model judgment behind it.
 export type InterviewPrepPair = {
   question: string
   answer: string
+  score: number | null
 }
 
 export type JobApplicationFile = {

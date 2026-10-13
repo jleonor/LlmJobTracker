@@ -104,12 +104,13 @@ GOOD_POSITIONING_ANSWER = (
 )
 
 
-def _qa_block(question: str, answer: str) -> str:
-    return f"=== QA ===\nQUESTION: {question}\nANSWER: {answer}\n=== END QA ==="
+def _qa_block(question: str, answer: str, score: int = 7) -> str:
+    return f"=== QA ===\nQUESTION: {question}\nANSWER: {answer}\nSCORE: {score}\n=== END QA ==="
 
 
 GOOD_INTERVIEW_PREP_ANSWER = "\n\n".join(
-    _qa_block(f"Question {n}?", f"Answer {n}, grounded in the career history.") for n in range(10)
+    _qa_block(f"Question {n}?", f"Answer {n}, grounded in the career history.", score=n)
+    for n in range(10)
 )
 
 
@@ -830,6 +831,20 @@ def test_parse_interview_prep_answer_reads_ten_pairs() -> None:
     assert len(pairs) == 10
     assert pairs[0].question == "Question 0?"
     assert pairs[0].answer == "Answer 0, grounded in the career history."
+    assert pairs[0].score == 0
+    assert pairs[9].score == 9
+
+
+def test_parse_interview_prep_answer_rejects_an_out_of_range_score() -> None:
+    bad_answer = GOOD_INTERVIEW_PREP_ANSWER.replace("SCORE: 0", "SCORE: 11")
+    with pytest.raises(PromptRejected, match="out of range 0-10"):
+        parse_interview_prep_answer(bad_answer)
+
+
+def test_parse_interview_prep_answer_rejects_a_non_numeric_score() -> None:
+    bad_answer = GOOD_INTERVIEW_PREP_ANSWER.replace("SCORE: 0", "SCORE: strong")
+    with pytest.raises(PromptRejected, match="not a whole number"):
+        parse_interview_prep_answer(bad_answer)
 
 
 def test_parse_interview_prep_answer_rejects_fewer_than_ten_pairs() -> None:
@@ -886,6 +901,7 @@ def test_generate_interview_prep_end_to_end_stores_ten_pairs(db_path: Path) -> N
         assert pairs[0] == {
             "question": "Question 0?",
             "answer": "Answer 0, grounded in the career history.",
+            "score": 0,
         }
     finally:
         conn.close()
