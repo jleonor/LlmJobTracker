@@ -900,7 +900,9 @@ or an acknowledged, reasoned-through hypothetical - whichever fits the evidence 
 available. Never claim direct experience the material does not support. Score it out of 10 the
 same way too - 10 means the kind of answer the ideal candidate for this role would give; an honest
 acknowledged-hypothetical answer should usually score lower, which is a true reflection of the
-evidence, not a flaw to disguise.
+evidence, not a flaw to disguise. Write the answer in the first person, as the candidate speaking
+out loud in the interview ("I led...", not "the candidate led...") - it should read like something
+a person would actually say, never a description of what they would say.
 
 {history_doc}
 

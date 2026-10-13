@@ -178,7 +178,8 @@ far; the new message. Any pair the turn adds or rewrites is answered the same wa
 step is (D-172): identify what the question actually tests, check the material for
 direct/transferable/no evidence, and answer with STAR, STAR + Bridge, or an acknowledged
 hypothetical accordingly — restated in the chat prompt itself, not merely assumed to carry over
-from the first generation. It is scored out of 10 the same way too (D-173).
+from the first generation. It is scored out of 10 the same way too (D-173), and written in the
+first person the same way too (D-175) — "I led...", not "the candidate led...".
 
 Only for a pair actually being changed — a pair not mentioned stays exactly as it is:
 
