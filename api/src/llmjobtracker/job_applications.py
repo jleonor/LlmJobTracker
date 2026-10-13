@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from localjobtracker.job_files import JobApplicationFile, list_job_files, managed_folder
+from llmjobtracker.job_files import JobApplicationFile, list_job_files, managed_folder
 
 DEFAULT_STATUS = "Identified"
 # D-44: forward order. A Job Application's current status (D-117) is the furthest of these it has

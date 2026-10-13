@@ -4,14 +4,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.claude_job_queue import ClaudeJobQueue
-from localjobtracker.claude_jobs import get_claude_job, list_claude_jobs
-from localjobtracker.profile_files import list_profile_files
-from localjobtracker.profile_pipeline import DEFAULT_RULES_PATH, ProfileNotReady
-from localjobtracker.revise_pipeline import make_pipeline, submit_revise_turn
-from localjobtracker.runner import FakeRunner
-from localjobtracker.storage import connect
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.claude_job_queue import ClaudeJobQueue
+from llmjobtracker.claude_jobs import get_claude_job, list_claude_jobs
+from llmjobtracker.profile_files import list_profile_files
+from llmjobtracker.profile_pipeline import DEFAULT_RULES_PATH, ProfileNotReady
+from llmjobtracker.revise_pipeline import make_pipeline, submit_revise_turn
+from llmjobtracker.runner import FakeRunner
+from llmjobtracker.storage import connect
 
 TOKEN = "test-token"
 

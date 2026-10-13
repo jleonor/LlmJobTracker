@@ -25,16 +25,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from localjobtracker.claude_job_queue import (
+from llmjobtracker.claude_job_queue import (
     ClaudeJobQueue,
     OnResult,
     PromptRejected,
     RenderedPrompt,
     Renderer,
 )
-from localjobtracker.claude_jobs import PromptRow
-from localjobtracker.profile_files import store_generated_file
-from localjobtracker.profile_pipeline import (
+from llmjobtracker.claude_jobs import PromptRow
+from llmjobtracker.profile_files import store_generated_file
+from llmjobtracker.profile_pipeline import (
     DEFAULT_RULES_PATH,
     DOCUMENT_FILENAMES,
     EVIDENCE_KINDS,
@@ -54,9 +54,9 @@ from localjobtracker.profile_pipeline import (
     usable_files,
     writing_rules_text,
 )
-from localjobtracker.profile_pipeline import make_pipeline as make_profile_pipeline
-from localjobtracker.revise_turns import create_turn, prior_messages, turn_for_job
-from localjobtracker.runner import RunResult
+from llmjobtracker.profile_pipeline import make_pipeline as make_profile_pipeline
+from llmjobtracker.revise_turns import create_turn, prior_messages, turn_for_job
+from llmjobtracker.runner import RunResult
 
 REVISE_PREFIX: Final = "revise_"
 

@@ -7,10 +7,10 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from localjobtracker.claude_job_queue import ClaudeJobQueue
-from localjobtracker.claude_jobs import get_claude_job
-from localjobtracker.job_applications import insert_job_application
-from localjobtracker.job_pipeline import (
+from llmjobtracker.claude_job_queue import ClaudeJobQueue
+from llmjobtracker.claude_jobs import get_claude_job
+from llmjobtracker.job_applications import insert_job_application
+from llmjobtracker.job_pipeline import (
     JOB_KIND_COVER_LETTER,
     JOB_KIND_DETAILS,
     JOB_KIND_GENERATE,
@@ -19,8 +19,8 @@ from localjobtracker.job_pipeline import (
     make_pipeline,
     queue_add_job_chain,
 )
-from localjobtracker.runner import FakeRunner, Runner, RunResult
-from localjobtracker.storage import connect
+from llmjobtracker.runner import FakeRunner, Runner, RunResult
+from llmjobtracker.storage import connect
 
 LISTING_FIXTURES = (
     Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "job_listing"

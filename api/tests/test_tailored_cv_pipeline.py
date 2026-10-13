@@ -11,17 +11,17 @@ import pytest
 from docx.enum.text import WD_BREAK
 from fastapi.testclient import TestClient
 
-from localjobtracker import docx_editor
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
-from localjobtracker.claude_jobs import get_claude_job
-from localjobtracker.job_applications import (
+from llmjobtracker import docx_editor
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
+from llmjobtracker.claude_jobs import get_claude_job
+from llmjobtracker.job_applications import (
     insert_job_application,
     set_master_cv,
     update_job_application,
 )
-from localjobtracker.job_files import insert_job_file, list_job_files
-from localjobtracker.job_pipeline import (
+from llmjobtracker.job_files import insert_job_file, list_job_files
+from llmjobtracker.job_pipeline import (
     JobStepNotReady,
     build_cover_letter_prompt,
     check_cover_letter_style,
@@ -33,10 +33,10 @@ from localjobtracker.job_pipeline import (
     submit_generate_tailored_cv,
     tailored_cv_ready,
 )
-from localjobtracker.profile_files import store_profile_file
-from localjobtracker.profile_pipeline import DEFAULT_RULES_PATH, store_output
-from localjobtracker.runner import FakeRunner
-from localjobtracker.storage import connect
+from llmjobtracker.profile_files import store_profile_file
+from llmjobtracker.profile_pipeline import DEFAULT_RULES_PATH, store_output
+from llmjobtracker.runner import FakeRunner
+from llmjobtracker.storage import connect
 
 TOKEN = "test-token"
 FIXTURES = (

@@ -4,12 +4,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import localjobtracker.app as app_module
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.job_applications import insert_job_application
-from localjobtracker.job_files import job_file_text
-from localjobtracker.runner import FakeRunner
-from localjobtracker.storage import connect
+import llmjobtracker.app as app_module
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.job_applications import insert_job_application
+from llmjobtracker.job_files import job_file_text
+from llmjobtracker.runner import FakeRunner
+from llmjobtracker.storage import connect
 
 TOKEN = "test-token"
 FIXTURES = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "profile"
@@ -36,7 +36,7 @@ def add_application(db_path: Path, company: str = "Co", role_title: str = "Analy
 
 
 def add_profile_file(db_path: Path, kind: str, original_name: str) -> int:
-    from localjobtracker.profile_files import store_profile_file
+    from llmjobtracker.profile_files import store_profile_file
 
     conn = connect(db_path)
     try:

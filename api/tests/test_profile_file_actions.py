@@ -4,11 +4,11 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import localjobtracker.app as app_module
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.profile_files import store_generated_file, store_profile_file
-from localjobtracker.runner import FakeRunner
-from localjobtracker.storage import connect
+import llmjobtracker.app as app_module
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.profile_files import store_generated_file, store_profile_file
+from llmjobtracker.runner import FakeRunner
+from llmjobtracker.storage import connect
 
 TOKEN = "test-token"
 

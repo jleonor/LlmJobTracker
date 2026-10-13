@@ -9,7 +9,7 @@ import pytest
 from docx.document import Document
 from docx.enum.text import WD_BREAK
 
-from localjobtracker import docx_editor as de
+from llmjobtracker import docx_editor as de
 
 FIXTURES = (
     Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "job_documents"

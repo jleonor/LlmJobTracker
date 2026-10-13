@@ -10,8 +10,8 @@ from typing import Final
 
 from pydantic import BaseModel
 
-from localjobtracker.extraction import extract
-from localjobtracker.migrations import JOB_FILE_KINDS
+from llmjobtracker.extraction import extract
+from llmjobtracker.migrations import JOB_FILE_KINDS
 
 # Characters Windows rejects in a file or folder name (files.md).
 _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*]')
@@ -55,7 +55,7 @@ def sanitize_path_part(value: str) -> str:
 
 
 def managed_folder(files_root: Path, company: str, role_title: str) -> Path:
-    """`%LOCALAPPDATA%\\LocalJobTracker\\files\\<company>\\<role_title>` (files.md)."""
+    """`%LOCALAPPDATA%\\LlmJobTracker\\files\\<company>\\<role_title>` (files.md)."""
     return files_root / sanitize_path_part(company) / sanitize_path_part(role_title)
 
 

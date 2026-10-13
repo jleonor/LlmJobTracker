@@ -8,13 +8,13 @@ from typing import Any
 
 import pytest
 
-from localjobtracker.claude_code_runner import (
+from llmjobtracker.claude_code_runner import (
     MODEL,
     ClaudeCodeRunner,
     build_args,
     parse_stream,
 )
-from localjobtracker.runner import FakeRunner, RateLimitError
+from llmjobtracker.runner import FakeRunner, RateLimitError
 
 REQUIRED_FLAGS = [
     "--restricted",

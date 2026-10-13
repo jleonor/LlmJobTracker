@@ -10,10 +10,10 @@ import pytest
 import respx
 from fastapi.testclient import TestClient
 
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.job_applications import insert_job_application
-from localjobtracker.runner import FakeRunner
-from localjobtracker.storage import connect
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.job_applications import insert_job_application
+from llmjobtracker.runner import FakeRunner
+from llmjobtracker.storage import connect
 
 TOKEN = "test-token"
 LISTING_FIXTURES = (

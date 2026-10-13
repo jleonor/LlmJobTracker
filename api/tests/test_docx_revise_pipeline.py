@@ -16,17 +16,17 @@ from test_tailored_cv_pipeline import (  # noqa: F401  (imported for fixtures re
     make_tailored_cv_ready,
 )
 
-from localjobtracker import docx_editor
-from localjobtracker.claude_job_queue import ClaudeJobQueue
-from localjobtracker.job_files import list_job_files
-from localjobtracker.job_pipeline import submit_generate_cover_letter, submit_generate_tailored_cv
-from localjobtracker.job_revise_pipeline import (
+from llmjobtracker import docx_editor
+from llmjobtracker.claude_job_queue import ClaudeJobQueue
+from llmjobtracker.job_files import list_job_files
+from llmjobtracker.job_pipeline import submit_generate_cover_letter, submit_generate_tailored_cv
+from llmjobtracker.job_revise_pipeline import (
     JobReviseNotReady,
     make_pipeline,
     submit_job_revise_turn,
 )
-from localjobtracker.runner import FakeRunner
-from localjobtracker.storage import connect
+from llmjobtracker.runner import FakeRunner
+from llmjobtracker.storage import connect
 
 TOKEN = "test-token"
 

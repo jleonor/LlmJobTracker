@@ -9,11 +9,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
-from localjobtracker.claude_jobs import get_claude_job, job_status
-from localjobtracker.runner import FakeRunner, Runner, RunResult
-from localjobtracker.storage import connect
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
+from llmjobtracker.claude_jobs import get_claude_job, job_status
+from llmjobtracker.runner import FakeRunner, Runner, RunResult
+from llmjobtracker.storage import connect
 
 TOKEN = "test-token"
 
@@ -452,8 +452,8 @@ def test_a_manual_resume_clears_the_reset_time(db_path: Path) -> None:
 
 
 def test_a_rejected_answer_is_still_kept_with_the_prompt(db_path: Path, runner: FakeRunner) -> None:
-    from localjobtracker.claude_job_queue import PromptRejected
-    from localjobtracker.claude_jobs import prompt_exchange
+    from llmjobtracker.claude_job_queue import PromptRejected
+    from llmjobtracker.claude_jobs import prompt_exchange
 
     runner.text = "a wrong answer"
 

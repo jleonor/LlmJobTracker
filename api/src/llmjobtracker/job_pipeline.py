@@ -27,25 +27,25 @@ import dxpdf
 import pypdf
 from pydantic import BaseModel
 
-from localjobtracker import docx_editor
-from localjobtracker.claude_job_queue import (
+from llmjobtracker import docx_editor
+from llmjobtracker.claude_job_queue import (
     ClaudeJobQueue,
     OnResult,
     PromptRejected,
     RenderedPrompt,
     Renderer,
 )
-from localjobtracker.claude_jobs import PromptRow
-from localjobtracker.file_preview import eml_to_text, msg_to_text
-from localjobtracker.job_applications import update_job_application
-from localjobtracker.job_files import (
+from llmjobtracker.claude_jobs import PromptRow
+from llmjobtracker.file_preview import eml_to_text, msg_to_text
+from llmjobtracker.job_applications import update_job_application
+from llmjobtracker.job_files import (
     latest_job_file_of_kind,
     sanitize_path_part,
     write_generated_job_file,
 )
-from localjobtracker.migrations import CONTRACT_TYPES, WORK_MODES
-from localjobtracker.profile_files import profile_file_path, profile_file_text
-from localjobtracker.profile_pipeline import (
+from llmjobtracker.migrations import CONTRACT_TYPES, WORK_MODES
+from llmjobtracker.profile_files import profile_file_path, profile_file_text
+from llmjobtracker.profile_pipeline import (
     DEFAULT_RULES_PATH,
     MAX_PROMPT_CHARS,
     clean_document,
@@ -53,11 +53,11 @@ from localjobtracker.profile_pipeline import (
     latest_document,
     writing_rules_text,
 )
-from localjobtracker.profile_pipeline import (
+from llmjobtracker.profile_pipeline import (
     PROMPT_KINDS as PROFILE_DOCUMENT_KINDS,
 )
-from localjobtracker.revise_pipeline import make_pipeline as make_revise_pipeline
-from localjobtracker.runner import RunResult
+from llmjobtracker.revise_pipeline import make_pipeline as make_revise_pipeline
+from llmjobtracker.runner import RunResult
 
 logger = logging.getLogger(__name__)
 

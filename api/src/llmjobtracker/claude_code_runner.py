@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from localjobtracker.runner import RateLimitError, RunResult
+from llmjobtracker.runner import RateLimitError, RunResult
 
 # A profile prompt can read every CV, so a run may take many minutes. The timeout is the
 # only stop for a run that goes on too long (D-75).

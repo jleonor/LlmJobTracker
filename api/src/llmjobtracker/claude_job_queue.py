@@ -17,7 +17,7 @@ from datetime import UTC, timedelta
 from pathlib import Path
 from typing import Any
 
-from localjobtracker.claude_jobs import (
+from llmjobtracker.claude_jobs import (
     PromptRow,
     cancel_job,
     create_claude_job,
@@ -32,8 +32,8 @@ from localjobtracker.claude_jobs import (
     store_answer,
     transition,
 )
-from localjobtracker.runner import RateLimitError, Runner, RunResult
-from localjobtracker.storage import connect
+from llmjobtracker.runner import RateLimitError, Runner, RunResult
+from llmjobtracker.storage import connect
 
 logger = logging.getLogger(__name__)
 

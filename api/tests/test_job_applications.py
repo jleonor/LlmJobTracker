@@ -5,12 +5,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from localjobtracker import seed
-from localjobtracker.app import create_app
-from localjobtracker.job_applications import count_job_applications, insert_job_application
-from localjobtracker.job_files import insert_job_file
-from localjobtracker.runner import FakeRunner
-from localjobtracker.storage import connect
+from llmjobtracker import seed
+from llmjobtracker.app import create_app
+from llmjobtracker.job_applications import count_job_applications, insert_job_application
+from llmjobtracker.job_files import insert_job_file
+from llmjobtracker.runner import FakeRunner
+from llmjobtracker.storage import connect
 
 FIXTURE = seed.DEFAULT_FIXTURE
 FIXTURE_ROWS = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -96,7 +96,7 @@ def test_seed_twice_adds_no_duplicates(
 def test_insert_without_history_starts_as_identified(db_path: Path) -> None:
     conn = connect(db_path)
     try:
-        from localjobtracker.migrations import migrate
+        from llmjobtracker.migrations import migrate
 
         migrate(conn)
         app_id = insert_job_application(conn, {"company": "Solo Co", "role_title": "Analyst"})
@@ -115,7 +115,7 @@ def test_insert_without_history_starts_as_identified(db_path: Path) -> None:
 def test_insert_stores_description_requirements_and_notes(db_path: Path) -> None:
     conn = connect(db_path)
     try:
-        from localjobtracker.migrations import migrate
+        from llmjobtracker.migrations import migrate
 
         migrate(conn)
         app_id = insert_job_application(
@@ -142,7 +142,7 @@ def test_insert_stores_description_requirements_and_notes(db_path: Path) -> None
 def test_insert_defaults_requirements_to_an_empty_list(db_path: Path) -> None:
     conn = connect(db_path)
     try:
-        from localjobtracker.migrations import migrate
+        from llmjobtracker.migrations import migrate
 
         migrate(conn)
         app_id = insert_job_application(conn, {"company": "Solo Co", "role_title": "Analyst"})
@@ -160,7 +160,7 @@ def test_insert_defaults_requirements_to_an_empty_list(db_path: Path) -> None:
 def test_insert_rejects_an_unknown_status(db_path: Path) -> None:
     conn = connect(db_path)
     try:
-        from localjobtracker.migrations import migrate
+        from llmjobtracker.migrations import migrate
 
         migrate(conn)
         with pytest.raises(sqlite3.IntegrityError):

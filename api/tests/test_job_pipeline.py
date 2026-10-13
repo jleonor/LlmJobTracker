@@ -4,11 +4,11 @@ check, and the Generate (LLM) step that stores the result as the application's l
 
 from pathlib import Path
 
-from localjobtracker.claude_job_queue import ClaudeJobQueue
-from localjobtracker.claude_jobs import get_claude_job
-from localjobtracker.job_applications import insert_job_application
-from localjobtracker.job_files import list_job_files, store_job_file
-from localjobtracker.job_pipeline import (
+from llmjobtracker.claude_job_queue import ClaudeJobQueue
+from llmjobtracker.claude_jobs import get_claude_job
+from llmjobtracker.job_applications import insert_job_application
+from llmjobtracker.job_files import list_job_files, store_job_file
+from llmjobtracker.job_pipeline import (
     JOB_KIND_CHECK,
     JOB_KIND_GENERATE,
     build_check_prompt,
@@ -18,8 +18,8 @@ from localjobtracker.job_pipeline import (
     submit_check_job_listing_text,
     submit_generate_job_listing,
 )
-from localjobtracker.runner import FakeRunner
-from localjobtracker.storage import connect
+from llmjobtracker.runner import FakeRunner
+from llmjobtracker.storage import connect
 
 LISTING_FIXTURES = (
     Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "job_listing"

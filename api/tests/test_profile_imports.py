@@ -15,12 +15,12 @@ from test_profile_pipeline import (
     store,
 )
 
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.claude_job_queue import ClaudeJobQueue
-from localjobtracker.claude_jobs import get_claude_job
-from localjobtracker.profile_files import delete_profile_file
-from localjobtracker.profile_pipeline import ProfileNotReady
-from localjobtracker.storage import connect
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.claude_job_queue import ClaudeJobQueue
+from llmjobtracker.claude_jobs import get_claude_job
+from llmjobtracker.profile_files import delete_profile_file
+from llmjobtracker.profile_pipeline import ProfileNotReady
+from llmjobtracker.storage import connect
 
 TOKEN = "test-token"
 

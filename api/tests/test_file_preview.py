@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from localjobtracker.file_preview import UnsupportedPreview, preview_for
+from llmjobtracker.file_preview import UnsupportedPreview, preview_for
 
 FIXTURES = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic"
 

@@ -2,8 +2,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from localjobtracker.app import CHECK_PROMPT, create_app
-from localjobtracker.runner import FakeRunner
+from llmjobtracker.app import CHECK_PROMPT, create_app
+from llmjobtracker.runner import FakeRunner
 
 
 def test_check_returns_runner_text(client: TestClient, runner: FakeRunner) -> None:

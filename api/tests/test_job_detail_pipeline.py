@@ -9,16 +9,16 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
-from localjobtracker.claude_jobs import get_claude_job
-from localjobtracker.job_applications import (
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
+from llmjobtracker.claude_jobs import get_claude_job
+from llmjobtracker.job_applications import (
     insert_job_application,
     set_master_cv,
     update_job_application,
 )
-from localjobtracker.job_files import list_job_files, store_job_file
-from localjobtracker.job_pipeline import (
+from llmjobtracker.job_files import list_job_files, store_job_file
+from llmjobtracker.job_pipeline import (
     JobStepNotReady,
     RequirementScore,
     application_history_ready,
@@ -38,9 +38,9 @@ from localjobtracker.job_pipeline import (
     submit_generate_job_details,
     submit_generate_positioning,
 )
-from localjobtracker.profile_pipeline import store_output
-from localjobtracker.runner import FakeRunner
-from localjobtracker.storage import connect
+from llmjobtracker.profile_pipeline import store_output
+from llmjobtracker.runner import FakeRunner
+from llmjobtracker.storage import connect
 
 TOKEN = "test-token"
 

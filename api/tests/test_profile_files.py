@@ -8,10 +8,10 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
 
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.profile_files import MAX_UPLOAD_BYTES, profile_folder
-from localjobtracker.runner import FakeRunner
-from localjobtracker.storage import connect
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.profile_files import MAX_UPLOAD_BYTES, profile_folder
+from llmjobtracker.runner import FakeRunner
+from llmjobtracker.storage import connect
 
 TOKEN = "test-token"
 SYNTHETIC_CV = b"%PDF-1.4 synthetic cv bytes"
@@ -177,7 +177,7 @@ def test_reveal_on_windows_quotes_the_path_as_a_single_command_string(
     import subprocess as subprocess_module
     import sys
 
-    from localjobtracker import profile_files
+    from llmjobtracker import profile_files
 
     monkeypatch.setattr(sys, "platform", "win32")
     calls: list[object] = []

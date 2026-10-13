@@ -15,20 +15,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from localjobtracker import docx_editor
-from localjobtracker.claude_job_queue import (
+from llmjobtracker import docx_editor
+from llmjobtracker.claude_job_queue import (
     ClaudeJobQueue,
     OnResult,
     PromptRejected,
     RenderedPrompt,
     Renderer,
 )
-from localjobtracker.claude_jobs import PromptRow
-from localjobtracker.extraction import extract
-from localjobtracker.file_preview import eml_to_text, msg_to_text
-from localjobtracker.job_applications import update_job_application
-from localjobtracker.job_files import latest_job_file_of_kind, write_generated_job_file
-from localjobtracker.job_pipeline import (
+from llmjobtracker.claude_jobs import PromptRow
+from llmjobtracker.extraction import extract
+from llmjobtracker.file_preview import eml_to_text, msg_to_text
+from llmjobtracker.job_applications import update_job_application
+from llmjobtracker.job_files import latest_job_file_of_kind, write_generated_job_file
+from llmjobtracker.job_pipeline import (
     GENERATED_BREAKDOWN_NAME,
     InterviewPrepPair,
     RequirementScore,
@@ -46,20 +46,20 @@ from localjobtracker.job_pipeline import (
     scores_to_json,
     status_history_block,
 )
-from localjobtracker.job_pipeline import make_pipeline as make_job_pipeline
-from localjobtracker.job_revise_turns import (
+from llmjobtracker.job_pipeline import make_pipeline as make_job_pipeline
+from llmjobtracker.job_revise_turns import (
     JobReviseTurn,
     create_turn,
     prior_messages,
     turn_for_job,
 )
-from localjobtracker.migrations import JOB_REVISE_SECTION_KINDS as SECTION_KINDS
-from localjobtracker.profile_pipeline import (
+from llmjobtracker.migrations import JOB_REVISE_SECTION_KINDS as SECTION_KINDS
+from llmjobtracker.profile_pipeline import (
     DEFAULT_RULES_PATH,
     MAX_PROMPT_CHARS,
     writing_rules_text,
 )
-from localjobtracker.runner import RunResult
+from llmjobtracker.runner import RunResult
 
 REVISE_PREFIX: Final = "revise_"
 

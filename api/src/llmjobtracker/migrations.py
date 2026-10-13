@@ -347,7 +347,7 @@ CREATE TABLE revise_turns (
 
 # Agent/specs/files.md: a Job Application's own files (the listing, CVs, cover letters, the
 # positioning breakdown document, filed emails), stored under
-# %LOCALAPPDATA%\LocalJobTracker\files\<company>\<role_title>\<name>.
+# %LOCALAPPDATA%\LlmJobTracker\files\<company>\<role_title>\<name>.
 _V15_JOB_FILES = f"""
 CREATE TABLE job_files (
     id INTEGER PRIMARY KEY,

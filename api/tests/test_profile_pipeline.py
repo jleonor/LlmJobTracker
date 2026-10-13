@@ -7,11 +7,11 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.claude_job_queue import ClaudeJobQueue
-from localjobtracker.claude_jobs import get_claude_job
-from localjobtracker.profile_files import store_profile_file
-from localjobtracker.profile_pipeline import (
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.claude_job_queue import ClaudeJobQueue
+from llmjobtracker.claude_jobs import get_claude_job
+from llmjobtracker.profile_files import store_profile_file
+from llmjobtracker.profile_pipeline import (
     DEFAULT_RULES_PATH,
     PROMPT_KINDS,
     ProfileBusy,
@@ -19,8 +19,8 @@ from localjobtracker.profile_pipeline import (
     make_pipeline,
     submit_profile_analysis,
 )
-from localjobtracker.runner import RateLimitError, RunResult
-from localjobtracker.storage import connect
+from llmjobtracker.runner import RateLimitError, RunResult
+from llmjobtracker.storage import connect
 
 FIXTURES = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "profile"
 TOKEN = "test-token"

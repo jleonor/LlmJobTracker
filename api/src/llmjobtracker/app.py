@@ -13,8 +13,8 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, 
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from localjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
-from localjobtracker.claude_jobs import (
+from llmjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
+from llmjobtracker.claude_jobs import (
     ClaudeJob,
     PromptExchange,
     get_claude_job,
@@ -22,8 +22,8 @@ from localjobtracker.claude_jobs import (
     prompt_exchange,
     recover_interrupted,
 )
-from localjobtracker.file_preview import UnsupportedPreview, preview_for
-from localjobtracker.job_applications import (
+from llmjobtracker.file_preview import UnsupportedPreview, preview_for
+from llmjobtracker.job_applications import (
     JobApplication,
     JobApplicationDetail,
     JobApplicationEdit,
@@ -39,7 +39,7 @@ from localjobtracker.job_applications import (
     set_master_cv,
     update_job_application,
 )
-from localjobtracker.job_files import (
+from llmjobtracker.job_files import (
     DuplicateListingMatch,
     JobApplicationFile,
     JobFileUploadError,
@@ -49,7 +49,7 @@ from localjobtracker.job_files import (
     managed_folder,
     store_job_file,
 )
-from localjobtracker.job_pipeline import (
+from llmjobtracker.job_pipeline import (
     ADD_JOB_WORKFLOWS,
     JobIdentityAnswer,
     JobStepNotReady,
@@ -65,27 +65,27 @@ from localjobtracker.job_pipeline import (
     submit_generate_positioning,
     submit_generate_tailored_cv,
 )
-from localjobtracker.job_revise_pipeline import (
+from llmjobtracker.job_revise_pipeline import (
     JobReviseNotReady,
     make_pipeline,
     submit_job_revise_turn,
 )
-from localjobtracker.job_revise_turns import (
+from llmjobtracker.job_revise_turns import (
     JobReviseTurn,
     turns_for_section,
 )
-from localjobtracker.job_revise_turns import (
+from llmjobtracker.job_revise_turns import (
     turn_for_job as job_revise_turn_for_job,
 )
-from localjobtracker.listing_intake import (
+from llmjobtracker.listing_intake import (
     ListingExtraction,
     ListingFetchError,
     extract_from_paste,
     extract_from_upload,
     extract_from_url,
 )
-from localjobtracker.migrations import JOB_REVISE_SECTION_KINDS as SECTION_KINDS
-from localjobtracker.profile_files import (
+from llmjobtracker.migrations import JOB_REVISE_SECTION_KINDS as SECTION_KINDS
+from llmjobtracker.profile_files import (
     ProfileFile,
     ProfileFileText,
     ProfileUploadError,
@@ -98,7 +98,7 @@ from localjobtracker.profile_files import (
     reveal_in_file_manager,
     store_profile_file,
 )
-from localjobtracker.profile_pipeline import (
+from llmjobtracker.profile_pipeline import (
     PROMPT_KIND_FOR_OWN,
     PROMPT_KINDS,
     ProfileBusy,
@@ -108,11 +108,11 @@ from localjobtracker.profile_pipeline import (
     list_latest_outputs,
     submit_profile_analysis,
 )
-from localjobtracker.revise_pipeline import submit_revise_turn
-from localjobtracker.revise_turns import ReviseTurn, turn_for_job, turns_for_kind
-from localjobtracker.runner import Runner, RunResult
-from localjobtracker.settings import Settings, get_settings, save_settings
-from localjobtracker.storage import connect
+from llmjobtracker.revise_pipeline import submit_revise_turn
+from llmjobtracker.revise_turns import ReviseTurn, turn_for_job, turns_for_kind
+from llmjobtracker.runner import Runner, RunResult
+from llmjobtracker.settings import Settings, get_settings, save_settings
+from llmjobtracker.storage import connect
 
 # The one prompt the Phase 1 button sends. It contains no personal data.
 CHECK_PROMPT = "Reply with the single word OK."
@@ -253,7 +253,7 @@ def create_app(
         queue.stop()
 
     app = FastAPI(
-        title="LocalJobTracker",
+        title="LlmJobTracker",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,

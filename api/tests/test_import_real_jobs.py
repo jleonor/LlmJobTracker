@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from localjobtracker.import_real_jobs import import_job
-from localjobtracker.job_applications import get_job_application_detail
-from localjobtracker.storage import connect
+from llmjobtracker.import_real_jobs import import_job
+from llmjobtracker.job_applications import get_job_application_detail
+from llmjobtracker.storage import connect
 
 LISTING_FIXTURES = (
     Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "job_listing"

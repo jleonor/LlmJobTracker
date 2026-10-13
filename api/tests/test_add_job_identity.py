@@ -6,19 +6,19 @@ from pathlib import Path
 
 import pytest
 
-from localjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
-from localjobtracker.claude_jobs import get_claude_job, prompt_exchange
-from localjobtracker.job_applications import insert_job_application
-from localjobtracker.job_pipeline import (
+from llmjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
+from llmjobtracker.claude_jobs import get_claude_job, prompt_exchange
+from llmjobtracker.job_applications import insert_job_application
+from llmjobtracker.job_pipeline import (
     JOB_KIND_IDENTITY,
     build_identity_prompt,
     make_pipeline,
     parse_identity_answer,
     submit_extract_job_identity,
 )
-from localjobtracker.profile_pipeline import store_output
-from localjobtracker.runner import FakeRunner
-from localjobtracker.storage import connect
+from llmjobtracker.profile_pipeline import store_output
+from llmjobtracker.runner import FakeRunner
+from llmjobtracker.storage import connect
 
 
 def make_queue(db_path: Path, runner: FakeRunner) -> ClaudeJobQueue:

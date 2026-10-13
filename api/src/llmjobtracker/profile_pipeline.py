@@ -13,16 +13,16 @@ from typing import Final
 
 from pydantic import BaseModel
 
-from localjobtracker.claude_job_queue import (
+from llmjobtracker.claude_job_queue import (
     ClaudeJobQueue,
     OnResult,
     PromptRejected,
     RenderedPrompt,
     Renderer,
 )
-from localjobtracker.claude_jobs import PromptRow
-from localjobtracker.profile_files import refresh_extracted_text, store_generated_file
-from localjobtracker.runner import RunResult
+from llmjobtracker.claude_jobs import PromptRow
+from llmjobtracker.profile_files import refresh_extracted_text, store_generated_file
+from llmjobtracker.runner import RunResult
 
 JOB_KIND: Final = "profile_analysis"
 JOB_LABEL: Final = "Profile analysis"

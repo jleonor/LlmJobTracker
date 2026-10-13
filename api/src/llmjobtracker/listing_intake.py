@@ -15,7 +15,7 @@ from typing import Final
 import httpx
 from pydantic import BaseModel
 
-from localjobtracker.extraction import (
+from llmjobtracker.extraction import (
     Extraction,
     clean_text,
     extract,
@@ -27,7 +27,7 @@ FETCH_TIMEOUT_S: Final = 10.0
 # A page or upload above this is refused outright, before any extraction is attempted.
 MAX_FETCH_BYTES: Final = 10 * 1024 * 1024
 # Some sites refuse a request with no browser-like User-Agent.
-_USER_AGENT: Final = "Mozilla/5.0 (compatible; LocalJobTracker/0.1; a local, single-user app)"
+_USER_AGENT: Final = "Mozilla/5.0 (compatible; LlmJobTracker/0.1; a local, single-user app)"
 UPLOAD_EXTENSIONS: Final = frozenset({".pdf", ".docx", ".txt", ".md", ".html", ".htm"})
 
 

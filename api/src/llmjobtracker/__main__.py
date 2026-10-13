@@ -5,10 +5,10 @@ import secrets
 
 import uvicorn
 
-from localjobtracker.app import create_app
-from localjobtracker.claude_code_runner import ClaudeCodeRunner
-from localjobtracker.migrations import migrate
-from localjobtracker.storage import connect, data_dir, database_path
+from llmjobtracker.app import create_app
+from llmjobtracker.claude_code_runner import ClaudeCodeRunner
+from llmjobtracker.migrations import migrate
+from llmjobtracker.storage import connect, data_dir, database_path
 
 HOST = "127.0.0.1"
 PORT = 8765

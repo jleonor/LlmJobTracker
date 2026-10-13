@@ -1,6 +1,6 @@
 """Load synthetic Job Applications into an empty database.
 
-Run with: uv run python -m localjobtracker.seed
+Run with: uv run python -m llmjobtracker.seed
 Refuses to add rows to a database that already has applications, so running it twice is safe.
 """
 
@@ -9,9 +9,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from localjobtracker.job_applications import count_job_applications, insert_job_application
-from localjobtracker.migrations import migrate
-from localjobtracker.storage import connect, data_dir, database_path
+from llmjobtracker.job_applications import count_job_applications, insert_job_application
+from llmjobtracker.migrations import migrate
+from llmjobtracker.storage import connect, data_dir, database_path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "synthetic" / "job_applications.json"

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from localjobtracker.migrations import MIGRATIONS, applied_versions, migrate, rollback
-from localjobtracker.storage import connect, data_dir, database_path
+from llmjobtracker.migrations import MIGRATIONS, applied_versions, migrate, rollback
+from llmjobtracker.storage import connect, data_dir, database_path
 
 ALL_VERSIONS = [m.version for m in MIGRATIONS]
 
@@ -243,7 +243,7 @@ def test_data_dir_defaults_to_local_app_data(
 ) -> None:
     monkeypatch.delenv("LJT_DATA_DIR", raising=False)
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    assert data_dir() == tmp_path / "LocalJobTracker"
+    assert data_dir() == tmp_path / "LlmJobTracker"
 
 
 def test_data_dir_override_wins(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

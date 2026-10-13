@@ -2,8 +2,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.runner import FakeRunner
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.runner import FakeRunner
 
 
 def test_health_with_token_returns_ok(client: TestClient) -> None:

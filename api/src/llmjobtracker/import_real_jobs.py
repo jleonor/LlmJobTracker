@@ -3,7 +3,7 @@
 Not the Phase 3 spreadsheet import (that reads the whole tracker and is still unbuilt) - this is
 for adding a few real rows by hand, from a data file you point it at, while that's being built.
 
-Usage: uv run python -m localjobtracker.import_real_jobs --data <path to a JSON file>
+Usage: uv run python -m llmjobtracker.import_real_jobs --data <path to a JSON file>
 
 The JSON file is a list of objects, each shaped like:
 
@@ -35,11 +35,11 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from localjobtracker.extraction import extract
-from localjobtracker.job_applications import insert_job_application
-from localjobtracker.job_files import EXTRACTED_KINDS, insert_job_file, managed_folder
-from localjobtracker.migrations import migrate
-from localjobtracker.storage import connect, data_dir, database_path
+from llmjobtracker.extraction import extract
+from llmjobtracker.job_applications import insert_job_application
+from llmjobtracker.job_files import EXTRACTED_KINDS, insert_job_file, managed_folder
+from llmjobtracker.migrations import migrate
+from llmjobtracker.storage import connect, data_dir, database_path
 
 
 def _already_imported(conn: sqlite3.Connection, company: str, role_title: str) -> bool:

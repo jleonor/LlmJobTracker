@@ -4,9 +4,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.extraction import dehyphenate, extract
-from localjobtracker.runner import FakeRunner
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.extraction import dehyphenate, extract
+from llmjobtracker.runner import FakeRunner
 
 FIXTURES = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "profile"
 LISTING_FIXTURES = (

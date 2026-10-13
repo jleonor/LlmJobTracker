@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from localjobtracker.job_applications import insert_job_application
-from localjobtracker.job_files import (
+from llmjobtracker.job_applications import insert_job_application
+from llmjobtracker.job_files import (
     find_duplicate_listing,
     insert_job_file,
     list_job_files,
@@ -12,8 +12,8 @@ from localjobtracker.job_files import (
     managed_folder,
     sanitize_path_part,
 )
-from localjobtracker.migrations import migrate
-from localjobtracker.storage import connect
+from llmjobtracker.migrations import migrate
+from llmjobtracker.storage import connect
 
 
 def test_sanitize_path_part_replaces_windows_unsafe_characters() -> None:

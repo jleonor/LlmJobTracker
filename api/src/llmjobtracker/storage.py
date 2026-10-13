@@ -1,6 +1,6 @@
 r"""Where the app keeps its data, and how it connects to SQLite.
 
-The data folder is %LOCALAPPDATA%\LocalJobTracker (D-18). LJT_DATA_DIR overrides it, so
+The data folder is %LOCALAPPDATA%\LlmJobTracker (D-18, D-189). LJT_DATA_DIR overrides it, so
 tests and development runs can use a temporary folder.
 """
 
@@ -18,7 +18,7 @@ def data_dir() -> Path:
         return Path(override)
     local_app_data = os.environ.get("LOCALAPPDATA")
     base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
-    return base / "LocalJobTracker"
+    return base / "LlmJobTracker"
 
 
 def database_path(folder: Path) -> Path:

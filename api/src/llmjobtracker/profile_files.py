@@ -16,8 +16,8 @@ from typing import Final
 
 from pydantic import BaseModel
 
-from localjobtracker.extraction import extract
-from localjobtracker.migrations import PROFILE_FILE_KINDS
+from llmjobtracker.extraction import extract
+from llmjobtracker.migrations import PROFILE_FILE_KINDS
 
 PROFILE_FOLDER_NAME: Final = "profile"
 MAX_UPLOAD_BYTES: Final = 25 * 1024 * 1024

@@ -10,10 +10,10 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from localjobtracker.app import TOKEN_HEADER, create_app
-from localjobtracker.job_files import listing_text_sha256
-from localjobtracker.runner import FakeRunner, RunResult
-from localjobtracker.storage import connect
+from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.job_files import listing_text_sha256
+from llmjobtracker.runner import FakeRunner, RunResult
+from llmjobtracker.storage import connect
 
 TOKEN = "test-token"
 
