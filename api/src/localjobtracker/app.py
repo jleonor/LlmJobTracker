@@ -59,6 +59,7 @@ from localjobtracker.job_pipeline import (
     submit_extract_job_identity,
     submit_generate_application_history,
     submit_generate_cover_letter,
+    submit_generate_interview_prep,
     submit_generate_job_details,
     submit_generate_job_listing,
     submit_generate_positioning,
@@ -808,6 +809,25 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         try:
             job_id = submit_generate_cover_letter(conn, queue, application_id)
+        except JobStepNotReady as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        return _job_or_404(conn, job_id)
+
+    @app.post(
+        "/job-applications/{application_id}/interview-prep/generate",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def generate_interview_prep(
+        application_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> ClaudeJob:
+        if get_job_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            job_id = submit_generate_interview_prep(conn, queue, application_id)
         except JobStepNotReady as error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)

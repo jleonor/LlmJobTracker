@@ -20,11 +20,14 @@ DEFAULT_STATUS = "Identified"
 MAIN_STATUSES = ("Identified", "Applied", "Screening", "Interview", "Offer")
 END_STATUSES = ("Rejected", "Withdrawn")
 
-# Columns a PATCH may touch, grouped the way the job page's three Edit forms are (D-116). fit,
-# gaps and unclear are stored as JSON; the rest are plain columns. match_score and status are not
-# here: match_score is meant to be code-computed from weights/matches (D-47), not typed in by
-# hand, and a status change goes through status_history, not a bare column write (D-45).
-_EDITABLE_JSON_COLUMNS = frozenset({"requirements", "fit", "gaps", "unclear"})
+# Columns a PATCH may touch, grouped the way the job page's Edit forms are (D-116). fit, gaps,
+# unclear and interview_prep are stored as JSON; the rest are plain columns. match_score and
+# status are not here: match_score is meant to be code-computed from weights/matches (D-47), not
+# typed in by hand, and a status change goes through status_history, not a bare column write
+# (D-45). interview_prep (D-168) added alongside the other three - the structured per-requirement
+# positioning_scores stays deliberately out of this set, since it has no manual Edit form of its
+# own (D-47 computes match_score from it, never the user by hand).
+_EDITABLE_JSON_COLUMNS = frozenset({"requirements", "fit", "gaps", "unclear", "interview_prep"})
 _EDITABLE_COLUMNS = frozenset(
     {
         "portal_name",
@@ -59,6 +62,13 @@ class StatusHistoryEntry(BaseModel):
     changed_at: str
 
 
+class InterviewPrepPair(BaseModel):
+    """One of Interview preparation's ten question/answer pairs (D-166, job-llm-steps.md §7)."""
+
+    question: str
+    answer: str
+
+
 class JobApplicationDetail(BaseModel):
     """One Job Application's full record, for the job page (D-56, D-113, D-116)."""
 
@@ -91,6 +101,9 @@ class JobApplicationDetail(BaseModel):
     gaps: list[str]
     strategy: str | None
     unclear: list[str]
+    # Interview preparation (D-166): ten question/answer pairs, generated the same way as the
+    # fields above and manually editable through its own Edit button (D-168).
+    interview_prep: list[InterviewPrepPair]
 
 
 class JobApplicationEdit(BaseModel):
@@ -115,6 +128,7 @@ class JobApplicationEdit(BaseModel):
     gaps: list[str] | None = None
     strategy: str | None = None
     unclear: list[str] | None = None
+    interview_prep: list[InterviewPrepPair] | None = None
 
 
 class MasterCvSelection(BaseModel):
@@ -237,7 +251,7 @@ def get_job_application_detail(
             a.portal_name, a.portal_url, a.status, a.match_score, a.next_action, a.due_date,
             a.description, a.requirements, a.notes,
             a.master_cv_profile_file_id, p.original_name AS master_cv_name,
-            a.fit, a.gaps, a.strategy, a.unclear,
+            a.fit, a.gaps, a.strategy, a.unclear, a.interview_prep,
             COALESCE(
                 (SELECT MAX(h.changed_at) FROM status_history h WHERE h.job_application_id = a.id),
                 a.created_at
@@ -296,6 +310,7 @@ def get_job_application_detail(
         gaps=json.loads(row["gaps"]),
         strategy=row["strategy"],
         unclear=json.loads(row["unclear"]),
+        interview_prep=[InterviewPrepPair(**pair) for pair in json.loads(row["interview_prep"])],
     )
 
 

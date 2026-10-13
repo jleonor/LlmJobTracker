@@ -325,6 +325,27 @@ def test_edit_writes_requirements_and_manual_positioning_fields(
     assert body["match_score"] is None
 
 
+def test_edit_writes_interview_prep_pairs(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+
+    response = client.patch(
+        f"/job-applications/{app_id}",
+        json={
+            "interview_prep": [
+                {"question": "Why this role?", "answer": "The SQL work lines up."},
+                {"question": "Biggest gap?", "answer": "No retail experience."},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["interview_prep"] == [
+        {"question": "Why this role?", "answer": "The SQL work lines up."},
+        {"question": "Biggest gap?", "answer": "No retail experience."},
+    ]
+
+
 def test_edit_rejects_an_unknown_work_mode(client: TestClient, db_path: Path) -> None:
     app_id = add_application(db_path)
     response = client.patch(f"/job-applications/{app_id}", json={"work_mode": "Flexible"})

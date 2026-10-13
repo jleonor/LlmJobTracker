@@ -23,15 +23,18 @@ from localjobtracker.job_pipeline import (
     RequirementScore,
     application_history_ready,
     compute_match_score,
+    interview_prep_ready,
     job_details_ready,
     make_pipeline,
     parse_application_history_answer,
+    parse_interview_prep_answer,
     parse_job_details_answer,
     parse_positioning_answer,
     positioning_ready,
     render_breakdown_document,
     scores_from_json,
     submit_generate_application_history,
+    submit_generate_interview_prep,
     submit_generate_job_details,
     submit_generate_positioning,
 )
@@ -98,6 +101,15 @@ GOOD_POSITIONING_ANSWER = (
     "=== JOB STRATEGY ===\nLead with the SQL and reporting experience.\n"
     "=== END JOB STRATEGY ===\n\n"
     "=== UNCLEAR ===\n- Which BI tool the team actually uses\n=== END UNCLEAR ===\n"
+)
+
+
+def _qa_block(question: str, answer: str) -> str:
+    return f"=== QA ===\nQUESTION: {question}\nANSWER: {answer}\n=== END QA ==="
+
+
+GOOD_INTERVIEW_PREP_ANSWER = "\n\n".join(
+    _qa_block(f"Question {n}?", f"Answer {n}, grounded in the career history.") for n in range(10)
 )
 
 
@@ -216,6 +228,36 @@ def make_positioning_ready(db_path: Path) -> int:
     fill_job_details(db_path, app_id, REQUIREMENTS)
     add_profile_documents(db_path)
     add_master_cv(db_path, app_id)
+    return app_id
+
+
+def add_master_cv_with_text(db_path: Path, app_id: int, text: str) -> None:
+    """Like `add_master_cv` above, but with real extracted text (D-167) - Interview
+    preparation's own gate needs this, unlike Positioning analysis's, which never reads the
+    Master CV's content."""
+    conn = connect(db_path)
+    try:
+        file_id = conn.execute(
+            "INSERT INTO profile_files "
+            "(kind, original_name, stored_path, sha256, size_bytes, "
+            "extraction_status, extracted_text) "
+            "VALUES ('master_cv', 'cv.pdf', 'profile/cv.pdf', 'abc', 10, 'ok', ?)",
+            (text,),
+        ).lastrowid
+        set_master_cv(conn, app_id, file_id)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def make_interview_prep_ready(db_path: Path) -> int:
+    app_id = add_application(db_path)
+    add_listing(
+        db_path, app_id, "Senior Data Analyst. Requirements: Strong SQL, 4+ years experience."
+    )
+    fill_job_details(db_path, app_id, REQUIREMENTS)
+    add_profile_documents(db_path)
+    add_master_cv_with_text(db_path, app_id, "Jordan Doe - Senior Data Analyst, five years SQL.")
     return app_id
 
 
@@ -780,6 +822,110 @@ def test_submit_generate_application_history_rejects_when_not_ready(db_path: Pat
         conn.close()
 
 
+# --- Interview preparation: end to end ------------------------------------------------------
+
+
+def test_parse_interview_prep_answer_reads_ten_pairs() -> None:
+    pairs = parse_interview_prep_answer(GOOD_INTERVIEW_PREP_ANSWER)
+    assert len(pairs) == 10
+    assert pairs[0].question == "Question 0?"
+    assert pairs[0].answer == "Answer 0, grounded in the career history."
+
+
+def test_parse_interview_prep_answer_rejects_fewer_than_ten_pairs() -> None:
+    short_answer = "\n\n".join(GOOD_INTERVIEW_PREP_ANSWER.split("\n\n")[:-1])
+    with pytest.raises(PromptRejected, match="exactly ten"):
+        parse_interview_prep_answer(short_answer)
+
+
+def test_parse_interview_prep_answer_rejects_an_empty_answer_field() -> None:
+    bad_answer = GOOD_INTERVIEW_PREP_ANSWER.replace(
+        "ANSWER: Answer 0, grounded in the career history.", "ANSWER:"
+    )
+    with pytest.raises(PromptRejected, match="QUESTION or ANSWER"):
+        parse_interview_prep_answer(bad_answer)
+
+
+def test_interview_prep_ready_requires_readable_master_cv_text(db_path: Path) -> None:
+    app_id = add_application(db_path)
+    add_listing(
+        db_path, app_id, "Senior Data Analyst. Requirements: Strong SQL, 4+ years experience."
+    )
+    fill_job_details(db_path, app_id, REQUIREMENTS)
+    add_profile_documents(db_path)
+    assert not _ready(db_path, interview_prep_ready, app_id)  # still no Master CV
+    # Positioning analysis's own gate is satisfied by a Master CV with no readable text - but
+    # interview_prep_ready is the same function (D-167), so this is the same "not ready" case.
+    add_master_cv(db_path, app_id)
+    assert _ready(db_path, interview_prep_ready, app_id)
+
+
+def test_generate_interview_prep_end_to_end_stores_ten_pairs(db_path: Path) -> None:
+    app_id = make_interview_prep_ready(db_path)
+    runner = FakeRunner(text=GOOD_INTERVIEW_PREP_ANSWER)
+    queue = make_queue(db_path, runner)
+    conn = connect(db_path)
+    try:
+        job_id = submit_generate_interview_prep(conn, queue, app_id)
+    finally:
+        conn.close()
+    run_all(queue)
+
+    assert "Jordan Doe - Senior Data Analyst" in runner.prompts[0]
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+        assert job is not None
+        assert job.status == "done"
+        row = conn.execute(
+            "SELECT interview_prep FROM job_applications WHERE id = ?", (app_id,)
+        ).fetchone()
+        pairs = json.loads(row["interview_prep"])
+        assert len(pairs) == 10
+        assert pairs[0] == {
+            "question": "Question 0?",
+            "answer": "Answer 0, grounded in the career history.",
+        }
+    finally:
+        conn.close()
+
+
+def test_generate_interview_prep_fails_the_job_on_fewer_than_ten_pairs(db_path: Path) -> None:
+    app_id = make_interview_prep_ready(db_path)
+    short_answer = "\n\n".join(GOOD_INTERVIEW_PREP_ANSWER.split("\n\n")[:-1])
+    queue = make_queue(db_path, FakeRunner(text=short_answer))
+    conn = connect(db_path)
+    try:
+        job_id = submit_generate_interview_prep(conn, queue, app_id)
+    finally:
+        conn.close()
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+        assert job is not None
+        assert job.status == "failed"
+        row = conn.execute(
+            "SELECT interview_prep FROM job_applications WHERE id = ?", (app_id,)
+        ).fetchone()
+        assert row["interview_prep"] == "[]"
+    finally:
+        conn.close()
+
+
+def test_submit_generate_interview_prep_rejects_when_not_ready(db_path: Path) -> None:
+    app_id = add_application(db_path)
+    queue = make_queue(db_path, FakeRunner())
+    conn = connect(db_path)
+    try:
+        with pytest.raises(JobStepNotReady):
+            submit_generate_interview_prep(conn, queue, app_id)
+    finally:
+        conn.close()
+
+
 # --- Routes -------------------------------------------------------------------------------
 
 
@@ -824,3 +970,17 @@ def test_application_history_route_201_when_ready_400_when_not(db_path: Path) ->
         response = client.post(route)
         assert response.status_code == 201
         assert response.json()["kind"] == "generate_application_history"
+
+
+def test_interview_prep_route_201_when_ready_400_when_not(db_path: Path) -> None:
+    app_id = add_application(db_path)
+    with TestClient(create_app(TOKEN, db_path, FakeRunner())) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        assert client.post(f"/job-applications/{app_id}/interview-prep/generate").status_code == 400
+
+    ready_id = make_interview_prep_ready(db_path)
+    with TestClient(create_app(TOKEN, db_path, FakeRunner())) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        response = client.post(f"/job-applications/{ready_id}/interview-prep/generate")
+        assert response.status_code == 201
+        assert response.json()["kind"] == "generate_interview_prep"
