@@ -1,6 +1,6 @@
 # LlmJobTracker: Development Plan
 
-**Current phase: 5, in progress.** Phases 0 through 4 are done; `main` is fast-forwarded to Phase 4's end (D-61, D-187). Phase 5 is being built on branch `phase-5-repo-rename`.
+**Current phase: 6, not started.** Phases 0 through 5 are done; `main` is fast-forwarded to Phase 5's end (D-61, D-190).
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -623,9 +623,9 @@ Step list (approved 2026-10-13)
 9. User: rename the folder on disk, delete the redundant empty clone, push when ready.
 
 Done when
-- [ ] Every tracked reference to the old name reads "LlmJobTracker" (screenshot or grep output showing zero remaining matches, outside of historical commit messages).
-- [ ] `python scripts/check.py` is still green after the rename.
-- [ ] A private GitHub repo named LlmJobTracker exists.
+- [x] Every tracked reference to the old name reads "LlmJobTracker" (`git grep -niI localjobtracker` leaves only DECISIONS.md's append-only historical rows: D-18, D-94, D-180, D-189).
+- [x] `python scripts/check.py` is still green after the rename (7/7 steps passed).
+- [x] A private GitHub repo named LlmJobTracker exists (created and cloned by the user).
 
 ---
 
