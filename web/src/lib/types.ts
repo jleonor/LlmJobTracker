@@ -15,6 +15,12 @@ export type StatusHistoryEntry = {
   changed_at: string
 }
 
+// One of Interview preparation's ten question/answer pairs (D-166, job-llm-steps.md §7).
+export type InterviewPrepPair = {
+  question: string
+  answer: string
+}
+
 export type JobApplicationFile = {
   id: number
   name: string
@@ -85,6 +91,9 @@ export type JobApplicationDetailData = JobApplication & {
   gaps: string[]
   strategy: string | null
   unclear: string[]
+  // Interview preparation (D-166): ten question/answer pairs, generated the same way as the
+  // fields above and manually editable through its own Edit button (D-168).
+  interview_prep: InterviewPrepPair[]
 }
 
 // A PATCH /job-applications/{id} body (D-116): only the fields a form actually sends are
@@ -105,6 +114,7 @@ export type JobApplicationEdit = Partial<{
   gaps: string[]
   strategy: string | null
   unclear: string[]
+  interview_prep: InterviewPrepPair[]
 }>
 
 // The Job Application page's full shape (D-56, D-98, planning/product-model.md). Extends the API

@@ -406,6 +406,14 @@ export function generateCoverLetter(id: number): Promise<ClaudeJob> {
   })
 }
 
+// Step 13 of job-llm-steps.md §7 (D-166): Interview preparation, added after Phase 4's step list
+// was already approved.
+export function generateInterviewPrep(id: number): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/job-applications/${id}/interview-prep/generate`, {
+    method: 'POST',
+  })
+}
+
 export function runClaudeCheck(): Promise<RunResult> {
   return request<RunResult>('/api/runs/check', { method: 'POST' })
 }

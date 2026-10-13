@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import {
   ApiError,
@@ -29,6 +30,7 @@ import {
   fetchProfileOutputs,
   generateApplicationHistory,
   generateCoverLetter,
+  generateInterviewPrep,
   generateJobDetails,
   generatePositioning,
   generateTailoredCv,
@@ -41,6 +43,7 @@ import {
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type {
+  InterviewPrepPair,
   JobApplicationDetail,
   JobApplicationEdit,
   JobApplicationFile,
@@ -158,6 +161,7 @@ export function JobApplicationDetailPage({
 
       <JobDetails application={application} onChanged={onChanged} />
       <PositioningAnalysis application={application} onChanged={onChanged} />
+      <InterviewPreparation application={application} onChanged={onChanged} />
       <ApplicationHistory application={application} onChanged={onChanged} />
       <Files application={application} onChanged={onChanged} />
     </section>
@@ -183,6 +187,7 @@ function Flags({ application }: { application: JobApplicationDetail }) {
   const hasCoverLetter = application.files.some((file) => COVER_LETTER_KINDS.has(file.kind))
   const flags = [
     ...(hasPositioningData(application) ? [] : ['Positioning analysis']),
+    ...(application.interview_prep.length > 0 ? [] : ['Interview preparation']),
     ...(hasTailoredCv ? [] : ['Tailored CV']),
     ...(hasCoverLetter ? [] : ['Cover letter']),
   ]
@@ -913,6 +918,272 @@ function PositioningEditDialog({
               onChange={(event) => setUnclear(event.target.value)}
             />
           </FormField>
+          {error && (
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button disabled={busy} onClick={() => void save()}>
+            {busy ? 'Saving...' : 'Save'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// D-166: ten likely interview questions and answers, generated and chat-revised the same way
+// Positioning analysis is (job-llm-steps.md §7) - its gate is the same function, independent of
+// whether Positioning has actually run (D-167), since both read the same stored inputs, not the
+// breakdown document. The first job-page section shown as an actual table (D-168) rather than a
+// stacked Field list.
+function InterviewPreparation({
+  application,
+  onChanged,
+}: {
+  application: JobApplicationDetail
+  onChanged: () => void
+}) {
+  const [editOpen, setEditOpen] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const [profileDocsReady, setProfileDocsReady] = useState<boolean | null>(null)
+  const hasData = application.interview_prep.length > 0
+
+  // Same gate as Positioning analysis (job-llm-steps.md §7, D-167) - the first of these needs its
+  // own fetch, everything else is already on `application`.
+  useEffect(() => {
+    let cancelled = false
+    fetchProfileOutputs()
+      .then((outputs) => {
+        if (!cancelled) setProfileDocsReady(outputs.length === 3)
+      })
+      .catch(() => {
+        if (!cancelled) setProfileDocsReady(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  const hasListing = application.files.some(
+    (file) => file.kind === 'listing' && file.extraction_status === 'ok',
+  )
+  const hasJobDetails = application.description !== null && application.requirements.length > 0
+  const ready =
+    profileDocsReady === true &&
+    application.master_cv_profile_file_id !== null &&
+    hasJobDetails &&
+    hasListing
+
+  const actions = (
+    <SectionActions
+      hasData={hasData}
+      onEdit={() => setEditOpen(true)}
+      onGenerate={() => setGenerateOpen(true)}
+      generateDisabled={!ready}
+      generateTitle="Interview preparation needs the career history, questionnaire analysis and strategy, a selected Master CV, and Job details filled in first."
+    />
+  )
+  const dialog = (
+    <InterviewPrepEditDialog
+      application={application}
+      open={editOpen}
+      onOpenChange={setEditOpen}
+      onSaved={onChanged}
+    />
+  )
+  const generateOverlay = hasData ? (
+    <JobReviseOverlay
+      applicationId={application.id}
+      sectionKind="interview_prep"
+      title="Interview preparation"
+      leftPane={<CurrentInterviewPrepPane pairs={application.interview_prep} />}
+      open={generateOpen}
+      onOpenChange={setGenerateOpen}
+      onChanged={onChanged}
+    />
+  ) : (
+    <GenerateSectionOverlay
+      title="Interview preparation"
+      hasData={hasData}
+      open={generateOpen}
+      onOpenChange={setGenerateOpen}
+      onSubmit={() => generateInterviewPrep(application.id)}
+      onChanged={onChanged}
+    />
+  )
+
+  if (!hasData) {
+    return (
+      <Section title="Interview preparation" actions={actions}>
+        <p className="text-sm text-muted-foreground">Not run yet.</p>
+        {dialog}
+        {generateOverlay}
+      </Section>
+    )
+  }
+
+  return (
+    <Section title="Interview preparation" actions={actions}>
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="w-2/5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              Question
+            </TableHead>
+            <TableHead className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              Answer
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {application.interview_prep.map((pair, index) => (
+            <TableRow key={index} className="hover:bg-transparent">
+              <TableCell className="align-top font-medium whitespace-normal">
+                {pair.question}
+              </TableCell>
+              <TableCell className="align-top whitespace-normal text-muted-foreground">
+                {pair.answer}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {dialog}
+      {generateOverlay}
+    </Section>
+  )
+}
+
+// JobReviseOverlay's left pane for Interview preparation (D-169): the same numbered pairs the
+// chat's own QA PATCH grammar references by number, so a message like "sharpen the second answer"
+// refers to what's on screen.
+function CurrentInterviewPrepPane({ pairs }: { pairs: InterviewPrepPair[] }) {
+  if (pairs.length === 0) {
+    return <p className="text-sm text-muted-foreground">Nothing to revise yet.</p>
+  }
+  return (
+    <ol className="flex flex-col gap-3 text-sm">
+      {pairs.map((pair, index) => (
+        <li key={index} className="flex flex-col gap-1">
+          <span className="font-medium">
+            {index + 1}. {pair.question}
+          </span>
+          <span className="text-muted-foreground">{pair.answer}</span>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+// A structured row editor (D-168), not the one-string-per-line textarea convention
+// PositioningEditDialog's Fit/Gaps/Unclear fields use - each entry here is a question/answer
+// pair, not a single string, so a flat line-per-item textarea would be the wrong fit.
+function InterviewPrepEditDialog({
+  application,
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  application: JobApplicationDetail
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSaved: () => void
+}) {
+  const [pairs, setPairs] = useState<InterviewPrepPair[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setPairs(application.interview_prep.map((pair) => ({ ...pair })))
+    setError(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  function setQuestion(index: number, value: string) {
+    setPairs((current) =>
+      current.map((pair, i) => (i === index ? { ...pair, question: value } : pair)),
+    )
+  }
+
+  function setAnswer(index: number, value: string) {
+    setPairs((current) =>
+      current.map((pair, i) => (i === index ? { ...pair, answer: value } : pair)),
+    )
+  }
+
+  function addRow() {
+    setPairs((current) => [...current, { question: '', answer: '' }])
+  }
+
+  function removeRow(index: number) {
+    setPairs((current) => current.filter((_, i) => i !== index))
+  }
+
+  async function save() {
+    setBusy(true)
+    setError(null)
+    try {
+      await patchJobApplication(application.id, {
+        interview_prep: pairs
+          .map((pair) => ({ question: pair.question.trim(), answer: pair.answer.trim() }))
+          .filter((pair) => pair.question || pair.answer),
+      })
+      onOpenChange(false)
+      onSaved()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The save failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex h-[70vh] w-full max-w-2xl flex-col gap-3 sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit interview preparation</DialogTitle>
+        </DialogHeader>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          {pairs.map((pair, index) => (
+            <div key={index} className="flex flex-col gap-2 rounded border border-border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {index + 1}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeRow(index)}
+                >
+                  Remove
+                </Button>
+              </div>
+              <FormField label="Question">
+                <Textarea
+                  rows={2}
+                  value={pair.question}
+                  onChange={(event) => setQuestion(index, event.target.value)}
+                />
+              </FormField>
+              <FormField label="Answer">
+                <Textarea
+                  rows={3}
+                  value={pair.answer}
+                  onChange={(event) => setAnswer(index, event.target.value)}
+                />
+              </FormField>
+            </div>
+          ))}
+          <Button type="button" variant="outline" size="sm" onClick={addRow} className="self-start">
+            Add question
+          </Button>
           {error && (
             <p role="alert" className="text-xs text-destructive">
               {error}

@@ -22,6 +22,7 @@ const JOB_REVISE_CONTEXT: Record<string, string[]> = {
   positioning: ['Career history', 'Questionnaire report', 'Strategy', 'Job details'],
   tailored_cv: ['Career history', 'Questionnaire report', 'Strategy', 'Positioning breakdown'],
   cover_letter: ['Career history', 'Questionnaire report', 'Strategy', 'Positioning breakdown'],
+  interview_prep: ['Career history', 'Questionnaire report', 'Strategy', 'Master CV', 'Job details'],
 }
 
 // Which upload kind a turn's attached file is filed under (D-138): an .eml/.msg files the same
