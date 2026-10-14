@@ -477,9 +477,8 @@ def test_migration_fifteen_adds_description_requirements_notes_and_job_files(
     assert conn.execute("SELECT 1 FROM job_files WHERE id = ?", (file_id,)).fetchall() == []
     conn.commit()
 
-    rollback(
-        conn, steps=9
-    )  # undoes migrations 23, 22, 21, 20, 19, 18, 17 and 16 (layered on top) and migration 15 itself
+    # undoes migrations 23, 22, 21, 20, 19, 18, 17 and 16 (layered on top) and migration 15 itself
+    rollback(conn, steps=9)
     assert "job_files" not in table_names(conn)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(job_applications)").fetchall()}
     assert not ({"description", "requirements", "notes"} & columns)
@@ -731,9 +730,7 @@ def test_migration_twenty_one_adds_interview_prep(conn: sqlite3.Connection) -> N
     )
     conn.commit()
 
-    rollback(
-        conn, steps=3
-    )  # undoes migrations 23 and 22 (layered on top) and migration 21 itself
+    rollback(conn, steps=3)  # undoes migrations 23 and 22 (layered on top) and migration 21 itself
     columns = {row[1] for row in conn.execute("PRAGMA table_info(job_applications)").fetchall()}
     assert "interview_prep" not in columns
 
@@ -828,7 +825,9 @@ def test_migration_twenty_three_adds_backend_tokens_and_model_prices(
         conn.execute("UPDATE settings SET retry_policy = 'never' WHERE id = 1")
     conn.rollback()
 
-    conn.execute("UPDATE settings SET backend = 'codex', retry_policy = 'fixed_interval' WHERE id = 1")
+    conn.execute(
+        "UPDATE settings SET backend = 'codex', retry_policy = 'fixed_interval' WHERE id = 1"
+    )
     conn.commit()
 
     conn.execute(

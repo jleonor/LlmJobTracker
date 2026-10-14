@@ -32,6 +32,7 @@ from llmjobtracker.claude_jobs import (
     store_answer,
     transition,
 )
+from llmjobtracker.pricing import compute_cost_usd
 from llmjobtracker.runner import RateLimitError, Runner, RunResult
 from llmjobtracker.storage import connect
 
@@ -271,9 +272,19 @@ class ClaudeJobQueue:
             if cancel.is_set():
                 set_prompt_status(conn, prompt.id, ("running",), "cancelled", error="Cancelled.")
                 return
+            # The runner's own cost if it gave one (Claude Code), else computed from its tokens
+            # and the stored price table (Codex, D-197/D-198) - never a guess either way.
+            cost_usd = compute_cost_usd(conn, result)
             if not result.ok:
                 self._fail_prompt(
-                    conn, job_id, prompt.id, result.error, result.cost_usd, result.duration_ms
+                    conn,
+                    job_id,
+                    prompt.id,
+                    result.error,
+                    cost_usd,
+                    result.duration_ms,
+                    result.input_tokens,
+                    result.output_tokens,
                 )
                 return
             try:
@@ -285,8 +296,10 @@ class ClaudeJobQueue:
                     job_id,
                     prompt.id,
                     str(rejected),
-                    result.cost_usd,
+                    cost_usd,
                     result.duration_ms,
+                    result.input_tokens,
+                    result.output_tokens,
                 )
                 return
             set_prompt_status(
@@ -295,9 +308,11 @@ class ClaudeJobQueue:
                 ("running",),
                 "done",
                 result_text=result.text,
-                cost_usd=result.cost_usd,
+                cost_usd=cost_usd,
                 duration_ms=result.duration_ms,
                 model=result.model,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
             )
         transition(conn, job_id, ("processing",), "done")
 
@@ -309,6 +324,8 @@ class ClaudeJobQueue:
         message: str | None,
         cost_usd: float | None,
         duration_ms: int | None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
     ) -> None:
         set_prompt_status(
             conn,
@@ -318,5 +335,7 @@ class ClaudeJobQueue:
             error=message,
             cost_usd=cost_usd,
             duration_ms=duration_ms,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
         transition(conn, job_id, ("processing",), "failed", error=message)

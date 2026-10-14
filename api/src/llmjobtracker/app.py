@@ -133,6 +133,12 @@ PREVIEW_MEDIA_TYPES: Final[dict[str, str]] = {
 
 class SettingsEdit(BaseModel):
     user_name: str
+    # None keeps the stored value - a rename need not also restate the Phase 7 fields (D-195,
+    # D-201), and a Phase 7 settings save need not restate the name.
+    backend: str | None = None
+    retry_policy: str | None = None
+    retry_interval_minutes: int | None = None
+    retry_max_attempts: int | None = None
 
 
 class ListingUrlRequest(BaseModel):
@@ -283,7 +289,22 @@ def create_app(
     def update_settings(
         edit: SettingsEdit, conn: Annotated[Connection, Depends(get_db)]
     ) -> Settings:
-        return save_settings(conn, edit.user_name)
+        current = get_settings(conn)
+        try:
+            return save_settings(
+                conn,
+                edit.user_name,
+                edit.backend if edit.backend is not None else current.backend,
+                edit.retry_policy if edit.retry_policy is not None else current.retry_policy,
+                edit.retry_interval_minutes
+                if edit.retry_interval_minutes is not None
+                else current.retry_interval_minutes,
+                edit.retry_max_attempts
+                if edit.retry_max_attempts is not None
+                else current.retry_max_attempts,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
     @app.get(
         "/job-applications",
