@@ -33,18 +33,18 @@ def test_the_runners_own_cost_is_kept_as_is(conn: sqlite3.Connection) -> None:
 def test_a_missing_price_row_leaves_cost_unset(conn: sqlite3.Connection) -> None:
     conn.execute("UPDATE settings SET backend = 'codex' WHERE id = 1")
     conn.commit()
-    result = RunResult(ok=True, model="gpt-5-codex", input_tokens=1000, output_tokens=100)
+    result = RunResult(ok=True, model="gpt-6.1-sol", input_tokens=1000, output_tokens=100)
     assert compute_cost_usd(conn, result) is None
 
 
 def test_cost_is_computed_from_tokens_and_the_stored_price(conn: sqlite3.Connection) -> None:
     conn.execute(
         "INSERT INTO model_prices (provider, model, input_price_per_token, "
-        "output_price_per_token) VALUES ('codex', 'gpt-5-codex', 0.000003, 0.000015)"
+        "output_price_per_token) VALUES ('codex', 'gpt-6.1-sol', 0.000003, 0.000015)"
     )
     conn.execute("UPDATE settings SET backend = 'codex' WHERE id = 1")
     conn.commit()
-    result = RunResult(ok=True, model="gpt-5-codex", input_tokens=1000, output_tokens=100)
+    result = RunResult(ok=True, model="gpt-6.1-sol", input_tokens=1000, output_tokens=100)
 
     cost = compute_cost_usd(conn, result)
 
@@ -71,11 +71,11 @@ def test_the_price_lookup_uses_the_currently_selected_backend(conn: sqlite3.Conn
 def test_missing_tokens_leave_cost_unset(conn: sqlite3.Connection) -> None:
     conn.execute(
         "INSERT INTO model_prices (provider, model, input_price_per_token, "
-        "output_price_per_token) VALUES ('codex', 'gpt-5-codex', 0.000003, 0.000015)"
+        "output_price_per_token) VALUES ('codex', 'gpt-6.1-sol', 0.000003, 0.000015)"
     )
     conn.execute("UPDATE settings SET backend = 'codex' WHERE id = 1")
     conn.commit()
-    result = RunResult(ok=True, model="gpt-5-codex", input_tokens=None, output_tokens=100)
+    result = RunResult(ok=True, model="gpt-6.1-sol", input_tokens=None, output_tokens=100)
     assert compute_cost_usd(conn, result) is None
 
 
@@ -85,18 +85,18 @@ def test_missing_model_leaves_cost_unset(conn: sqlite3.Connection) -> None:
 
 
 def test_upsert_adds_a_row_and_list_returns_it(conn: sqlite3.Connection) -> None:
-    added = upsert_model_price(conn, "codex", "gpt-5-codex", 0.000003, 0.000015)
+    added = upsert_model_price(conn, "codex", "gpt-6.1-sol", 0.000003, 0.000015)
 
     assert added.provider == "codex"
-    assert added.model == "gpt-5-codex"
+    assert added.model == "gpt-6.1-sol"
     assert list_model_prices(conn, "codex") == [added]
     assert list_model_prices(conn) == [added]
 
 
 def test_upsert_again_replaces_the_prices_not_adds_a_row(conn: sqlite3.Connection) -> None:
-    upsert_model_price(conn, "codex", "gpt-5-codex", 0.000003, 0.000015)
+    upsert_model_price(conn, "codex", "gpt-6.1-sol", 0.000003, 0.000015)
 
-    replaced = upsert_model_price(conn, "codex", "gpt-5-codex", 0.000004, 0.00002)
+    replaced = upsert_model_price(conn, "codex", "gpt-6.1-sol", 0.000004, 0.00002)
 
     rows = list_model_prices(conn, "codex")
     assert len(rows) == 1
@@ -106,10 +106,10 @@ def test_upsert_again_replaces_the_prices_not_adds_a_row(conn: sqlite3.Connectio
 
 def test_list_model_prices_filters_by_provider(conn: sqlite3.Connection) -> None:
     upsert_model_price(conn, "claude_code", "claude-sonnet-5", 0.000003, 0.000015)
-    upsert_model_price(conn, "codex", "gpt-5-codex", 0.000003, 0.000015)
+    upsert_model_price(conn, "codex", "gpt-6.1-sol", 0.000003, 0.000015)
 
     assert [row.model for row in list_model_prices(conn, "claude_code")] == ["claude-sonnet-5"]
-    assert [row.model for row in list_model_prices(conn, "codex")] == ["gpt-5-codex"]
+    assert [row.model for row in list_model_prices(conn, "codex")] == ["gpt-6.1-sol"]
     assert len(list_model_prices(conn)) == 2
 
 
@@ -120,15 +120,15 @@ def test_upsert_rejects_an_unknown_provider(conn: sqlite3.Connection) -> None:
 
 def test_upsert_rejects_a_negative_price(conn: sqlite3.Connection) -> None:
     with pytest.raises(ValueError):
-        upsert_model_price(conn, "codex", "gpt-5-codex", -1, 0.000015)
+        upsert_model_price(conn, "codex", "gpt-6.1-sol", -1, 0.000015)
 
 
 def test_delete_removes_a_row(conn: sqlite3.Connection) -> None:
-    upsert_model_price(conn, "codex", "gpt-5-codex", 0.000003, 0.000015)
+    upsert_model_price(conn, "codex", "gpt-6.1-sol", 0.000003, 0.000015)
 
-    assert delete_model_price(conn, "codex", "gpt-5-codex") is True
+    assert delete_model_price(conn, "codex", "gpt-6.1-sol") is True
     assert list_model_prices(conn, "codex") == []
-    assert delete_model_price(conn, "codex", "gpt-5-codex") is False
+    assert delete_model_price(conn, "codex", "gpt-6.1-sol") is False
 
 
 def test_pricing_url_defaults_to_none_and_can_be_set(conn: sqlite3.Connection) -> None:

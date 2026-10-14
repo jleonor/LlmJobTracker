@@ -22,7 +22,7 @@ _PRICING_PAGE_HTML = """<!doctype html>
 <main>
 <h1>API Pricing</h1>
 <p>Prices are per 1,000,000 tokens, billed monthly, in US dollars.</p>
-<h2>gpt-5-codex</h2>
+<h2>gpt-6.1-sol</h2>
 <p>Input: $3.00 per 1,000,000 tokens. Output: $15.00 per 1,000,000 tokens.</p>
 <h2>Usage limits</h2>
 <p>See your account dashboard for current usage against your plan's limits.</p>
@@ -33,14 +33,14 @@ _PRICING_PAGE_HTML = """<!doctype html>
 
 def test_build_prompt_lists_stored_prices_and_includes_the_page_text(db_path: Path) -> None:
     conn = connect(db_path)
-    upsert_model_price(conn, "codex", "gpt-5-codex", 0.000003, 0.000015)
+    upsert_model_price(conn, "codex", "gpt-6.1-sol", 0.000003, 0.000015)
 
-    prompt = build_fetch_prices_prompt(conn, "codex", "Pricing: gpt-5-codex costs $3 / $15")
+    prompt = build_fetch_prices_prompt(conn, "codex", "Pricing: gpt-6.1-sol costs $3 / $15")
     conn.close()
 
-    assert "MODEL: gpt-5-codex | INPUT_PER_MILLION: 3" in prompt
+    assert "MODEL: gpt-6.1-sol | INPUT_PER_MILLION: 3" in prompt
     assert "OUTPUT_PER_MILLION: 15" in prompt
-    assert "Pricing: gpt-5-codex costs $3 / $15" in prompt
+    assert "Pricing: gpt-6.1-sol costs $3 / $15" in prompt
 
 
 def test_build_prompt_with_no_stored_prices_says_so(db_path: Path) -> None:
@@ -52,13 +52,13 @@ def test_build_prompt_with_no_stored_prices_says_so(db_path: Path) -> None:
 
 def test_parse_reads_a_priced_line(db_path: Path) -> None:
     conn = connect(db_path)
-    answer = "MODEL: gpt-5-codex | INPUT_PER_MILLION: 3.00 | OUTPUT_PER_MILLION: 15.00"
+    answer = "MODEL: gpt-6.1-sol | INPUT_PER_MILLION: 3.00 | OUTPUT_PER_MILLION: 15.00"
 
     rows = parse_fetch_prices_answer(conn, "codex", answer)
     conn.close()
 
     assert len(rows) == 1
-    assert rows[0].model == "gpt-5-codex"
+    assert rows[0].model == "gpt-6.1-sol"
     assert rows[0].input_price_per_token == pytest.approx(0.000003)
     assert rows[0].output_price_per_token == pytest.approx(0.000015)
 
@@ -68,20 +68,20 @@ def test_parse_reads_multiple_lines_ignoring_stray_prose(db_path: Path) -> None:
     answer = """Here is what I found on the page:
 
 MODEL: gpt-5 | INPUT_PER_MILLION: 1.25 | OUTPUT_PER_MILLION: 10.00
-MODEL: gpt-5-codex | INPUT_PER_MILLION: 3.00 | OUTPUT_PER_MILLION: 15.00
+MODEL: gpt-6.1-sol | INPUT_PER_MILLION: 3.00 | OUTPUT_PER_MILLION: 15.00
 
 That's everything on the page."""
 
     rows = parse_fetch_prices_answer(conn, "codex", answer)
     conn.close()
 
-    assert [row.model for row in rows] == ["gpt-5", "gpt-5-codex"]
+    assert [row.model for row in rows] == ["gpt-5", "gpt-6.1-sol"]
 
 
 def test_parse_resolves_unchanged_against_the_stored_price(db_path: Path) -> None:
     conn = connect(db_path)
-    upsert_model_price(conn, "codex", "gpt-5-codex", 0.000003, 0.000015)
-    answer = "MODEL: gpt-5-codex | UNCHANGED"
+    upsert_model_price(conn, "codex", "gpt-6.1-sol", 0.000003, 0.000015)
+    answer = "MODEL: gpt-6.1-sol | UNCHANGED"
 
     rows = parse_fetch_prices_answer(conn, "codex", answer)
     conn.close()

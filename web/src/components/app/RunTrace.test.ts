@@ -67,7 +67,7 @@ describe('traceLines', () => {
         prompt({
           prompt_kind: 'full_cv_history',
           status: 'done',
-          model: 'gpt-5-codex',
+          model: 'gpt-6.1-sol',
           finished_at: '2026-10-06T09:00:14Z',
           cost_usd: null,
           input_tokens: 610,

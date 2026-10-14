@@ -35,7 +35,7 @@ DEFAULT_TIMEOUT_S = 15 * 60
 POLL_INTERVAL_S = 0.2
 # The model every Codex run uses unless told otherwise. Codex does not echo back which model it
 # used (runner-notes.md), so this is also what RunResult.model records - not a parsed value.
-MODEL = "gpt-5-codex"
+MODEL = "gpt-6.1-sol"
 # Mirrors claude_code_runner.AUTH_TIMEOUT_S.
 AUTH_TIMEOUT_S = 15
 # Substrings seen in a failed turn's error message that mean a plan/rate limit, not a real

@@ -105,16 +105,16 @@ def test_prices_start_empty(client: TestClient) -> None:
 
 def test_saving_one_price_by_hand_is_read_back(client: TestClient) -> None:
     saved = client.put(
-        "/settings/prices/codex/gpt-5-codex",
+        "/settings/prices/codex/gpt-6.1-sol",
         json={"input_price_per_token": 0.000003, "output_price_per_token": 0.000015},
     )
     assert saved.status_code == 200
     body = saved.json()
     assert body["provider"] == "codex"
-    assert body["model"] == "gpt-5-codex"
+    assert body["model"] == "gpt-6.1-sol"
 
     listed = client.get("/settings/prices").json()
-    assert [row["model"] for row in listed] == ["gpt-5-codex"]
+    assert [row["model"] for row in listed] == ["gpt-6.1-sol"]
 
 
 def test_saving_a_price_for_an_unknown_provider_is_rejected(client: TestClient) -> None:
@@ -127,11 +127,11 @@ def test_saving_a_price_for_an_unknown_provider_is_rejected(client: TestClient) 
 
 def test_deleting_a_price_removes_it(client: TestClient) -> None:
     client.put(
-        "/settings/prices/codex/gpt-5-codex",
+        "/settings/prices/codex/gpt-6.1-sol",
         json={"input_price_per_token": 0.000003, "output_price_per_token": 0.000015},
     )
 
-    deleted = client.delete("/settings/prices/codex/gpt-5-codex")
+    deleted = client.delete("/settings/prices/codex/gpt-6.1-sol")
 
     assert deleted.status_code == 204
     assert client.get("/settings/prices").json() == []
@@ -143,7 +143,7 @@ def test_bulk_saving_prices_confirms_several_rows_at_once(client: TestClient) ->
         json=[
             {
                 "provider": "codex",
-                "model": "gpt-5-codex",
+                "model": "gpt-6.1-sol",
                 "input_price_per_token": 0.000003,
                 "output_price_per_token": 0.000015,
             },
@@ -156,7 +156,7 @@ def test_bulk_saving_prices_confirms_several_rows_at_once(client: TestClient) ->
         ],
     )
     assert saved.status_code == 200
-    assert {row["model"] for row in saved.json()} == {"gpt-5-codex", "gpt-5"}
+    assert {row["model"] for row in saved.json()} == {"gpt-6.1-sol", "gpt-5"}
 
 
 # --- Pricing URLs ------------------------------------------------------------------------------
@@ -190,7 +190,7 @@ _PRICING_PAGE_HTML = """<!doctype html>
 <body><main>
 <h1>API Pricing</h1>
 <p>Prices are per 1,000,000 tokens, billed monthly, in US dollars.</p>
-<h2>gpt-5-codex</h2>
+<h2>gpt-6.1-sol</h2>
 <p>Input: $3.00 per 1,000,000 tokens. Output: $15.00 per 1,000,000 tokens.</p>
 </main></body></html>"""
 
@@ -205,7 +205,7 @@ def test_fetch_queues_a_job_and_its_result_can_be_read_and_confirmed(db_path: Pa
     # A FakeRunner answering with a real price line, not "OK" - the client fixture's default
     # FakeRunner wouldn't produce anything parse_fetch_prices_answer can read.
     runner = FakeRunner(
-        text="MODEL: gpt-5-codex | INPUT_PER_MILLION: 3.00 | OUTPUT_PER_MILLION: 15.00"
+        text="MODEL: gpt-6.1-sol | INPUT_PER_MILLION: 3.00 | OUTPUT_PER_MILLION: 15.00"
     )
     app = create_app(TOKEN, db_path, runner)
     with TestClient(app) as client:
@@ -231,7 +231,7 @@ def test_fetch_queues_a_job_and_its_result_can_be_read_and_confirmed(db_path: Pa
         rows = result.json()
         assert rows == [
             {
-                "model": "gpt-5-codex",
+                "model": "gpt-6.1-sol",
                 "input_price_per_token": pytest.approx(0.000003),
                 "output_price_per_token": pytest.approx(0.000015),
             }
@@ -239,7 +239,7 @@ def test_fetch_queues_a_job_and_its_result_can_be_read_and_confirmed(db_path: Pa
 
         confirmed = client.put("/settings/prices", json=[{"provider": "codex", **rows[0]}])
         assert confirmed.status_code == 200
-        assert confirmed.json()[0]["model"] == "gpt-5-codex"
+        assert confirmed.json()[0]["model"] == "gpt-6.1-sol"
 
 
 # --- Auth status / logout (D-203) ------------------------------------------------------------

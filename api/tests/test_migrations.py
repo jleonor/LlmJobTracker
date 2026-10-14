@@ -860,17 +860,17 @@ def test_migration_twenty_three_adds_backend_tokens_and_model_prices(
     conn.execute(
         "INSERT INTO model_prices (provider, model, input_price_per_token, "
         "output_price_per_token) "
-        "VALUES ('codex', 'gpt-5-codex', 0.000003, 0.000015)"
+        "VALUES ('codex', 'gpt-6.1-sol', 0.000003, 0.000015)"
     )
     conn.commit()
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(
-            "INSERT INTO model_prices (provider, model) VALUES ('codex', 'gpt-5-codex')"
+            "INSERT INTO model_prices (provider, model) VALUES ('codex', 'gpt-6.1-sol')"
         )  # UNIQUE (provider, model)
     conn.rollback()
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(
-            "INSERT INTO model_prices (provider, model) VALUES ('chatgpt', 'gpt-5-codex')"
+            "INSERT INTO model_prices (provider, model) VALUES ('chatgpt', 'gpt-6.1-sol')"
         )  # provider must be a known backend
     conn.rollback()
 

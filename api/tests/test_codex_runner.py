@@ -64,7 +64,7 @@ def test_build_args_keeps_every_run_sandboxed() -> None:
 
 def test_the_runner_asks_for_the_codex_model() -> None:
     args = build_args("codex")
-    assert args[args.index("--model") + 1] == MODEL == "gpt-5-codex"
+    assert args[args.index("--model") + 1] == MODEL == "gpt-6.1-sol"
 
 
 def test_a_json_schema_file_path_is_passed_to_the_cli(tmp_path: Path) -> None:
