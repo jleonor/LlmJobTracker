@@ -1,19 +1,19 @@
-"""Tests for the Phase 6 LangGraph proof of concept (D-191): LangGraphCheckRunner must behave
-exactly like the Runner it wraps - same result, same rate-limit behaviour, same streaming - since
-it is a drop-in replacement wired in only for JOB_KIND_CHECK (claude_job_queue.py).
+"""Tests for LangGraphRunner (D-191, D-196): it must behave exactly like the Runner it wraps -
+same result, same rate-limit behaviour, same streaming - since it is a drop-in replacement for
+every job kind (app.py wraps the queue's default runner with it directly).
 """
 
 import threading
 
 import pytest
 
-from llmjobtracker.langgraph_check_runner import LangGraphCheckRunner
+from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.runner import FakeRunner, RateLimitError, RunResult
 
 
 def test_the_graph_s_node_calls_the_wrapped_runner_and_returns_its_result() -> None:
     inner = FakeRunner(text="LOOKS_LIKE_A_JOB_POSTING: yes\nreason")
-    graph_runner = LangGraphCheckRunner(inner)
+    graph_runner = LangGraphRunner(inner)
 
     result = graph_runner.run("Senior Data Analyst, must know SQL.")
 
@@ -25,7 +25,7 @@ def test_the_graph_s_node_calls_the_wrapped_runner_and_returns_its_result() -> N
 def test_a_rate_limit_from_the_wrapped_runner_propagates_through_the_graph() -> None:
     inner = FakeRunner()
     inner.rate_limit_next(times=1)
-    graph_runner = LangGraphCheckRunner(inner)
+    graph_runner = LangGraphRunner(inner)
 
     with pytest.raises(RateLimitError):
         graph_runner.run("some text")
@@ -34,7 +34,7 @@ def test_a_rate_limit_from_the_wrapped_runner_propagates_through_the_graph() -> 
 def test_streaming_is_passed_through_to_the_wrapped_runner() -> None:
     inner = FakeRunner(text="done")
     inner.stream_chunks = ["chunk one", "chunk two"]
-    graph_runner = LangGraphCheckRunner(inner)
+    graph_runner = LangGraphRunner(inner)
     seen: list[str] = []
 
     result = graph_runner.run("some text", on_text=seen.append)
@@ -61,8 +61,20 @@ def test_cancel_and_json_schema_reach_the_wrapped_runner_unchanged() -> None:
 
     cancel = threading.Event()
     schema = {"type": "object"}
-    graph_runner = LangGraphCheckRunner(RecordingRunner())
+    graph_runner = LangGraphRunner(RecordingRunner())
 
     graph_runner.run("some text", cancel=cancel, json_schema=schema)
 
     assert received == {"prompt": "some text", "cancel": cancel, "json_schema": schema}
+
+
+def test_tokens_and_model_pass_through_unchanged() -> None:
+    # D-197: confirms the wrapper doesn't drop any of RunResult's fields, not just text/ok.
+    inner = FakeRunner(text="done", input_tokens=120, output_tokens=40)
+    graph_runner = LangGraphRunner(inner)
+
+    result = graph_runner.run("some text")
+
+    assert result.model == "fake-model"
+    assert result.input_tokens == 120
+    assert result.output_tokens == 40

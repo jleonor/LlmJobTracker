@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from llmjobtracker.app import TOKEN_HEADER, create_app
 from llmjobtracker.claude_job_queue import ClaudeJobQueue
 from llmjobtracker.claude_jobs import get_claude_job
+from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.profile_files import store_profile_file
 from llmjobtracker.profile_pipeline import (
     DEFAULT_RULES_PATH,
@@ -94,7 +95,7 @@ def good_answers(cv: int) -> dict[str, str]:
 
 def make_queue(db_path: Path, runner: CannedRunner) -> ClaudeJobQueue:
     render, on_result = make_pipeline(db_path.parent, rules_path=DEFAULT_RULES_PATH)
-    return ClaudeJobQueue(db_path, runner, on_result=on_result, render=render)
+    return ClaudeJobQueue(db_path, LangGraphRunner(runner), on_result=on_result, render=render)
 
 
 def start(db_path: Path, queue: ClaudeJobQueue) -> int:

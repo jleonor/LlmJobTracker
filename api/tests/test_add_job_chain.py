@@ -19,6 +19,7 @@ from llmjobtracker.job_pipeline import (
     make_pipeline,
     queue_add_job_chain,
 )
+from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.runner import FakeRunner, Runner, RunResult
 from llmjobtracker.storage import connect
 
@@ -29,7 +30,7 @@ LISTING_FIXTURES = (
 
 def make_queue(db_path: Path, runner: Runner) -> ClaudeJobQueue:
     render, on_result = make_pipeline(db_path.parent, db_path.parent / "files")
-    return ClaudeJobQueue(db_path, runner, on_result=on_result, render=render)
+    return ClaudeJobQueue(db_path, LangGraphRunner(runner), on_result=on_result, render=render)
 
 
 def add_application(db_path: Path) -> int:

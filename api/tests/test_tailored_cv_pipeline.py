@@ -33,6 +33,7 @@ from llmjobtracker.job_pipeline import (
     submit_generate_tailored_cv,
     tailored_cv_ready,
 )
+from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.profile_files import store_profile_file
 from llmjobtracker.profile_pipeline import DEFAULT_RULES_PATH, store_output
 from llmjobtracker.runner import FakeRunner
@@ -93,7 +94,7 @@ GOOD_LETTER_ANSWER = (
 
 def make_queue(db_path: Path, runner: FakeRunner) -> ClaudeJobQueue:
     render, on_result = make_pipeline(db_path.parent, db_path.parent / "files")
-    return ClaudeJobQueue(db_path, runner, on_result=on_result, render=render)
+    return ClaudeJobQueue(db_path, LangGraphRunner(runner), on_result=on_result, render=render)
 
 
 def run_all(queue: ClaudeJobQueue) -> None:

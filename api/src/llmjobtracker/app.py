@@ -55,7 +55,6 @@ from llmjobtracker.job_files import (
 )
 from llmjobtracker.job_pipeline import (
     ADD_JOB_WORKFLOWS,
-    JOB_KIND_CHECK,
     JobIdentityAnswer,
     JobStepNotReady,
     parse_identity_answer,
@@ -82,7 +81,7 @@ from llmjobtracker.job_revise_turns import (
 from llmjobtracker.job_revise_turns import (
     turn_for_job as job_revise_turn_for_job,
 )
-from llmjobtracker.langgraph_check_runner import LangGraphCheckRunner
+from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.listing_intake import (
     ListingExtraction,
     ListingFetchError,
@@ -272,9 +271,12 @@ def create_app(
     # alongside but separate from profile/ (db_path.parent is the data folder itself).
     files_root = db_path.parent / "files"
     render, on_result = make_pipeline(db_path.parent, files_root)
-    runners: dict[str, Runner] = {"claude_code": runner}
+    # Every job kind runs through a LangGraph node (D-191, D-196) - each registered runner is
+    # wrapped once here, so the queue's own dispatch (claude_job_queue.py) stays unaware of
+    # LangGraph entirely, same as it stays unaware of Claude Code/Codex (D-20).
+    runners: dict[str, Runner] = {"claude_code": LangGraphRunner(runner)}
     if codex_runner is not None:
-        runners["codex"] = codex_runner
+        runners["codex"] = LangGraphRunner(codex_runner)
 
     # A stopped worker can leave jobs half done. Put them back in the queue (D-62).
     startup_conn = connect(db_path)
@@ -284,14 +286,11 @@ def create_app(
     finally:
         startup_conn.close()
 
-    # The listing sanity check runs through a LangGraph proof of concept (D-191); every other
-    # job kind still calls the selected backend's runner directly.
     queue = ClaudeJobQueue(
         db_path,
-        runners.get(active_backend, runner),
+        runners.get(active_backend, runners["claude_code"]),
         on_result=on_result,
         render=render,
-        runner_overrides={JOB_KIND_CHECK: LangGraphCheckRunner(runner)},
     )
 
     def require_token(x_launch_token: str | None = Header(default=None)) -> None:

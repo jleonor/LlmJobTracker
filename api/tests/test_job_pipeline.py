@@ -1,5 +1,8 @@
 """Tests for the Listing's two Claude Job kinds (steps 26-27, job-llm-steps.md): the sanity
 check, and the Generate (LLM) step that stores the result as the application's listing file.
+
+`make_queue` routes through LangGraphRunner, the same wiring `app.py` uses for every job kind
+(D-191, D-196) - every test below exercises the graph, not a hypothetical ungraphed path.
 """
 
 from pathlib import Path
@@ -18,7 +21,7 @@ from llmjobtracker.job_pipeline import (
     submit_check_job_listing_text,
     submit_generate_job_listing,
 )
-from llmjobtracker.langgraph_check_runner import LangGraphCheckRunner
+from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.runner import FakeRunner
 from llmjobtracker.storage import connect
 
@@ -29,20 +32,7 @@ LISTING_FIXTURES = (
 
 def make_queue(db_path: Path, runner: FakeRunner) -> ClaudeJobQueue:
     render, on_result = make_pipeline(db_path.parent, db_path.parent / "files")
-    return ClaudeJobQueue(db_path, runner, on_result=on_result, render=render)
-
-
-def make_graph_queue(db_path: Path, runner: FakeRunner) -> ClaudeJobQueue:
-    """The same wiring `app.py` uses: the check step runs through LangGraphCheckRunner (D-191),
-    every other kind still calls `runner` directly."""
-    render, on_result = make_pipeline(db_path.parent, db_path.parent / "files")
-    return ClaudeJobQueue(
-        db_path,
-        runner,
-        on_result=on_result,
-        render=render,
-        runner_overrides={JOB_KIND_CHECK: LangGraphCheckRunner(runner)},
-    )
+    return ClaudeJobQueue(db_path, LangGraphRunner(runner), on_result=on_result, render=render)
 
 
 def add_application(db_path: Path) -> int:
@@ -151,42 +141,6 @@ def test_check_job_completes_with_a_no_or_malformed_answer_rather_than_failing(
             assert job.status == "done"
         finally:
             conn.close()
-
-
-def test_check_job_behaves_the_same_routed_through_the_langgraph_proof_of_concept(
-    db_path: Path,
-) -> None:
-    """D-191: the same yes/no/malformed cases above, now run through the exact wiring app.py
-    uses (JOB_KIND_CHECK routed through LangGraphCheckRunner) - the step's behaviour is
-    unchanged from the outside."""
-    for canned, expect_yes in (
-        ("LOOKS_LIKE_A_JOB_POSTING: yes\nIt names a role and requirements.", True),
-        ("LOOKS_LIKE_A_JOB_POSTING: no\nJust a cookie banner.", False),
-        ("garbled output", False),
-    ):
-        app_id = add_application(db_path)
-        runner = FakeRunner(text=canned)
-        queue = make_graph_queue(db_path, runner)
-        conn = connect(db_path)
-        try:
-            job_id = submit_check_job_listing_text(conn, queue, app_id, "Senior Data Analyst...")
-        finally:
-            conn.close()
-        run_all(queue)
-
-        conn = connect(db_path)
-        try:
-            job = get_claude_job(conn, job_id)
-            assert job is not None
-            assert job.status == "done"
-            row = conn.execute(
-                "SELECT result_text FROM claude_job_prompts WHERE claude_job_id = ?", (job_id,)
-            ).fetchone()
-            assert parse_check_answer(row["result_text"]) is expect_yes
-        finally:
-            conn.close()
-        assert len(runner.prompts) == 1
-        assert "Senior Data Analyst..." in runner.prompts[0]
 
 
 def test_check_job_runs_with_no_application_yet(db_path: Path) -> None:

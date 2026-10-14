@@ -16,6 +16,7 @@ from llmjobtracker.job_pipeline import (
     parse_identity_answer,
     submit_extract_job_identity,
 )
+from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.profile_pipeline import store_output
 from llmjobtracker.runner import FakeRunner
 from llmjobtracker.storage import connect
@@ -23,7 +24,7 @@ from llmjobtracker.storage import connect
 
 def make_queue(db_path: Path, runner: FakeRunner) -> ClaudeJobQueue:
     render, on_result = make_pipeline(db_path.parent, db_path.parent / "files")
-    return ClaudeJobQueue(db_path, runner, on_result=on_result, render=render)
+    return ClaudeJobQueue(db_path, LangGraphRunner(runner), on_result=on_result, render=render)
 
 
 def run_all(queue: ClaudeJobQueue) -> None:
