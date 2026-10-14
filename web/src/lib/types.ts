@@ -137,8 +137,39 @@ export type RunResult = {
 }
 
 // The sidebar's display name, read from and saved to /settings.
+// The backend the app currently uses for reasoning tasks (D-195: one global switch).
+export type Backend = 'claude_code' | 'codex'
+// D-201: how a paused-at-a-rate-limit job resumes.
+export type RetryPolicy = 'reset_time' | 'fixed_interval' | 'manual_only'
+
 export type Settings = {
   user_name: string
+  backend: Backend
+  retry_policy: RetryPolicy
+  retry_interval_minutes: number
+  retry_max_attempts: number
+}
+
+// One stored price row (D-198).
+export type ModelPrice = {
+  provider: Backend
+  model: string
+  input_price_per_token: number
+  output_price_per_token: number
+  updated_at: string
+}
+
+// A price row proposed by the "fetch and update" scrape, not yet saved (D-198).
+export type ParsedModelPrice = {
+  model: string
+  input_price_per_token: number
+  output_price_per_token: number
+}
+
+// Whether a backend's CLI is currently logged in (D-203).
+export type AuthStatus = {
+  logged_in: boolean
+  detail: string
 }
 
 // One uploaded profile file (Profile page). The kinds follow migration 3.
@@ -185,6 +216,10 @@ export type ClaudeJobPrompt = {
   cost_usd: number | null
   duration_ms: number | null
   model: string | null
+  // Token counts (D-197). Only cost_usd is free from every backend; these are the figure every
+  // backend is expected to supply, cost computed from them when a backend doesn't report it.
+  input_tokens: number | null
+  output_tokens: number | null
   started_at: string | null
   finished_at: string | null
   skipped: boolean

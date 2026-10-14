@@ -3,7 +3,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { fetchSettings } from '@/lib/api'
 import type { Settings } from '@/lib/types'
 
-const DEFAULT_SETTINGS: Settings = { user_name: 'YourName' }
+const DEFAULT_SETTINGS: Settings = {
+  user_name: 'YourName',
+  backend: 'claude_code',
+  retry_policy: 'reset_time',
+  retry_interval_minutes: 60,
+  retry_max_attempts: 24,
+}
 
 export type SettingsState = { settings: Settings; reload: () => void }
 

@@ -4,6 +4,7 @@ import { AppShell, type Screen } from '@/components/app/AppShell'
 import { JobApplicationsPage } from '@/pages/JobApplicationsPage'
 import { LlmHistoryPage } from '@/pages/LlmHistoryPage'
 import { ProfilePage } from '@/pages/ProfilePage'
+import { SettingsPage } from '@/pages/SettingsPage'
 import { queueLabel, useClaudeJobs } from '@/lib/useClaudeJobs'
 import { useSettings } from '@/lib/useSettings'
 
@@ -34,6 +35,9 @@ function App() {
         <ProfilePage userName={settings.user_name} onNameChanged={reloadSettings} />
       )}
       {screen === 'queue' && <LlmHistoryPage queue={queue} />}
+      {screen === 'settings' && (
+        <SettingsPage settings={settings} onSettingsChanged={reloadSettings} queue={queue} />
+      )}
     </AppShell>
   )
 }

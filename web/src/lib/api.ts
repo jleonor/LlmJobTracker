@@ -1,5 +1,7 @@
 import type {
   AddJobResult,
+  AuthStatus,
+  Backend,
   ClaudeJob,
   CreateJobApplicationRequest,
   DuplicateListingMatch,
@@ -10,11 +12,14 @@ import type {
   JobApplicationFile,
   JobIdentityAnswer,
   ListingExtraction,
+  ModelPrice,
+  ParsedModelPrice,
   ProfileFile,
   ProfileFileKind,
   ProfileOutput,
   PromptExchange,
   ReviseTurn,
+  RetryPolicy,
   RunResult,
   Settings,
   StatusHistoryEntry,
@@ -427,6 +432,106 @@ export function saveSettings(userName: string): Promise<Settings> {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_name: userName }),
+  })
+}
+
+// Saves the Phase 7 fields (D-195, D-201) alongside the current name, which PUT /settings
+// always requires - the other fields are optional there and keep their stored value if left out.
+export function saveBackendSettings(
+  userName: string,
+  fields: {
+    backend: Backend
+    retry_policy: RetryPolicy
+    retry_interval_minutes: number
+    retry_max_attempts: number
+  },
+): Promise<Settings> {
+  return request<Settings>('/api/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_name: userName, ...fields }),
+  })
+}
+
+export function fetchModelPrices(): Promise<ModelPrice[]> {
+  return request<ModelPrice[]>('/api/settings/prices')
+}
+
+export function saveModelPrice(
+  provider: Backend,
+  model: string,
+  fields: { input_price_per_token: number; output_price_per_token: number },
+): Promise<ModelPrice> {
+  return request<ModelPrice>(
+    `/api/settings/prices/${encodeURIComponent(provider)}/${encodeURIComponent(model)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    },
+  )
+}
+
+// Confirms a proposed table (or several hand-edited rows) in one call (D-198).
+export function saveModelPrices(rows: ModelPrice[]): Promise<ModelPrice[]> {
+  return request<ModelPrice[]>('/api/settings/prices', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(
+      rows.map(({ provider, model, input_price_per_token, output_price_per_token }) => ({
+        provider,
+        model,
+        input_price_per_token,
+        output_price_per_token,
+      })),
+    ),
+  })
+}
+
+export async function deleteModelPrice(provider: Backend, model: string): Promise<void> {
+  await request<void>(
+    `/api/settings/prices/${encodeURIComponent(provider)}/${encodeURIComponent(model)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export function fetchPricingUrls(): Promise<Record<Backend, string | null>> {
+  return request<Record<Backend, string | null>>('/api/settings/pricing-urls')
+}
+
+export function savePricingUrl(
+  provider: Backend,
+  pricingUrl: string | null,
+): Promise<Record<string, string | null>> {
+  return request<Record<string, string | null>>(
+    `/api/settings/pricing-urls/${encodeURIComponent(provider)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pricing_url: pricingUrl }),
+    },
+  )
+}
+
+export function fetchPricesFromProvider(provider: Backend): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/settings/prices/${encodeURIComponent(provider)}/fetch`, {
+    method: 'POST',
+  })
+}
+
+export function fetchPricesResult(provider: Backend, jobId: number): Promise<ParsedModelPrice[]> {
+  return request<ParsedModelPrice[]>(
+    `/api/settings/prices/${encodeURIComponent(provider)}/fetch/${jobId}`,
+  )
+}
+
+export function fetchAuthStatus(): Promise<Record<Backend, AuthStatus>> {
+  return request<Record<Backend, AuthStatus>>('/api/settings/auth-status')
+}
+
+export function logoutBackend(backend: Backend): Promise<AuthStatus> {
+  return request<AuthStatus>(`/api/settings/${encodeURIComponent(backend)}/logout`, {
+    method: 'POST',
   })
 }
 

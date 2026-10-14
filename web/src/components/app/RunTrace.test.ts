@@ -13,6 +13,8 @@ function prompt(overrides: Partial<ClaudeJobPrompt>): ClaudeJobPrompt {
     cost_usd: null,
     duration_ms: null,
     model: null,
+    input_tokens: null,
+    output_tokens: null,
     started_at: null,
     finished_at: null,
     skipped: false,
@@ -56,6 +58,24 @@ describe('traceLines', () => {
     const texts = lines.map((line) => line.text)
     expect(texts).toContain('Career history: started (claude-sonnet-5)')
     expect(texts).toContain('Career history: done in 13.2 s, $0.0123')
+  })
+
+  it('reports tokens when the runner supplied them but no cost (D-197)', () => {
+    const lines = traceLines(
+      job('running', [
+        prompt({
+          prompt_kind: 'full_cv_history',
+          status: 'done',
+          model: 'gpt-5-codex',
+          finished_at: '2026-10-06T09:00:14Z',
+          cost_usd: null,
+          input_tokens: 610,
+          output_tokens: 5,
+        }),
+      ]),
+    )
+    const texts = lines.map((line) => line.text)
+    expect(texts).toContain('Career history: done, 610 in / 5 out tokens')
   })
 
   it('says when a prompt was skipped because it is already in place', () => {

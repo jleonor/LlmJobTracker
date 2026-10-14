@@ -63,7 +63,15 @@ export function traceLines(job: ClaudeJob, now: number = Date.now()): Line[] {
     if (prompt.status === 'done') {
       const seconds = prompt.duration_ms === null ? '' : ` in ${(prompt.duration_ms / 1000).toFixed(1)} s`
       const cost = prompt.cost_usd === null ? '' : `, $${prompt.cost_usd.toFixed(4)}`
-      lines.push({ time: clock(prompt.finished_at), text: `${name}: done${seconds}${cost}`, tone: 'ok' })
+      const tokens =
+        prompt.input_tokens === null && prompt.output_tokens === null
+          ? ''
+          : `, ${(prompt.input_tokens ?? 0).toLocaleString()} in / ${(prompt.output_tokens ?? 0).toLocaleString()} out tokens`
+      lines.push({
+        time: clock(prompt.finished_at),
+        text: `${name}: done${seconds}${cost}${tokens}`,
+        tone: 'ok',
+      })
     } else if (prompt.status === 'failed') {
       lines.push({ time: clock(prompt.finished_at), text: `${name}: failed. ${prompt.error ?? ''}`, tone: 'error' })
     } else if (prompt.status === 'cancelled') {

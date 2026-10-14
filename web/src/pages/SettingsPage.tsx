@@ -1,0 +1,612 @@
+import { useEffect, useState } from 'react'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { RunTrace } from '@/components/app/RunTrace'
+import {
+  ApiError,
+  deleteModelPrice,
+  fetchAuthStatus,
+  fetchModelPrices,
+  fetchPricesFromProvider,
+  fetchPricesResult,
+  fetchPricingUrls,
+  logoutBackend,
+  saveBackendSettings,
+  saveModelPrice,
+  saveModelPrices,
+  savePricingUrl,
+} from '@/lib/api'
+import type { QueueState } from '@/lib/useClaudeJobs'
+import type { AuthStatus, Backend, ModelPrice, ParsedModelPrice, RetryPolicy, Settings } from '@/lib/types'
+
+const BACKEND_LABELS: Record<Backend, string> = { claude_code: 'Claude Code', codex: 'Codex' }
+const BACKENDS: Backend[] = ['claude_code', 'codex']
+const RETRY_POLICY_LABELS: Record<RetryPolicy, string> = {
+  reset_time: 'Auto-resume at the reported reset time',
+  fixed_interval: 'Retry on a fixed interval',
+  manual_only: 'Always pause for manual Resume',
+}
+const RETRY_POLICIES: RetryPolicy[] = ['reset_time', 'fixed_interval', 'manual_only']
+
+type Props = {
+  settings: Settings
+  onSettingsChanged: () => void
+  queue: QueueState
+}
+
+export function SettingsPage({ settings, onSettingsChanged, queue }: Props) {
+  return (
+    <div className="flex max-w-3xl flex-col gap-6">
+      <h1 className="text-xl font-semibold">Settings</h1>
+      <BackendSection settings={settings} onSaved={onSettingsChanged} />
+      <AuthSection />
+      {BACKENDS.map((backend) => (
+        <PriceSection key={backend} backend={backend} queue={queue} />
+      ))}
+    </div>
+  )
+}
+
+// --- Backend and retry policy (D-195, D-201) ---------------------------------------------------
+
+function BackendSection({ settings, onSaved }: { settings: Settings; onSaved: () => void }) {
+  const [backend, setBackend] = useState<Backend>(settings.backend)
+  const [retryPolicy, setRetryPolicy] = useState<RetryPolicy>(settings.retry_policy)
+  const [retryIntervalMinutes, setRetryIntervalMinutes] = useState(
+    String(settings.retry_interval_minutes),
+  )
+  const [retryMaxAttempts, setRetryMaxAttempts] = useState(String(settings.retry_max_attempts))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const dirty =
+    backend !== settings.backend ||
+    retryPolicy !== settings.retry_policy ||
+    retryIntervalMinutes !== String(settings.retry_interval_minutes) ||
+    retryMaxAttempts !== String(settings.retry_max_attempts)
+
+  async function save() {
+    setBusy(true)
+    setError(null)
+    try {
+      await saveBackendSettings(settings.user_name, {
+        backend,
+        retry_policy: retryPolicy,
+        retry_interval_minutes: Number(retryIntervalMinutes) || 1,
+        retry_max_attempts: Number(retryMaxAttempts) || 1,
+      })
+      onSaved()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The settings were not saved.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby="backend-heading"
+      className="flex flex-col gap-4 rounded border border-border bg-card p-4"
+    >
+      <h2 id="backend-heading" className="text-sm font-semibold">
+        Backend
+      </h2>
+      <div className="flex flex-col gap-2">
+        <Label>Reasoning backend</Label>
+        <Select
+          items={BACKEND_LABELS}
+          value={backend}
+          onValueChange={(next) => setBackend(next as Backend)}
+        >
+          <SelectTrigger className="w-64">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {BACKENDS.map((option) => (
+              <SelectItem key={option} value={option}>
+                {BACKEND_LABELS[option]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Used for every reasoning task across the app. A job already running finishes on the
+          backend it started with.
+        </p>
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label>When a rate limit is hit</Label>
+        <Select
+          items={RETRY_POLICY_LABELS}
+          value={retryPolicy}
+          onValueChange={(next) => setRetryPolicy(next as RetryPolicy)}
+        >
+          <SelectTrigger className="w-80">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RETRY_POLICIES.map((option) => (
+              <SelectItem key={option} value={option}>
+                {RETRY_POLICY_LABELS[option]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {retryPolicy === 'fixed_interval' && (
+        <div className="flex items-end gap-4">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="retry-interval">Retry interval (minutes)</Label>
+            <Input
+              id="retry-interval"
+              type="number"
+              min={1}
+              className="w-32"
+              value={retryIntervalMinutes}
+              onChange={(event) => setRetryIntervalMinutes(event.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="retry-max-attempts">Max consecutive attempts</Label>
+            <Input
+              id="retry-max-attempts"
+              type="number"
+              min={1}
+              className="w-32"
+              value={retryMaxAttempts}
+              onChange={(event) => setRetryMaxAttempts(event.target.value)}
+            />
+          </div>
+        </div>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div>
+        <Button disabled={busy || !dirty} onClick={() => void save()}>
+          Save
+        </Button>
+      </div>
+    </section>
+  )
+}
+
+// --- Auth status / logout (D-203) ---------------------------------------------------------------
+
+function AuthSection() {
+  const [status, setStatus] = useState<Record<Backend, AuthStatus> | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState<Backend | null>(null)
+
+  function reload() {
+    fetchAuthStatus()
+      .then((result) => {
+        setStatus(result)
+        setError(null)
+      })
+      .catch((failure: unknown) => {
+        setError(failure instanceof ApiError ? failure.message : 'Could not check the login status.')
+      })
+  }
+
+  useEffect(reload, [])
+
+  async function logout(backend: Backend) {
+    setBusy(backend)
+    try {
+      const fresh = await logoutBackend(backend)
+      setStatus((current) => (current ? { ...current, [backend]: fresh } : current))
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'Could not log out.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby="auth-heading"
+      className="flex flex-col gap-3 rounded border border-border bg-card p-4"
+    >
+      <div className="flex items-center justify-between">
+        <h2 id="auth-heading" className="text-sm font-semibold">
+          Login status
+        </h2>
+        <Button variant="ghost" size="sm" onClick={reload}>
+          Refresh
+        </Button>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {!status && !error && <p className="text-sm text-muted-foreground">Checking...</p>}
+      {status && (
+        <div className="flex flex-col gap-2">
+          {BACKENDS.map((backend) => (
+            <div key={backend} className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{BACKEND_LABELS[backend]}</span>
+                <Badge variant={status[backend].logged_in ? 'secondary' : 'destructive'}>
+                  {status[backend].logged_in ? 'Logged in' : 'Not logged in'}
+                </Badge>
+                <span className="text-xs text-muted-foreground">{status[backend].detail}</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy === backend || !status[backend].logged_in}
+                onClick={() => void logout(backend)}
+              >
+                Log out
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">
+        Logging in is done through the CLI itself (<code>claude auth login</code> or{' '}
+        <code>codex login</code>), outside the app.
+      </p>
+    </section>
+  )
+}
+
+// --- Price table and the "fetch and update" scrape (D-198) --------------------------------------
+
+function PriceSection({ backend, queue }: { backend: Backend; queue: QueueState }) {
+  const [prices, setPrices] = useState<ModelPrice[]>([]);
+  const [pricingUrl, setPricingUrl] = useState('')
+  const [savedUrl, setSavedUrl] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [fetchJobId, setFetchJobId] = useState<number | null>(null)
+  const [proposed, setProposed] = useState<ParsedModelPrice[] | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  function reloadPrices() {
+    fetchModelPrices()
+      .then((all) => setPrices(all.filter((row) => row.provider === backend)))
+      .catch((failure: unknown) => {
+        setError(failure instanceof ApiError ? failure.message : 'Could not read the price table.')
+      })
+  }
+
+  useEffect(() => {
+    reloadPrices()
+    fetchPricingUrls()
+      .then((urls) => {
+        setPricingUrl(urls[backend] ?? '')
+        setSavedUrl(urls[backend] ?? '')
+      })
+      .catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backend])
+
+  const job = fetchJobId === null ? null : (queue.jobs.find((item) => item.id === fetchJobId) ?? null)
+
+  useEffect(() => {
+    if (!job || job.status !== 'done') return
+    fetchPricesResult(backend, job.id)
+      .then((rows) => setProposed(rows))
+      .catch((failure: unknown) => {
+        setError(failure instanceof ApiError ? failure.message : 'Could not read the proposed table.')
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.status])
+
+  async function saveUrl() {
+    setBusy(true)
+    setError(null)
+    try {
+      await savePricingUrl(backend, pricingUrl.trim() || null)
+      setSavedUrl(pricingUrl.trim())
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The pricing URL was not saved.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function startFetch() {
+    setBusy(true)
+    setError(null)
+    setProposed(null)
+    try {
+      const job = await fetchPricesFromProvider(backend)
+      setFetchJobId(job.id)
+      queue.reload()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'Could not start the fetch.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function confirmProposed(rows: ParsedModelPrice[]) {
+    setBusy(true)
+    setError(null)
+    try {
+      await saveModelPrices(rows.map((row) => ({ provider: backend, updated_at: '', ...row })))
+      setProposed(null)
+      setFetchJobId(null)
+      reloadPrices()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'Could not save the price table.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveRow(model: string, fields: { input_price_per_token: number; output_price_per_token: number }) {
+    setBusy(true)
+    setError(null)
+    try {
+      await saveModelPrice(backend, model, fields)
+      reloadPrices()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The price was not saved.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeRow(model: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      await deleteModelPrice(backend, model)
+      reloadPrices()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The price was not removed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby={`price-heading-${backend}`}
+      className="flex flex-col gap-3 rounded border border-border bg-card p-4"
+    >
+      <h2 id={`price-heading-${backend}`} className="text-sm font-semibold">
+        {BACKEND_LABELS[backend]} prices
+      </h2>
+      <div className="flex items-end gap-2">
+        <div className="flex flex-1 flex-col gap-1">
+          <Label htmlFor={`pricing-url-${backend}`}>Pricing page URL</Label>
+          <Input
+            id={`pricing-url-${backend}`}
+            placeholder="https://..."
+            value={pricingUrl}
+            onChange={(event) => setPricingUrl(event.target.value)}
+          />
+        </div>
+        <Button variant="outline" disabled={busy || pricingUrl.trim() === savedUrl} onClick={() => void saveUrl()}>
+          Save URL
+        </Button>
+        <Button disabled={busy || !savedUrl} onClick={() => void startFetch()}>
+          Fetch and update
+        </Button>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {job && job.status !== 'done' && <RunTrace job={job} />}
+
+      {proposed && (
+        <ProposedTable
+          rows={proposed}
+          busy={busy}
+          onConfirm={(rows) => void confirmProposed(rows)}
+          onDiscard={() => {
+            setProposed(null)
+            setFetchJobId(null)
+          }}
+        />
+      )}
+
+      <PriceTable rows={prices} busy={busy} onSave={saveRow} onDelete={removeRow} />
+    </section>
+  )
+}
+
+function ProposedTable({
+  rows,
+  busy,
+  onConfirm,
+  onDiscard,
+}: {
+  rows: ParsedModelPrice[]
+  busy: boolean
+  onConfirm: (rows: ParsedModelPrice[]) => void
+  onDiscard: () => void
+}) {
+  const [edited, setEdited] = useState(rows)
+
+  return (
+    <div className="flex flex-col gap-2 rounded border border-primary/40 bg-primary/5 p-3">
+      <p className="text-xs font-medium text-muted-foreground">
+        Proposed prices - review before saving. Nothing is written until you confirm.
+      </p>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-muted-foreground">
+            <th className="py-1">Model</th>
+            <th className="py-1">Input $/token</th>
+            <th className="py-1">Output $/token</th>
+          </tr>
+        </thead>
+        <tbody>
+          {edited.map((row, index) => (
+            <tr key={row.model}>
+              <td className="py-1 pr-2">{row.model}</td>
+              <td className="py-1 pr-2">
+                <Input
+                  type="number"
+                  value={row.input_price_per_token}
+                  onChange={(event) => {
+                    const value = Number(event.target.value)
+                    setEdited((current) =>
+                      current.map((item, i) => (i === index ? { ...item, input_price_per_token: value } : item)),
+                    )
+                  }}
+                />
+              </td>
+              <td className="py-1">
+                <Input
+                  type="number"
+                  value={row.output_price_per_token}
+                  onChange={(event) => {
+                    const value = Number(event.target.value)
+                    setEdited((current) =>
+                      current.map((item, i) => (i === index ? { ...item, output_price_per_token: value } : item)),
+                    )
+                  }}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="flex gap-2">
+        <Button disabled={busy} onClick={() => onConfirm(edited)}>
+          Confirm and save
+        </Button>
+        <Button variant="ghost" disabled={busy} onClick={onDiscard}>
+          Discard
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function PriceTable({
+  rows,
+  busy,
+  onSave,
+  onDelete,
+}: {
+  rows: ModelPrice[]
+  busy: boolean
+  onSave: (model: string, fields: { input_price_per_token: number; output_price_per_token: number }) => void
+  onDelete: (model: string) => void
+}) {
+  const [newModel, setNewModel] = useState('')
+  const [newInput, setNewInput] = useState('0')
+  const [newOutput, setNewOutput] = useState('0')
+
+  return (
+    <div className="flex flex-col gap-2">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-muted-foreground">
+            <th className="py-1">Model</th>
+            <th className="py-1">Input $/token</th>
+            <th className="py-1">Output $/token</th>
+            <th className="py-1" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={4} className="py-2 text-xs text-muted-foreground">
+                No prices stored yet.
+              </td>
+            </tr>
+          )}
+          {rows.map((row) => (
+            <PriceRow key={row.model} row={row} busy={busy} onSave={onSave} onDelete={onDelete} />
+          ))}
+        </tbody>
+      </table>
+      <div className="flex items-end gap-2 border-t border-border pt-2">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="new-model">Model</Label>
+          <Input id="new-model" className="w-40" value={newModel} onChange={(event) => setNewModel(event.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="new-input">Input $/token</Label>
+          <Input
+            id="new-input"
+            type="number"
+            className="w-28"
+            value={newInput}
+            onChange={(event) => setNewInput(event.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="new-output">Output $/token</Label>
+          <Input
+            id="new-output"
+            type="number"
+            className="w-28"
+            value={newOutput}
+            onChange={(event) => setNewOutput(event.target.value)}
+          />
+        </div>
+        <Button
+          variant="outline"
+          disabled={busy || !newModel.trim()}
+          onClick={() => {
+            onSave(newModel.trim(), {
+              input_price_per_token: Number(newInput) || 0,
+              output_price_per_token: Number(newOutput) || 0,
+            })
+            setNewModel('')
+            setNewInput('0')
+            setNewOutput('0')
+          }}
+        >
+          Add model
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function PriceRow({
+  row,
+  busy,
+  onSave,
+  onDelete,
+}: {
+  row: ModelPrice
+  busy: boolean
+  onSave: (model: string, fields: { input_price_per_token: number; output_price_per_token: number }) => void
+  onDelete: (model: string) => void
+}) {
+  const [inputPrice, setInputPrice] = useState(String(row.input_price_per_token))
+  const [outputPrice, setOutputPrice] = useState(String(row.output_price_per_token))
+  const dirty =
+    inputPrice !== String(row.input_price_per_token) || outputPrice !== String(row.output_price_per_token)
+
+  return (
+    <tr>
+      <td className="py-1 pr-2">{row.model}</td>
+      <td className="py-1 pr-2">
+        <Input type="number" value={inputPrice} onChange={(event) => setInputPrice(event.target.value)} />
+      </td>
+      <td className="py-1 pr-2">
+        <Input type="number" value={outputPrice} onChange={(event) => setOutputPrice(event.target.value)} />
+      </td>
+      <td className="py-1">
+        <div className="flex gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy || !dirty}
+            onClick={() =>
+              onSave(row.model, {
+                input_price_per_token: Number(inputPrice) || 0,
+                output_price_per_token: Number(outputPrice) || 0,
+              })
+            }
+          >
+            Save
+          </Button>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => onDelete(row.model)}>
+            Remove
+          </Button>
+        </div>
+      </td>
+    </tr>
+  )
+}

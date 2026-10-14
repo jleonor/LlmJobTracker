@@ -3,14 +3,15 @@ import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
-export type Screen = 'jobs' | 'profile' | 'queue'
+export type Screen = 'jobs' | 'profile' | 'queue' | 'settings'
 
-// Jobs and Profile have screens. The other entries are placeholders for later phases.
+// Jobs, Profile, LLM history and Settings have screens (Phase 7, D-195). Run Trace is still a
+// placeholder for a later phase.
 const NAV: { label: string; icon: typeof UserRound; screen: Screen | null }[] = [
   { label: 'Job Applications', icon: BriefcaseBusiness, screen: 'jobs' },
   { label: 'Profile', icon: UserRound, screen: 'profile' },
   { label: 'LLM history', icon: ListOrdered, screen: 'queue' },
-  { label: 'Settings', icon: Settings, screen: null },
+  { label: 'Settings', icon: Settings, screen: 'settings' },
   { label: 'Run Trace', icon: GitBranch, screen: null },
 ]
 
