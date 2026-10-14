@@ -31,6 +31,11 @@ const RETRY_POLICY_LABELS: Record<RetryPolicy, string> = {
   manual_only: 'Always pause for manual Resume',
 }
 const RETRY_POLICIES: RetryPolicy[] = ['reset_time', 'fixed_interval', 'manual_only']
+// D-206: which Settings field holds each provider's selected model.
+const MODEL_FIELD: Record<Backend, 'claude_code_model' | 'codex_model'> = {
+  claude_code: 'claude_code_model',
+  codex: 'codex_model',
+}
 
 type Props = {
   settings: Settings
@@ -45,7 +50,7 @@ export function SettingsPage({ settings, onSettingsChanged, queue }: Props) {
       <BackendSection settings={settings} onSaved={onSettingsChanged} />
       <AuthSection />
       {BACKENDS.map((backend) => (
-        <PriceSection key={backend} backend={backend} queue={queue} />
+        <PriceSection key={backend} backend={backend} queue={queue} settings={settings} onSaved={onSettingsChanged} />
       ))}
     </div>
   )
@@ -78,6 +83,8 @@ function BackendSection({ settings, onSaved }: { settings: Settings; onSaved: ()
         retry_policy: retryPolicy,
         retry_interval_minutes: Number(retryIntervalMinutes) || 1,
         retry_max_attempts: Number(retryMaxAttempts) || 1,
+        claude_code_model: settings.claude_code_model,
+        codex_model: settings.codex_model,
       })
       onSaved()
     } catch (failure) {
@@ -253,7 +260,17 @@ function AuthSection() {
 
 // --- Price table and the "fetch and update" scrape (D-198) --------------------------------------
 
-function PriceSection({ backend, queue }: { backend: Backend; queue: QueueState }) {
+function PriceSection({
+  backend,
+  queue,
+  settings,
+  onSaved,
+}: {
+  backend: Backend
+  queue: QueueState
+  settings: Settings
+  onSaved: () => void
+}) {
   const [prices, setPrices] = useState<ModelPrice[]>([]);
   const [pricingUrl, setPricingUrl] = useState('')
   const [savedUrl, setSavedUrl] = useState('')
@@ -261,6 +278,10 @@ function PriceSection({ backend, queue }: { backend: Backend; queue: QueueState 
   const [fetchJobId, setFetchJobId] = useState<number | null>(null)
   const [proposed, setProposed] = useState<ParsedModelPrice[] | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const activeModel = settings[MODEL_FIELD[backend]]
+  // The current model stays selectable even if it isn't (or isn't yet) one of the stored rows.
+  const modelOptions = Array.from(new Set([activeModel, ...prices.map((row) => row.model)]))
 
   function reloadPrices() {
     fetchModelPrices()
@@ -362,6 +383,26 @@ function PriceSection({ backend, queue }: { backend: Backend; queue: QueueState 
     }
   }
 
+  async function saveActiveModel(model: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      await saveBackendSettings(settings.user_name, {
+        backend: settings.backend,
+        retry_policy: settings.retry_policy,
+        retry_interval_minutes: settings.retry_interval_minutes,
+        retry_max_attempts: settings.retry_max_attempts,
+        claude_code_model: backend === 'claude_code' ? model : settings.claude_code_model,
+        codex_model: backend === 'codex' ? model : settings.codex_model,
+      })
+      onSaved()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The active model was not saved.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <section
       aria-labelledby={`price-heading-${backend}`}
@@ -370,6 +411,29 @@ function PriceSection({ backend, queue }: { backend: Backend; queue: QueueState 
       <h2 id={`price-heading-${backend}`} className="text-sm font-semibold">
         {BACKEND_LABELS[backend]} prices
       </h2>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={`active-model-${backend}`}>Active model</Label>
+        <Select
+          items={Object.fromEntries(modelOptions.map((model) => [model, model]))}
+          value={activeModel}
+          onValueChange={(next) => next && void saveActiveModel(next)}
+        >
+          <SelectTrigger id={`active-model-${backend}`} className="w-64" disabled={busy}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {modelOptions.map((model) => (
+              <SelectItem key={model} value={model}>
+                {model}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Used for every {BACKEND_LABELS[backend]} reasoning task. Add a model to the price table
+          below to make it selectable here.
+        </p>
+      </div>
       <div className="flex items-end gap-2">
         <div className="flex flex-1 flex-col gap-1">
           <Label htmlFor={`pricing-url-${backend}`}>Pricing page URL</Label>

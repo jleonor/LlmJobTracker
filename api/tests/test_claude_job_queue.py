@@ -468,6 +468,8 @@ def _set_retry_policy(
             retry_policy,
             retry_interval_minutes,
             retry_max_attempts,
+            "claude-sonnet-5",
+            "gpt-6.1-sol",
         )
         conn.commit()
     finally:

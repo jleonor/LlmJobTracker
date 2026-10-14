@@ -33,8 +33,9 @@ from llmjobtracker.runner import AuthStatus, RateLimitError, RunResult
 # Mirrors claude_code_runner.DEFAULT_TIMEOUT_S/POLL_INTERVAL_S - same reasoning (D-75).
 DEFAULT_TIMEOUT_S = 15 * 60
 POLL_INTERVAL_S = 0.2
-# The model every Codex run uses unless told otherwise. Codex does not echo back which model it
-# used (runner-notes.md), so this is also what RunResult.model records - not a parsed value.
+# The model a run uses unless CodexRunner is given another (extended by the selectable-model
+# setting, D-206). Codex does not echo back which model it used (runner-notes.md), so whatever
+# model was actually requested is also what RunResult.model records - not a parsed value.
 MODEL = "gpt-6.1-sol"
 # Mirrors claude_code_runner.AUTH_TIMEOUT_S.
 AUTH_TIMEOUT_S = 15
@@ -78,7 +79,7 @@ def logout() -> None:
     subprocess.run([executable, "logout"], capture_output=True, text=True, timeout=AUTH_TIMEOUT_S)
 
 
-def build_args(executable: str, schema_path: Path | None = None) -> list[str]:
+def build_args(executable: str, schema_path: Path | None = None, model: str = MODEL) -> list[str]:
     # The prompt is not an argument, for the same reason as ClaudeCodeRunner: Windows' command-line
     # length limit, and a profile prompt that can hold every CV. It goes to standard input instead,
     # signalled by the "-" positional argument.
@@ -91,7 +92,7 @@ def build_args(executable: str, schema_path: Path | None = None) -> list[str]:
         "--sandbox",
         "read-only",
         "--model",
-        MODEL,
+        model,
     ]
     if schema_path is not None:
         # Unlike Claude Code's inline --json-schema, Codex's --output-schema takes a file path
@@ -183,8 +184,9 @@ def _turn_failure_message(events: list[dict[str, Any]]) -> str | None:
     return _flatten_error_message(message) if message is not None else None
 
 
-def parse_stream(stdout: str, exit_code: int, duration_ms: int) -> RunResult:
-    """Read a codex exec --json run. Raises RateLimitError on a plan limit."""
+def parse_stream(stdout: str, exit_code: int, duration_ms: int, model: str = MODEL) -> RunResult:
+    """Read a codex exec --json run. Raises RateLimitError on a plan limit. `model` is the id
+    actually requested for this run - Codex never echoes it back (see MODEL's own docstring)."""
     events = _events(stdout)
     failure = _turn_failure_message(events)
     if failure is not None:
@@ -209,7 +211,7 @@ def parse_stream(stdout: str, exit_code: int, duration_ms: int) -> RunResult:
         ok=True,
         text=text,
         duration_ms=duration_ms,
-        model=MODEL,
+        model=model,
         input_tokens=_tokens(usage, "input_tokens"),
         output_tokens=_tokens(usage, "output_tokens"),
     )
@@ -224,8 +226,11 @@ def _cli_environment() -> dict[str, str]:
 
 
 class CodexRunner:
-    def __init__(self, workdir: Path, timeout_s: float = DEFAULT_TIMEOUT_S) -> None:
+    def __init__(
+        self, workdir: Path, model: str = MODEL, timeout_s: float = DEFAULT_TIMEOUT_S
+    ) -> None:
         self.workdir = workdir
+        self.model = model
         self.timeout_s = timeout_s
 
     def run(
@@ -250,7 +255,7 @@ class CodexRunner:
 
         started = time.monotonic()
         process = subprocess.Popen(
-            build_args(executable, schema_file),
+            build_args(executable, schema_file, self.model),
             cwd=self.workdir,
             env=_cli_environment(),
             stdin=subprocess.PIPE,
@@ -303,7 +308,7 @@ class CodexRunner:
             stdout_thread.join(timeout=5.0)
             stderr_thread.join(timeout=5.0)
             duration_ms = int((time.monotonic() - started) * 1000)
-            return parse_stream("".join(lines), process.returncode, duration_ms)
+            return parse_stream("".join(lines), process.returncode, duration_ms, self.model)
         finally:
             if schema_file is not None:
                 schema_file.unlink(missing_ok=True)

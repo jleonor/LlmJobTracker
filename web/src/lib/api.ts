@@ -51,6 +51,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     throw new ApiError(await errorMessage(response), response.status)
   }
+  // A 204 (DELETE routes) has no body - response.json() would throw trying to parse "".
+  if (response.status === 204) {
+    return undefined as T
+  }
   return (await response.json()) as T
 }
 
@@ -444,6 +448,8 @@ export function saveBackendSettings(
     retry_policy: RetryPolicy
     retry_interval_minutes: number
     retry_max_attempts: number
+    claude_code_model: string
+    codex_model: string
   },
 ): Promise<Settings> {
   return request<Settings>('/api/settings', {

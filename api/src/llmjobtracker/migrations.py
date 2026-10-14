@@ -932,6 +932,19 @@ MIGRATIONS: tuple[Migration, ...] = (
         ),
         down=("ALTER TABLE claude_jobs DROP COLUMN retry_attempts",),
     ),
+    Migration(
+        version=26,
+        name="add settings.claude_code_model and codex_model (D-206)",
+        up=(
+            "ALTER TABLE settings ADD COLUMN claude_code_model TEXT NOT NULL "
+            "DEFAULT 'claude-sonnet-5'",
+            "ALTER TABLE settings ADD COLUMN codex_model TEXT NOT NULL DEFAULT 'gpt-6.1-sol'",
+        ),
+        down=(
+            "ALTER TABLE settings DROP COLUMN codex_model",
+            "ALTER TABLE settings DROP COLUMN claude_code_model",
+        ),
+    ),
 )
 
 _LEDGER = """

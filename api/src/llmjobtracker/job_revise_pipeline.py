@@ -39,6 +39,7 @@ from llmjobtracker.job_pipeline import (
     email_blocks,
     generated_file_name,
     interview_prep_from_json,
+    job_identity,
     master_cv_text,
     profile_document_blocks,
     render_breakdown_document,
@@ -1334,7 +1335,7 @@ def _store_docx_revision(
             block.text
             for block in docx_editor.list_blocks(docx_editor.read_document(revised_bytes))
         )
-        check_cover_letter_style(assembled_text)
+        check_cover_letter_style(assembled_text, exempt=job_identity(conn, application_id))
     write_generated_job_file(conn, files_root, application_id, kind, generated_name, revised_bytes)
 
 

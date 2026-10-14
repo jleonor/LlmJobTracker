@@ -148,6 +148,9 @@ export type Settings = {
   retry_policy: RetryPolicy
   retry_interval_minutes: number
   retry_max_attempts: number
+  // D-206: which model each backend uses, selected from that provider's own price table.
+  claude_code_model: string
+  codex_model: string
 }
 
 // One stored price row (D-198).

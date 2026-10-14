@@ -286,12 +286,42 @@ def test_the_runner_asks_for_the_profile_model() -> None:
     assert args[args.index("--model") + 1] == MODEL == "claude-sonnet-5"
 
 
+def test_build_args_accepts_a_model_override() -> None:
+    args = build_args("claude", model="claude-opus-5")
+    assert args[args.index("--model") + 1] == "claude-opus-5"
+
+
 def test_no_budget_cap_is_passed_to_the_cli() -> None:
     assert "--max-budget-usd" not in build_args("claude")
 
 
 def test_a_run_may_take_up_to_fifteen_minutes() -> None:
     assert ClaudeCodeRunner(workdir=Path(".")).timeout_s == 15 * 60
+
+
+def test_the_runner_defaults_to_the_module_model() -> None:
+    assert ClaudeCodeRunner(workdir=Path(".")).model == MODEL
+
+
+def test_the_runner_accepts_a_model_override() -> None:
+    assert ClaudeCodeRunner(workdir=Path("."), model="claude-opus-5").model == "claude-opus-5"
+
+
+def test_a_selected_model_reaches_the_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    process = _RunningProcess()
+    commands: list[list[str]] = []
+
+    def fake_popen(args: list[str], **_kwargs: object) -> _RunningProcess:
+        commands.append(args)
+        process.returncode = 0
+        return process
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "claude")
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    ClaudeCodeRunner(workdir=tmp_path, model="claude-opus-5").run("Reply with OK.")
+
+    assert commands[0][commands[0].index("--model") + 1] == "claude-opus-5"
 
 
 def test_build_args_requests_partial_messages() -> None:

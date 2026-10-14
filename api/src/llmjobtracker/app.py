@@ -13,6 +13,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, 
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from llmjobtracker.claude_code_runner import ClaudeCodeRunner
 from llmjobtracker.claude_code_runner import auth_status as claude_code_auth_status
 from llmjobtracker.claude_code_runner import logout as claude_code_logout
 from llmjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
@@ -24,6 +25,7 @@ from llmjobtracker.claude_jobs import (
     prompt_exchange,
     recover_interrupted,
 )
+from llmjobtracker.codex_runner import CodexRunner
 from llmjobtracker.codex_runner import auth_status as codex_auth_status
 from llmjobtracker.codex_runner import logout as codex_logout
 from llmjobtracker.file_preview import UnsupportedPreview, preview_for
@@ -151,11 +153,13 @@ PREVIEW_MEDIA_TYPES: Final[dict[str, str]] = {
 class SettingsEdit(BaseModel):
     user_name: str
     # None keeps the stored value - a rename need not also restate the Phase 7 fields (D-195,
-    # D-201), and a Phase 7 settings save need not restate the name.
+    # D-201, D-206), and a Phase 7 settings save need not restate the name.
     backend: str | None = None
     retry_policy: str | None = None
     retry_interval_minutes: int | None = None
     retry_max_attempts: int | None = None
+    claude_code_model: str | None = None
+    codex_model: str | None = None
 
 
 class ModelPriceEdit(BaseModel):
@@ -250,6 +254,17 @@ class JobReviseTurnView(BaseModel):
     job: ClaudeJob
 
 
+def _rebuild_runner(existing: Runner, model: str) -> Runner:
+    """A real ClaudeCodeRunner/CodexRunner, reconstructed with `model` if it differs from what
+    it already has (D-206) - keeps its own workdir/timeout unchanged. Anything else (a
+    FakeRunner in tests, for example) has no model to select, so it is returned as-is."""
+    if isinstance(existing, ClaudeCodeRunner) and existing.model != model:
+        return ClaudeCodeRunner(workdir=existing.workdir, model=model, timeout_s=existing.timeout_s)
+    if isinstance(existing, CodexRunner) and existing.model != model:
+        return CodexRunner(workdir=existing.workdir, model=model, timeout_s=existing.timeout_s)
+    return existing
+
+
 def create_app(
     launch_token: str,
     db_path: Path,
@@ -271,24 +286,29 @@ def create_app(
     # alongside but separate from profile/ (db_path.parent is the data folder itself).
     files_root = db_path.parent / "files"
     render, on_result = make_pipeline(db_path.parent, files_root)
-    # Every job kind runs through a LangGraph node (D-191, D-196) - each registered runner is
-    # wrapped once here, so the queue's own dispatch (claude_job_queue.py) stays unaware of
-    # LangGraph entirely, same as it stays unaware of Claude Code/Codex (D-20).
-    runners: dict[str, Runner] = {"claude_code": LangGraphRunner(runner)}
-    if codex_runner is not None:
-        runners["codex"] = LangGraphRunner(codex_runner)
 
     # A stopped worker can leave jobs half done. Put them back in the queue (D-62).
     startup_conn = connect(db_path)
     try:
         recover_interrupted(startup_conn)
-        active_backend = get_settings(startup_conn).backend
+        startup_settings = get_settings(startup_conn)
     finally:
         startup_conn.close()
 
+    # Each registered runner is rebuilt to the stored model (D-206, a restart must not silently
+    # drop a previously-selected one) and wrapped once in LangGraphRunner (D-191, D-196), so the
+    # queue's own dispatch (claude_job_queue.py) stays unaware of LangGraph entirely, same as it
+    # stays unaware of Claude Code/Codex (D-20).
+    runner = _rebuild_runner(runner, startup_settings.claude_code_model)
+    if codex_runner is not None:
+        codex_runner = _rebuild_runner(codex_runner, startup_settings.codex_model)
+    runners: dict[str, Runner] = {"claude_code": LangGraphRunner(runner)}
+    if codex_runner is not None:
+        runners["codex"] = LangGraphRunner(codex_runner)
+
     queue = ClaudeJobQueue(
         db_path,
-        runners.get(active_backend, runners["claude_code"]),
+        runners.get(startup_settings.backend, runners["claude_code"]),
         on_result=on_result,
         render=render,
     )
@@ -334,8 +354,15 @@ def create_app(
     def update_settings(
         edit: SettingsEdit, conn: Annotated[Connection, Depends(get_db)]
     ) -> Settings:
+        nonlocal runner, codex_runner
         current = get_settings(conn)
         new_backend = edit.backend if edit.backend is not None else current.backend
+        new_claude_model = (
+            edit.claude_code_model
+            if edit.claude_code_model is not None
+            else current.claude_code_model
+        )
+        new_codex_model = edit.codex_model if edit.codex_model is not None else current.codex_model
         try:
             saved = save_settings(
                 conn,
@@ -348,10 +375,25 @@ def create_app(
                 edit.retry_max_attempts
                 if edit.retry_max_attempts is not None
                 else current.retry_max_attempts,
+                new_claude_model,
+                new_codex_model,
             )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
-        if new_backend != current.backend and new_backend in runners:
+        # D-206: a changed model rebuilds that provider's runner, the same way a changed backend
+        # (D-195) already does - both just mean "what the next queued job uses" now points
+        # somewhere new.
+        if new_claude_model != current.claude_code_model:
+            runner = _rebuild_runner(runner, new_claude_model)
+            runners["claude_code"] = LangGraphRunner(runner)
+        if codex_runner is not None and new_codex_model != current.codex_model:
+            codex_runner = _rebuild_runner(codex_runner, new_codex_model)
+            runners["codex"] = LangGraphRunner(codex_runner)
+        if (
+            new_backend != current.backend
+            or new_claude_model != current.claude_code_model
+            or new_codex_model != current.codex_model
+        ) and new_backend in runners:
             queue.set_runner(runners[new_backend])
         return saved
 

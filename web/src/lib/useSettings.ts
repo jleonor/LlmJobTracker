@@ -9,6 +9,8 @@ const DEFAULT_SETTINGS: Settings = {
   retry_policy: 'reset_time',
   retry_interval_minutes: 60,
   retry_max_attempts: 24,
+  claude_code_model: 'claude-sonnet-5',
+  codex_model: 'gpt-6.1-sol',
 }
 
 export type SettingsState = { settings: Settings; reload: () => void }

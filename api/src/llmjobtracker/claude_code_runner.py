@@ -28,8 +28,9 @@ from llmjobtracker.runner import AuthStatus, RateLimitError, RunResult
 DEFAULT_TIMEOUT_S = 15 * 60
 # How often a running CLI is checked for a cancel request or a timeout.
 POLL_INTERVAL_S = 0.2
-# The model every profile prompt runs on (D-74). The id is given in full, because the
-# CLI's "sonnet" alias points at a newer model.
+# The model a run uses unless ClaudeCodeRunner is given another (D-74, extended by the
+# selectable-model setting, D-206). The id is given in full, because the CLI's "sonnet" alias
+# points at a newer model.
 MODEL = "claude-sonnet-5"
 # rate_limit_info.status values that mean the run may continue. Any other status is a limit.
 ALLOWED_RATE_LIMIT_STATUSES = frozenset({"allowed", "allowed_warning"})
@@ -79,14 +80,16 @@ def logout() -> None:
     )
 
 
-def build_args(executable: str, json_schema: dict[str, Any] | None = None) -> list[str]:
+def build_args(
+    executable: str, json_schema: dict[str, Any] | None = None, model: str = MODEL
+) -> list[str]:
     # The prompt is not an argument. Windows limits a command line to about 32,000 characters,
     # and a profile prompt can hold every CV. The prompt goes to standard input instead.
     args = [
         executable,
         "-p",
         "--model",
-        MODEL,
+        model,
         "--output-format",
         "stream-json",
         "--verbose",
@@ -257,8 +260,11 @@ def _cli_environment() -> dict[str, str]:
 
 
 class ClaudeCodeRunner:
-    def __init__(self, workdir: Path, timeout_s: float = DEFAULT_TIMEOUT_S) -> None:
+    def __init__(
+        self, workdir: Path, model: str = MODEL, timeout_s: float = DEFAULT_TIMEOUT_S
+    ) -> None:
         self.workdir = workdir
+        self.model = model
         self.timeout_s = timeout_s
 
     def run(
@@ -274,7 +280,7 @@ class ClaudeCodeRunner:
         self.workdir.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
         process = subprocess.Popen(
-            build_args(executable, json_schema),
+            build_args(executable, json_schema, self.model),
             cwd=self.workdir,
             env=_cli_environment(),
             stdin=subprocess.PIPE,

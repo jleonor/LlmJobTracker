@@ -67,6 +67,11 @@ def test_the_runner_asks_for_the_codex_model() -> None:
     assert args[args.index("--model") + 1] == MODEL == "gpt-6.1-sol"
 
 
+def test_build_args_accepts_a_model_override() -> None:
+    args = build_args("codex", model="gpt-5-codex")
+    assert args[args.index("--model") + 1] == "gpt-5-codex"
+
+
 def test_a_json_schema_file_path_is_passed_to_the_cli(tmp_path: Path) -> None:
     schema_path = tmp_path / "schema.json"
     args = build_args("codex", schema_path)
@@ -86,6 +91,16 @@ def test_parse_success_reads_the_last_agent_message_and_tokens() -> None:
     assert parsed.cost_usd is None  # Codex never reports a dollar cost (runner-notes.md)
     assert parsed.input_tokens == 16106
     assert parsed.output_tokens == 5
+
+
+def test_parse_success_records_the_model_actually_requested() -> None:
+    parsed = parse_stream(
+        stream(THREAD_STARTED, TURN_STARTED, AGENT_MESSAGE, TURN_COMPLETED),
+        exit_code=0,
+        duration_ms=1,
+        model="gpt-5-codex",
+    )
+    assert parsed.model == "gpt-5-codex"
 
 
 def test_a_turn_can_emit_more_than_one_agent_message_item() -> None:
@@ -265,6 +280,31 @@ def test_a_json_schema_is_written_to_a_temp_file_and_cleaned_up(
 
 def test_a_run_may_take_up_to_fifteen_minutes() -> None:
     assert CodexRunner(workdir=Path(".")).timeout_s == 15 * 60
+
+
+def test_the_runner_defaults_to_the_module_model() -> None:
+    assert CodexRunner(workdir=Path(".")).model == MODEL
+
+
+def test_the_runner_accepts_a_model_override() -> None:
+    assert CodexRunner(workdir=Path("."), model="gpt-5-codex").model == "gpt-5-codex"
+
+
+def test_a_selected_model_reaches_the_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    process = _RunningProcess()
+    commands: list[list[str]] = []
+
+    def fake_popen(args: list[str], **_kwargs: object) -> _RunningProcess:
+        commands.append(args)
+        process.returncode = 0
+        return process
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "codex")
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    CodexRunner(workdir=tmp_path, model="gpt-5-codex").run("Reply with OK.")
+
+    assert commands[0][commands[0].index("--model") + 1] == "gpt-5-codex"
 
 
 class _CompletedProcess:

@@ -387,6 +387,30 @@ def test_check_cover_letter_style_rejects_too_long() -> None:
         check_cover_letter_style(_words(500))
 
 
+def test_check_cover_letter_style_exempts_a_hyphenated_job_title() -> None:
+    # Confirmed by a real letter: "Developpeur - Analyste" is the job's own title, quoted
+    # verbatim in the opening line - not the model's own sentence punctuation.
+    letter = _words(100) + " for the Developpeur - Analyste role " + _words(100)
+    check_cover_letter_style(letter, exempt=["Developpeur - Analyste"])
+
+
+def test_check_cover_letter_style_exempts_a_company_name_with_a_colon() -> None:
+    letter = _words(100) + " at Acme: Analytics Division " + _words(100)
+    check_cover_letter_style(letter, exempt=["Acme: Analytics Division"])
+
+
+def test_check_cover_letter_style_still_rejects_a_dash_outside_the_exempt_phrase() -> None:
+    # The exempted title is masked, but a genuine sentence dash elsewhere still fails.
+    letter = _words(100) + " for the Developpeur - Analyste role - truly " + _words(100)
+    with pytest.raises(PromptRejected, match="dash"):
+        check_cover_letter_style(letter, exempt=["Developpeur - Analyste"])
+
+
+def test_check_cover_letter_style_with_no_exempt_phrases_behaves_as_before() -> None:
+    with pytest.raises(PromptRejected, match="dash"):
+        check_cover_letter_style(_words(100) + " roles - I apply " + _words(100), exempt=[])
+
+
 # --- Gates ------------------------------------------------------------------------------------
 
 

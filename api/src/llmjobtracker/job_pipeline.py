@@ -267,11 +267,14 @@ once, the same order. Do not add, skip, merge, renumber, or retype any of them.
 Then:
 
 === FIT ===
-- short bullet
+- one bullet per distinct fit. A bullet may combine several related things (for example two
+  tools from the same project, or a skill and the result it produced) as long as everything in
+  it serves that one point - never unrelated points merged for brevity. Aim for 3 to 10 bullets.
 === END FIT ===
 
 === GAPS ===
-- short bullet
+- one bullet per distinct gap, the same rule: related points may combine into one bullet, but
+  keep it to the one gap. Aim for 3 to 10 bullets.
 === END GAPS ===
 
 === JOB STRATEGY ===
@@ -1635,19 +1638,41 @@ _SENTENCE_DASH = re.compile(r"[—–]|(?<=\s)-(?=\s)")
 _COLON_OR_SEMICOLON = re.compile(r"[:;]")
 _MIN_COVER_LETTER_WORDS: Final = 200
 _MAX_COVER_LETTER_WORDS: Final = 400
+# Swaps a dash/colon/semicolon for a look-alike that neither check above matches - same length,
+# so positions still line up with the original text for the error snippet.
+_MASK_TABLE = str.maketrans({"—": "_", "–": "_", "-": "_", ":": ",", ";": ","})
 
 
-def check_cover_letter_style(text: str) -> None:
+def _mask_exempt_phrases(text: str, exempt: list[str]) -> str:
+    """Masks every occurrence of each verbatim phrase in `exempt` (the job's own title, the
+    company's own name) before the style checks run, confirmed needed by a real letter that
+    quoted a hyphenated job title ("Developer - Analyst") in its opening line - a dash or colon
+    that is part of a given name is not the model's own sentence punctuation."""
+    masked = text
+    for phrase in exempt:
+        if phrase:
+            masked = masked.replace(phrase, phrase.translate(_MASK_TABLE))
+    return masked
+
+
+def check_cover_letter_style(text: str, *, exempt: list[str] | None = None) -> None:
     """The writing rules' mechanical punctuation rule, enforced in code rather than trusted
-    (job-llm-steps.md §6, confirmed against real letters: zero exceptions). A wide length band -
-    this guards against a badly broken answer, not a style preference the user's own review
-    doesn't already cover more precisely."""
-    dash = _SENTENCE_DASH.search(text)
+    (job-llm-steps.md §6, confirmed against real letters: zero exceptions once verbatim titles
+    are exempted - see _mask_exempt_phrases). A wide length band - this guards against a badly
+    broken answer, not a style preference the user's own review doesn't already cover more
+    precisely.
+
+    `exempt` is the job's own title and the company's own name, masked out before the dash/colon
+    checks (never the word-count check) - a given name may legitimately contain either character,
+    which is not the same thing as the model using one as its own sentence punctuation.
+    """
+    masked = _mask_exempt_phrases(text, exempt or [])
+    dash = _SENTENCE_DASH.search(masked)
     if dash is not None:
         start = max(0, dash.start() - 20)
         snippet = text[start : dash.end() + 20]
         raise PromptRejected(f"The letter uses a dash as sentence punctuation near: {snippet!r}")
-    punctuation = _COLON_OR_SEMICOLON.search(text)
+    punctuation = _COLON_OR_SEMICOLON.search(masked)
     if punctuation is not None:
         start = max(0, punctuation.start() - 20)
         raise PromptRejected(
@@ -1674,6 +1699,18 @@ def _application_id_for(conn: sqlite3.Connection, claude_job_id: int | None) -> 
     if row is None or row["job_application_id"] is None:
         raise PromptRejected("This job has no application to run against.")
     return int(row["job_application_id"])
+
+
+def job_identity(conn: sqlite3.Connection, application_id: int) -> list[str]:
+    """The company and role title an application's own writing may legitimately quote verbatim
+    (check_cover_letter_style's `exempt`) - empty strings dropped, since masking an empty string
+    would match everywhere."""
+    row = conn.execute(
+        "SELECT company, role_title FROM job_applications WHERE id = ?", (application_id,)
+    ).fetchone()
+    if row is None:
+        return []
+    return [value for value in (row["company"], row["role_title"]) if value]
 
 
 def generated_file_name(
@@ -1862,7 +1899,9 @@ def _store_cover_letter_result(
 ) -> None:
     template_bytes = _cover_letter_template_bytes(conn, data_folder)
     letter_bytes = apply_docx_edits(template_bytes, raw_answer)
-    check_cover_letter_style(_cover_letter_document_text(letter_bytes))
+    check_cover_letter_style(
+        _cover_letter_document_text(letter_bytes), exempt=job_identity(conn, application_id)
+    )
     write_generated_job_file(
         conn,
         files_root,
