@@ -13,9 +13,18 @@ class RunResult(BaseModel):
     text: str = ""
     error: str | None = None
     duration_ms: int = 0
+    # A dollar figure only when the backend hands one back directly (Claude Code's CLI does;
+    # Codex and a future direct provider API don't - runner-backends.md). Left None otherwise;
+    # the queue computes a cost from the token fields below and the price table (pricing.md).
     cost_usd: float | None = None
-    # The model the run used, as the CLI reports it.
+    # The model the run used. When a backend's own output doesn't say which model served the
+    # request (confirmed true of Codex - runner-notes.md), this is the model explicitly
+    # requested, not a value parsed from nothing.
     model: str | None = None
+    # Token counts (D-197), when the backend reports them. Unlike cost_usd, every backend is
+    # expected to supply these.
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 class RateLimitError(Exception):
@@ -52,8 +61,15 @@ class Runner(Protocol):
 class FakeRunner:
     """Returns a fixed answer without calling a model. Used by tests and offline development."""
 
-    def __init__(self, text: str = "OK") -> None:
+    def __init__(
+        self,
+        text: str = "OK",
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+    ) -> None:
         self.text = text
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
         self.prompts: list[str] = []
         self.schemas: list[dict[str, Any] | None] = []
         # Chunks replayed through on_text before the result is returned, so tests can simulate
@@ -82,4 +98,12 @@ class FakeRunner:
         if on_text is not None:
             for chunk in self.stream_chunks:
                 on_text(chunk)
-        return RunResult(ok=True, text=self.text, duration_ms=0, cost_usd=0.0, model="fake-model")
+        return RunResult(
+            ok=True,
+            text=self.text,
+            duration_ms=0,
+            cost_usd=0.0,
+            model="fake-model",
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+        )

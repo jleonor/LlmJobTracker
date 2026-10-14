@@ -256,6 +256,29 @@ def test_the_model_is_read_from_the_start_event() -> None:
     assert parsed.model == "claude-sonnet-5"
 
 
+def test_input_tokens_sum_the_fresh_and_cached_fields() -> None:
+    # Confirmed live (runner-notes.md): usage.input_tokens alone excludes cache tokens, so the
+    # three fields are summed into one comparable total (D-197).
+    answered = {
+        **RESULT_OK,
+        "usage": {
+            "input_tokens": 2,
+            "cache_creation_input_tokens": 3143,
+            "cache_read_input_tokens": 100,
+            "output_tokens": 4,
+        },
+    }
+    parsed = parse_stream(stream(answered), exit_code=0, duration_ms=1)
+    assert parsed.input_tokens == 2 + 3143 + 100
+    assert parsed.output_tokens == 4
+
+
+def test_missing_usage_leaves_tokens_as_none() -> None:
+    parsed = parse_stream(stream(RESULT_OK), exit_code=0, duration_ms=1)
+    assert parsed.input_tokens is None
+    assert parsed.output_tokens is None
+
+
 def test_the_runner_asks_for_the_profile_model() -> None:
     args = build_args("claude")
     assert args[args.index("--model") + 1] == MODEL == "claude-sonnet-5"

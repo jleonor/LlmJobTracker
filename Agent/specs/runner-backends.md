@@ -20,7 +20,13 @@ additions" section — this file states the contract, that one records the evide
   `output_tokens` and the stored price table (`pricing.md`), never guessed by the runner itself.
 - `input_tokens` / `output_tokens` (new, migration 23): token counts, when the backend reports them.
   This is the one figure every backend is expected to supply (D-197) — unlike cost, a runner should
-  not leave these `None` unless the backend genuinely gives nothing usable.
+  not leave these `None` unless the backend genuinely gives nothing usable. `input_tokens` is a
+  **total**, cache included: confirmed live, Claude Code's own `usage.input_tokens` excludes cache
+  tokens (reported separately as `cache_creation_input_tokens`/`cache_read_input_tokens`), while
+  Codex's `usage.input_tokens` is already a total — `ClaudeCodeRunner` sums all three of its own
+  fields so the column means the same thing for both backends, rather than making Claude look
+  implausibly cheap next to Codex for a similarly-sized prompt (runner-notes.md has the live
+  numbers that surfaced this).
 
 ## `RateLimitError`
 

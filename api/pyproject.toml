@@ -49,6 +49,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Live tests call the real Claude CLI and cost money. Run them with: uv run pytest -m live
+# Live tests call a real CLI (Claude Code or Codex) and cost money. Run them with:
+# uv run pytest -m live
 addopts = "-m 'not live'"
-markers = ["live: calls the real Claude Code CLI"]
+markers = ["live: calls the real Claude Code or Codex CLI"]

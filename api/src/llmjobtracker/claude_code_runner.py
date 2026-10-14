@@ -126,6 +126,31 @@ def _model(events: list[dict[str, Any]]) -> str | None:
     return None
 
 
+def _tokens(message: dict[str, Any]) -> tuple[int | None, int | None]:
+    """Input/output token counts from the result message's usage object (D-197).
+
+    Confirmed live (runner-notes.md): Claude Code's usage.input_tokens excludes cache tokens,
+    reported separately as cache_creation_input_tokens/cache_read_input_tokens (a run with most
+    of its context served from cache showed input_tokens=2 alongside cache_creation_input_tokens
+    in the thousands). Summing all three gives a total comparable to Codex's own input_tokens
+    field, which is already a total (runner-notes.md) - without this, Claude's recorded input
+    count would look implausibly small next to Codex's for a similarly-sized prompt.
+    """
+    usage = message.get("usage")
+    if not isinstance(usage, dict):
+        return None, None
+    parts = (
+        usage.get("input_tokens"),
+        usage.get("cache_creation_input_tokens"),
+        usage.get("cache_read_input_tokens"),
+    )
+    numeric = [part for part in parts if isinstance(part, int)]
+    input_tokens = sum(numeric) if numeric else None
+    output = usage.get("output_tokens")
+    output_tokens = output if isinstance(output, int) else None
+    return input_tokens, output_tokens
+
+
 def _reset_time(value: object) -> datetime | None:
     if isinstance(value, int | float) and not isinstance(value, bool):
         return datetime.fromtimestamp(value, UTC)
@@ -154,6 +179,7 @@ def parse_stream(stdout: str, exit_code: int, duration_ms: int) -> RunResult:
     message = results[-1]
     cost = message.get("total_cost_usd")
     cost_usd = float(cost) if isinstance(cost, int | float) else None
+    input_tokens, output_tokens = _tokens(message)
     if exit_code != 0 or message.get("is_error"):
         # An API error comes as the result text (for example "API Error: 529 ..."). Show that.
         detail = str(message.get("result") or "").strip()
@@ -174,6 +200,8 @@ def parse_stream(stdout: str, exit_code: int, duration_ms: int) -> RunResult:
         duration_ms=duration_ms,
         cost_usd=cost_usd,
         model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
     )
 
 
