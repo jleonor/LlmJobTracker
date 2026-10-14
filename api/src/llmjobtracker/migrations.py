@@ -904,6 +904,25 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE settings DROP COLUMN backend",
         ),
     ),
+    Migration(
+        version=24,
+        name="move pricing_url from model_prices to a per-provider table (D-198)",
+        up=(
+            "ALTER TABLE model_prices DROP COLUMN pricing_url",
+            f"""
+            CREATE TABLE provider_pricing (
+                provider TEXT PRIMARY KEY CHECK (provider IN ({_in_list(RUNNER_BACKENDS)})),
+                pricing_url TEXT
+            )
+            """,
+            "INSERT INTO provider_pricing (provider) VALUES "
+            + ", ".join(f"('{backend}')" for backend in RUNNER_BACKENDS),
+        ),
+        down=(
+            "DROP TABLE provider_pricing",
+            "ALTER TABLE model_prices ADD COLUMN pricing_url TEXT",
+        ),
+    ),
 )
 
 _LEDGER = """

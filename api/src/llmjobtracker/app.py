@@ -13,6 +13,8 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, 
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from llmjobtracker.claude_code_runner import auth_status as claude_code_auth_status
+from llmjobtracker.claude_code_runner import logout as claude_code_logout
 from llmjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
 from llmjobtracker.claude_jobs import (
     ClaudeJob,
@@ -22,6 +24,8 @@ from llmjobtracker.claude_jobs import (
     prompt_exchange,
     recover_interrupted,
 )
+from llmjobtracker.codex_runner import auth_status as codex_auth_status
+from llmjobtracker.codex_runner import logout as codex_logout
 from llmjobtracker.file_preview import UnsupportedPreview, preview_for
 from llmjobtracker.job_applications import (
     JobApplication,
@@ -87,6 +91,20 @@ from llmjobtracker.listing_intake import (
     extract_from_url,
 )
 from llmjobtracker.migrations import JOB_REVISE_SECTION_KINDS as SECTION_KINDS
+from llmjobtracker.migrations import RUNNER_BACKENDS
+from llmjobtracker.pricing import (
+    ModelPrice,
+    delete_model_price,
+    get_pricing_url,
+    list_model_prices,
+    set_pricing_url,
+    upsert_model_price,
+)
+from llmjobtracker.pricing_pipeline import (
+    ParsedModelPrice,
+    parse_fetch_prices_answer,
+    submit_fetch_model_prices,
+)
 from llmjobtracker.profile_files import (
     ProfileFile,
     ProfileFileText,
@@ -112,7 +130,7 @@ from llmjobtracker.profile_pipeline import (
 )
 from llmjobtracker.revise_pipeline import submit_revise_turn
 from llmjobtracker.revise_turns import ReviseTurn, turn_for_job, turns_for_kind
-from llmjobtracker.runner import Runner, RunResult
+from llmjobtracker.runner import AuthStatus, Runner, RunResult
 from llmjobtracker.settings import Settings, get_settings, save_settings
 from llmjobtracker.storage import connect
 
@@ -139,6 +157,20 @@ class SettingsEdit(BaseModel):
     retry_policy: str | None = None
     retry_interval_minutes: int | None = None
     retry_max_attempts: int | None = None
+
+
+class ModelPriceEdit(BaseModel):
+    input_price_per_token: float
+    output_price_per_token: float
+
+
+class ModelPriceUpsert(ModelPriceEdit):
+    provider: str
+    model: str
+
+
+class PricingUrlEdit(BaseModel):
+    pricing_url: str | None = None
 
 
 class ListingUrlRequest(BaseModel):
@@ -323,6 +355,135 @@ def create_app(
         if new_backend != current.backend and new_backend in runners:
             queue.set_runner(runners[new_backend])
         return saved
+
+    @app.get(
+        "/settings/prices", response_model=list[ModelPrice], dependencies=[Depends(require_token)]
+    )
+    def read_prices(conn: Annotated[Connection, Depends(get_db)]) -> list[ModelPrice]:
+        return list_model_prices(conn)
+
+    @app.put(
+        "/settings/prices", response_model=list[ModelPrice], dependencies=[Depends(require_token)]
+    )
+    def save_prices(
+        rows: list[ModelPriceUpsert], conn: Annotated[Connection, Depends(get_db)]
+    ) -> list[ModelPrice]:
+        """Writes every row given, in one call - used both to confirm a scraped proposal and to
+        save several hand-edited rows at once (D-198)."""
+        try:
+            for row in rows:
+                upsert_model_price(
+                    conn,
+                    row.provider,
+                    row.model,
+                    row.input_price_per_token,
+                    row.output_price_per_token,
+                )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return list_model_prices(conn)
+
+    @app.put(
+        "/settings/prices/{provider}/{model}",
+        response_model=ModelPrice,
+        dependencies=[Depends(require_token)],
+    )
+    def save_one_price(
+        provider: str,
+        model: str,
+        edit: ModelPriceEdit,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> ModelPrice:
+        try:
+            return upsert_model_price(
+                conn, provider, model, edit.input_price_per_token, edit.output_price_per_token
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.delete(
+        "/settings/prices/{provider}/{model}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_token)],
+    )
+    def remove_price(
+        provider: str, model: str, conn: Annotated[Connection, Depends(get_db)]
+    ) -> Response:
+        delete_model_price(conn, provider, model)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.get(
+        "/settings/pricing-urls",
+        response_model=dict[str, str | None],
+        dependencies=[Depends(require_token)],
+    )
+    def read_pricing_urls(conn: Annotated[Connection, Depends(get_db)]) -> dict[str, str | None]:
+        return {backend: get_pricing_url(conn, backend) for backend in RUNNER_BACKENDS}
+
+    @app.put(
+        "/settings/pricing-urls/{provider}",
+        response_model=dict[str, str | None],
+        dependencies=[Depends(require_token)],
+    )
+    def save_pricing_url(
+        provider: str, edit: PricingUrlEdit, conn: Annotated[Connection, Depends(get_db)]
+    ) -> dict[str, str | None]:
+        try:
+            set_pricing_url(conn, provider, edit.pricing_url)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {provider: get_pricing_url(conn, provider)}
+
+    @app.post(
+        "/settings/prices/{provider}/fetch",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def fetch_prices(provider: str, conn: Annotated[Connection, Depends(get_db)]) -> ClaudeJob:
+        try:
+            job_id = submit_fetch_model_prices(conn, queue, provider)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return _job_or_404(conn, job_id)
+
+    @app.get(
+        "/settings/prices/{provider}/fetch/{job_id}",
+        response_model=list[ParsedModelPrice],
+        dependencies=[Depends(require_token)],
+    )
+    def fetch_prices_result(
+        provider: str, job_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> list[ParsedModelPrice]:
+        exchange = prompt_exchange(conn, job_id, 0)
+        if exchange is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            return parse_fetch_prices_answer(conn, provider, exchange.result_text or "")
+        except PromptRejected as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get(
+        "/settings/auth-status",
+        response_model=dict[str, AuthStatus],
+        dependencies=[Depends(require_token)],
+    )
+    def read_auth_status() -> dict[str, AuthStatus]:
+        return {"claude_code": claude_code_auth_status(), "codex": codex_auth_status()}
+
+    @app.post(
+        "/settings/{backend}/logout",
+        response_model=AuthStatus,
+        dependencies=[Depends(require_token)],
+    )
+    def backend_logout(backend: str) -> AuthStatus:
+        if backend == "claude_code":
+            claude_code_logout()
+            return claude_code_auth_status()
+        if backend == "codex":
+            codex_logout()
+            return codex_auth_status()
+        raise HTTPException(status_code=404, detail=f"Unknown backend: {backend!r}")
 
     @app.get(
         "/job-applications",

@@ -28,7 +28,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from llmjobtracker.runner import RateLimitError, RunResult
+from llmjobtracker.runner import AuthStatus, RateLimitError, RunResult
 
 # Mirrors claude_code_runner.DEFAULT_TIMEOUT_S/POLL_INTERVAL_S - same reasoning (D-75).
 DEFAULT_TIMEOUT_S = 15 * 60
@@ -36,11 +36,46 @@ POLL_INTERVAL_S = 0.2
 # The model every Codex run uses unless told otherwise. Codex does not echo back which model it
 # used (runner-notes.md), so this is also what RunResult.model records - not a parsed value.
 MODEL = "gpt-5-codex"
+# Mirrors claude_code_runner.AUTH_TIMEOUT_S.
+AUTH_TIMEOUT_S = 15
 # Substrings seen in a failed turn's error message that mean a plan/rate limit, not a real
 # failure. Unconfirmed live (runner-notes.md: a real limit was not triggered) - built from
 # third-party research per D-201, to be checked against a real limit the first time one is hit,
 # the same "confirm when first seen" rule already applied twice to ClaudeCodeRunner.
 RATE_LIMIT_MARKERS = ("rate_limit_exceeded", "insufficient_quota")
+
+
+def auth_status() -> AuthStatus:
+    """Confirmed live (2026-10-14): `codex login status` prints plain text ("Logged in using
+    ChatGPT"), not JSON (no --json flag exists for it, unlike Claude Code's `auth status`), and
+    exits 0 when logged in. The not-logged-in case is unconfirmed live (not deliberately logged
+    out to check) - detected defensively by looking for "logged in" in the text, same "confirm
+    when first seen" caveat as this module's rate-limit markers."""
+    executable = shutil.which("codex")
+    if executable is None:
+        return AuthStatus(logged_in=False, detail="The codex command was not found on PATH.")
+    try:
+        completed = subprocess.run(
+            [executable, "login", "status"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=AUTH_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        return AuthStatus(logged_in=False, detail="Timed out checking the login status.")
+    text = completed.stdout.strip() or completed.stderr.strip()
+    logged_in = completed.returncode == 0 and "logged in" in text.lower()
+    return AuthStatus(logged_in=logged_in, detail=text or f"exit {completed.returncode}")
+
+
+def logout() -> None:
+    """Runs `codex logout` (confirmed live to need no flags). Does nothing if the CLI isn't on
+    PATH - there is then nothing to log out of."""
+    executable = shutil.which("codex")
+    if executable is None:
+        return
+    subprocess.run([executable, "logout"], capture_output=True, text=True, timeout=AUTH_TIMEOUT_S)
 
 
 def build_args(executable: str, schema_path: Path | None = None) -> list[str]:

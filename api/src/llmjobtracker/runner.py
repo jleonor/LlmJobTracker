@@ -27,6 +27,15 @@ class RunResult(BaseModel):
     output_tokens: int | None = None
 
 
+class AuthStatus(BaseModel):
+    """Whether a backend's CLI is currently logged in (D-203), and a short human-readable detail
+    (e.g. the account email, or why the check couldn't run). Checked by running the CLI's own
+    status command - never by reading its credential files directly."""
+
+    logged_in: bool
+    detail: str
+
+
 class RateLimitError(Exception):
     """The plan's limit was hit. The queue pauses on this error, not on RunResult (D-51, D-63).
 

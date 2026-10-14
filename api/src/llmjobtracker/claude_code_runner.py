@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from llmjobtracker.runner import RateLimitError, RunResult
+from llmjobtracker.runner import AuthStatus, RateLimitError, RunResult
 
 # A profile prompt can read every CV, so a run may take many minutes. The timeout is the
 # only stop for a run that goes on too long (D-75).
@@ -33,6 +33,50 @@ POLL_INTERVAL_S = 0.2
 MODEL = "claude-sonnet-5"
 # rate_limit_info.status values that mean the run may continue. Any other status is a limit.
 ALLOWED_RATE_LIMIT_STATUSES = frozenset({"allowed", "allowed_warning"})
+# A status/logout check is a local read, not a model call - a short timeout is plenty (D-203).
+AUTH_TIMEOUT_S = 15
+
+
+def auth_status() -> AuthStatus:
+    """Confirmed live (2026-10-14): `claude auth status --json` prints
+    `{"loggedIn": bool, "authMethod": ..., "email": ..., ...}` and exits 0 whether logged in or
+    not - the JSON body, not the exit code, says which."""
+    executable = shutil.which("claude")
+    if executable is None:
+        return AuthStatus(logged_in=False, detail="The claude command was not found on PATH.")
+    try:
+        completed = subprocess.run(
+            [executable, "auth", "status", "--json"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=AUTH_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        return AuthStatus(logged_in=False, detail="Timed out checking the login status.")
+    try:
+        data: Any = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        detail = completed.stdout.strip() or completed.stderr.strip()
+        return AuthStatus(logged_in=False, detail=detail or f"exit {completed.returncode}")
+    logged_in = bool(isinstance(data, dict) and data.get("loggedIn"))
+    email = data.get("email") if isinstance(data, dict) else None
+    if logged_in:
+        detail = f"Logged in as {email}" if isinstance(email, str) and email else "Logged in"
+    else:
+        detail = "Not logged in"
+    return AuthStatus(logged_in=logged_in, detail=detail)
+
+
+def logout() -> None:
+    """Runs `claude auth logout` (confirmed live to need no flags). Does nothing if the CLI
+    isn't on PATH - there is then nothing to log out of."""
+    executable = shutil.which("claude")
+    if executable is None:
+        return
+    subprocess.run(
+        [executable, "auth", "logout"], capture_output=True, text=True, timeout=AUTH_TIMEOUT_S
+    )
 
 
 def build_args(executable: str, json_schema: dict[str, Any] | None = None) -> list[str]:

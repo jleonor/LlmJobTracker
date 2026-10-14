@@ -8,7 +8,14 @@ from typing import Any
 
 import pytest
 
-from llmjobtracker.codex_runner import MODEL, CodexRunner, build_args, parse_stream
+from llmjobtracker.codex_runner import (
+    MODEL,
+    CodexRunner,
+    auth_status,
+    build_args,
+    logout,
+    parse_stream,
+)
 from llmjobtracker.runner import RateLimitError
 
 REQUIRED_FLAGS = ["--skip-git-repo-check", "--sandbox", "read-only", "--json"]
@@ -258,3 +265,73 @@ def test_a_json_schema_is_written_to_a_temp_file_and_cleaned_up(
 
 def test_a_run_may_take_up_to_fifteen_minutes() -> None:
     assert CodexRunner(workdir=Path(".")).timeout_s == 15 * 60
+
+
+class _CompletedProcess:
+    def __init__(self, stdout: str = "", stderr: str = "", returncode: int = 0) -> None:
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+
+def test_auth_status_reads_the_real_text_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Confirmed live (2026-10-14): `codex login status` prints plain text, not JSON.
+    monkeypatch.setattr(shutil, "which", lambda _name: "codex")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_a, **_k: _CompletedProcess(stdout="Logged in using ChatGPT\n", returncode=0),
+    )
+
+    status = auth_status()
+
+    assert status.logged_in is True
+    assert status.detail == "Logged in using ChatGPT"
+
+
+def test_auth_status_a_nonzero_exit_is_not_logged_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The not-logged-in text shape is unconfirmed live (runner-notes.md) - built defensively.
+    monkeypatch.setattr(shutil, "which", lambda _name: "codex")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_a, **_k: _CompletedProcess(stdout="Not logged in.\n", returncode=1),
+    )
+
+    status = auth_status()
+
+    assert status.logged_in is False
+
+
+def test_auth_status_missing_executable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+
+    status = auth_status()
+
+    assert status.logged_in is False
+    assert "not found on PATH" in status.detail
+
+
+def test_logout_runs_the_cli_logout_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], **_kwargs: Any) -> _CompletedProcess:
+        calls.append(args)
+        return _CompletedProcess()
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "codex")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    logout()
+
+    assert calls == [["codex", "logout"]]
+
+
+def test_logout_does_nothing_without_the_executable(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    monkeypatch.setattr(subprocess, "run", lambda args, **_k: calls.append(args))
+
+    logout()
+
+    assert calls == []

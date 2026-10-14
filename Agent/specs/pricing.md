@@ -19,15 +19,20 @@ model)` row, set its two per-token prices. No model step involved; this is confi
 
 ## The "fetch and update" scrape
 
-Settings can also hold a `pricing_url` per provider and trigger a Claude Job that reads that one
-page and proposes a parsed price table. This is the one new, deliberately narrow exception to this
-app's usual "a step that reads untrusted text gets no tools" rule (CLAUDE.md): the job gets exactly
-one fetch tool, scoped to the single URL the user themselves put in Settings — not the open web, and
-not a URL that arrived from anywhere else (a job listing, an email, generated text).
+Settings can also hold a `pricing_url` per provider and trigger a refresh that proposes a parsed
+price table. **Corrected from this spec's first draft**, which said the Claude Job would get "a
+fetch tool" — that would have been the only tool-bearing step in the whole app, when the existing,
+already-built pattern for every other URL in this app (`listing_intake.py`'s `extract_from_url`) is
+exactly the one CLAUDE.md already states: fetch and reduce to text in plain code, never give Claude
+a tool at all, and only then run a tool-less model step over the already-extracted text. The pricing
+scrape follows that same pattern, reusing `extract_from_url` directly rather than inventing a second
+fetcher: code fetches `pricing_url` server-side (timeout, size cap, HTML reduced to readable text,
+same as a job listing's URL intake), and the Claude Job that parses it is exactly as toolless as
+every other Claude Job in this app (D-32 extended, not an exception to it).
 
-- **Input:** the `pricing_url` stored for the provider being refreshed, plus the provider's current
-  `model_prices` rows (so the model can say "unchanged" for a model whose price didn't move, rather
-  than re-stating every row).
+- **Input:** the page text already fetched and extracted by code (never the raw HTML, never a live
+  URL the model could itself re-fetch), plus the provider's current `model_prices` rows (so the
+  model can say "unchanged" for a model whose price didn't move, rather than re-stating every row).
 - **Output:** one row per model found on the page — `model`, `input_price_per_token`,
   `output_price_per_token` (converted from whatever unit the page quotes — most pricing pages quote
   per-million-token prices, so the model converts to per-token before answering, and the parser

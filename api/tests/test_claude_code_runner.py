@@ -11,7 +11,9 @@ import pytest
 from llmjobtracker.claude_code_runner import (
     MODEL,
     ClaudeCodeRunner,
+    auth_status,
     build_args,
+    logout,
     parse_stream,
 )
 from llmjobtracker.runner import FakeRunner, RateLimitError
@@ -362,3 +364,86 @@ def test_the_api_key_is_removed_from_the_environment_of_the_cli(
     ClaudeCodeRunner(workdir=tmp_path).run("Reply OK.")
 
     assert "ANTHROPIC_API_KEY" not in seen["env"]
+
+
+class _CompletedProcess:
+    def __init__(self, stdout: str = "", stderr: str = "", returncode: int = 0) -> None:
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+
+def test_auth_status_reads_logged_in_and_email(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Real shape, codex-cli unrelated - confirmed live against `claude auth status --json`
+    # (2026-10-14): {"loggedIn": true, "email": "...", ...}, exit 0 either way.
+    body = json.dumps({"loggedIn": True, "email": "someone@example.com"})
+    monkeypatch.setattr(shutil, "which", lambda _name: "claude")
+    monkeypatch.setattr(
+        subprocess, "run", lambda *_a, **_k: _CompletedProcess(stdout=body, returncode=0)
+    )
+
+    status = auth_status()
+
+    assert status.logged_in is True
+    assert status.detail == "Logged in as someone@example.com"
+
+
+def test_auth_status_reports_not_logged_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    body = json.dumps({"loggedIn": False})
+    monkeypatch.setattr(shutil, "which", lambda _name: "claude")
+    monkeypatch.setattr(
+        subprocess, "run", lambda *_a, **_k: _CompletedProcess(stdout=body, returncode=0)
+    )
+
+    status = auth_status()
+
+    assert status.logged_in is False
+    assert status.detail == "Not logged in"
+
+
+def test_auth_status_missing_executable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+
+    status = auth_status()
+
+    assert status.logged_in is False
+    assert "not found on PATH" in status.detail
+
+
+def test_auth_status_unparseable_output_is_not_logged_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shutil, "which", lambda _name: "claude")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_a, **_k: _CompletedProcess(stdout="", stderr="unexpected error", returncode=1),
+    )
+
+    status = auth_status()
+
+    assert status.logged_in is False
+    assert status.detail == "unexpected error"
+
+
+def test_logout_runs_the_cli_logout_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], **_kwargs: Any) -> _CompletedProcess:
+        calls.append(args)
+        return _CompletedProcess()
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "claude")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    logout()
+
+    assert calls == [["claude", "auth", "logout"]]
+
+
+def test_logout_does_nothing_without_the_executable(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    monkeypatch.setattr(subprocess, "run", lambda args, **_k: calls.append(args))
+
+    logout()
+
+    assert calls == []
