@@ -239,6 +239,8 @@ export type ClaudeJob = {
   created_at: string
   updated_at: string
   resume_at: string | null
+  // Consecutive rate-limit pauses with no success since (D-201's fixed_interval policy).
+  retry_attempts: number
   prompts: ClaudeJobPrompt[]
 }
 

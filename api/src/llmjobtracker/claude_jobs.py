@@ -43,6 +43,9 @@ class ClaudeJob(BaseModel):
     created_at: str
     updated_at: str
     resume_at: str | None
+    # Consecutive rate-limit pauses with no successful prompt since (D-201's fixed_interval
+    # policy). Reset to 0 on a successful prompt or a manual Resume; unused by the other modes.
+    retry_attempts: int
     prompts: list[ClaudeJobPrompt]
 
 
@@ -125,6 +128,7 @@ def _job_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> ClaudeJob:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         resume_at=row["resume_at"],
+        retry_attempts=row["retry_attempts"],
         prompts=_prompts_for(conn, row["id"]),
     )
 
@@ -261,12 +265,39 @@ def pause_job(conn: sqlite3.Connection, job_id: int, error: str, resume_at: str 
     return cursor.rowcount == 1
 
 
-def resume_job(conn: sqlite3.Connection, job_id: int) -> bool:
-    """Resume a paused job, by the user or at its reset time (D-63, D-75)."""
+def bump_retry_attempts(conn: sqlite3.Connection, job_id: int) -> int:
+    """Increments and returns the job's consecutive-retry counter (D-201's fixed_interval
+    policy): how many pauses in a row have happened with no successful prompt since."""
+    with conn:
+        conn.execute(
+            "UPDATE claude_jobs SET retry_attempts = retry_attempts + 1 WHERE id = ?", (job_id,)
+        )
+    row = conn.execute("SELECT retry_attempts FROM claude_jobs WHERE id = ?", (job_id,)).fetchone()
+    return int(row["retry_attempts"])
+
+
+def reset_retry_attempts(conn: sqlite3.Connection, job_id: int) -> None:
+    """Breaks the fixed_interval streak (D-201): called when a prompt actually succeeds, and
+    from a manual Resume (resume_job's own reset_retry_attempts=True, its default) - a human
+    stepping in counts as a fresh start the same way progress does."""
+    with conn:
+        conn.execute("UPDATE claude_jobs SET retry_attempts = 0 WHERE id = ?", (job_id,))
+
+
+def resume_job(conn: sqlite3.Connection, job_id: int, *, reset_attempts: bool = True) -> bool:
+    """Resume a paused job, by the user or at its reset time (D-63, D-75).
+
+    `reset_attempts` is True for a manual Resume and False for `resume_due_jobs`'s automatic
+    resume, so the fixed_interval policy's consecutive-attempt counter (D-201) keeps counting
+    across automatic retries - only a prompt actually succeeding, or a human resuming it by
+    hand, breaks the streak.
+    """
     resumed = transition(conn, job_id, ("paused",), "queued", error=None)
     if resumed:
         with conn:
             conn.execute("UPDATE claude_jobs SET resume_at = NULL WHERE id = ?", (job_id,))
+        if reset_attempts:
+            reset_retry_attempts(conn, job_id)
     return resumed
 
 
@@ -279,7 +310,9 @@ def resume_due_jobs(conn: sqlite3.Connection) -> list[int]:
         """,
         (_now(),),
     ).fetchall()
-    return [int(row["id"]) for row in rows if resume_job(conn, int(row["id"]))]
+    return [
+        int(row["id"]) for row in rows if resume_job(conn, int(row["id"]), reset_attempts=False)
+    ]
 
 
 def cancel_job(conn: sqlite3.Connection, job_id: int) -> bool:

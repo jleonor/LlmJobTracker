@@ -923,6 +923,15 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE model_prices ADD COLUMN pricing_url TEXT",
         ),
     ),
+    Migration(
+        version=25,
+        name="add claude_jobs.retry_attempts for the fixed_interval retry policy (D-201)",
+        up=(
+            "ALTER TABLE claude_jobs ADD COLUMN retry_attempts INTEGER NOT NULL DEFAULT 0 "
+            "CHECK (retry_attempts >= 0)",
+        ),
+        down=("ALTER TABLE claude_jobs DROP COLUMN retry_attempts",),
+    ),
 )
 
 _LEDGER = """

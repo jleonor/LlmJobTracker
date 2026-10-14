@@ -13,6 +13,7 @@ from llmjobtracker.app import TOKEN_HEADER, create_app
 from llmjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
 from llmjobtracker.claude_jobs import get_claude_job, job_status
 from llmjobtracker.runner import FakeRunner, Runner, RunResult
+from llmjobtracker.settings import get_settings, save_settings
 from llmjobtracker.storage import connect
 
 TOKEN = "test-token"
@@ -449,6 +450,173 @@ def test_a_manual_resume_clears_the_reset_time(db_path: Path) -> None:
     finally:
         conn.close()
     assert job is not None and job.resume_at is None
+
+
+def _set_retry_policy(
+    db_path: Path,
+    retry_policy: str,
+    *,
+    retry_interval_minutes: int = 60,
+    retry_max_attempts: int = 24,
+) -> None:
+    conn = connect(db_path)
+    try:
+        save_settings(
+            conn,
+            "YourName",
+            "claude_code",
+            retry_policy,
+            retry_interval_minutes,
+            retry_max_attempts,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _force_resume_at_the_past(db_path: Path, job_id: int) -> None:
+    """Makes a job's scheduled auto-resume due right now, without a real wait (D-201 tests)."""
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE claude_jobs SET resume_at = ? WHERE id = ?",
+            ((datetime.now(UTC) - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ"), job_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_manual_only_policy_never_schedules_an_auto_resume(db_path: Path) -> None:
+    _set_retry_policy(db_path, "manual_only")
+    runner = FakeRunner(text="done")
+    # Even a reset time already in the past (reset_time's own policy would auto-resume on this).
+    runner.rate_limit_next(times=1, resets_at=datetime.now(UTC) - timedelta(minutes=5))
+    queue = ClaudeJobQueue(db_path, runner)
+    job_id = submit(db_path, queue, "manual-only", ["one"])
+
+    queue.process_next()
+    assert queue.process_next() is False  # nothing due - no job was auto-resumed
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None
+    assert job.status == "paused"
+    assert job.resume_at is None
+    assert "Click Resume" in (job.error or "")
+
+
+def test_fixed_interval_policy_schedules_a_resume_at_the_configured_interval(
+    db_path: Path,
+) -> None:
+    _set_retry_policy(db_path, "fixed_interval", retry_interval_minutes=30, retry_max_attempts=5)
+    runner = FakeRunner(text="done")
+    runner.rate_limit_next(times=1)  # no resets_at at all - fixed_interval ignores it either way
+    queue = ClaudeJobQueue(db_path, runner)
+    job_id = submit(db_path, queue, "fixed", ["one"])
+
+    queue.process_next()
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None
+    assert job.status == "paused"
+    assert job.retry_attempts == 1
+    assert job.resume_at is not None
+    expected = (datetime.now(UTC) + timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M")
+    assert job.resume_at.startswith(expected)
+    assert "attempt 1 of 5" in (job.error or "")
+
+
+def test_fixed_interval_policy_gives_up_after_max_attempts(db_path: Path) -> None:
+    _set_retry_policy(db_path, "fixed_interval", retry_interval_minutes=1, retry_max_attempts=2)
+    runner = FakeRunner(text="done")
+    runner.rate_limit_next(times=3)
+    queue = ClaudeJobQueue(db_path, runner)
+    job_id = submit(db_path, queue, "gives-up", ["one"])
+
+    queue.process_next()  # attempt 1, paused with a resume_at
+    _force_resume_at_the_past(db_path, job_id)
+    queue.process_next()  # auto-resumed, hits the limit again: attempt 2, still allowed
+    _force_resume_at_the_past(db_path, job_id)
+    queue.process_next()  # auto-resumed, hits the limit a third time: attempt 3, gives up
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None
+    assert job.status == "paused"
+    assert job.retry_attempts == 3
+    assert job.resume_at is None  # no more auto-resume scheduled
+    assert "Stopped retrying automatically after 2 attempts" in (job.error or "")
+
+    # Still stuck, since there is nothing left to auto-resume.
+    assert queue.process_next() is False
+
+
+def test_a_successful_prompt_resets_the_retry_attempts_counter(db_path: Path) -> None:
+    _set_retry_policy(db_path, "fixed_interval", retry_interval_minutes=1, retry_max_attempts=5)
+    runner = FakeRunner(text="done")
+    runner.rate_limit_next(times=1)
+    queue = ClaudeJobQueue(db_path, runner)
+    job_id = submit(db_path, queue, "recovers", ["one"])
+
+    queue.process_next()  # attempt 1, paused
+    _force_resume_at_the_past(db_path, job_id)
+    queue.process_next()  # auto-resumed, this time it succeeds
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None
+    assert job.status == "done"
+    assert job.retry_attempts == 0
+
+
+def test_a_manual_resume_resets_retry_attempts_but_an_auto_resume_does_not(
+    db_path: Path,
+) -> None:
+    _set_retry_policy(db_path, "fixed_interval", retry_interval_minutes=1, retry_max_attempts=5)
+    runner = FakeRunner(text="done")
+    runner.rate_limit_next(times=2)
+    queue = ClaudeJobQueue(db_path, runner)
+    job_id = submit(db_path, queue, "manual-reset", ["one"])
+
+    queue.process_next()  # attempt 1
+    _force_resume_at_the_past(db_path, job_id)
+    # Auto-resumed, hits the limit again: attempt 2, not reset by the auto-resume itself.
+    queue.process_next()
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+        assert job is not None and job.retry_attempts == 2
+
+        assert queue.resume(conn, job_id) is True
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None
+    assert job.retry_attempts == 0  # the manual Resume broke the streak
+
+
+def test_reset_time_is_still_the_default_policy(db_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        settings = get_settings(conn)
+    finally:
+        conn.close()
+    assert settings.retry_policy == "reset_time"
 
 
 def test_a_rejected_answer_is_still_kept_with_the_prompt(db_path: Path, runner: FakeRunner) -> None:

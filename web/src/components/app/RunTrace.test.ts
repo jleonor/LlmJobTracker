@@ -36,6 +36,7 @@ function job(status: string, prompts: ClaudeJobPrompt[]): ClaudeJob {
     created_at: '2026-10-06T09:00:00Z',
     updated_at: '2026-10-06T09:00:00Z',
     resume_at: null,
+    retry_attempts: 0,
     prompts,
   }
 }

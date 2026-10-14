@@ -13,18 +13,20 @@ import sqlite3
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from llmjobtracker.claude_jobs import (
     PromptRow,
+    bump_retry_attempts,
     cancel_job,
     create_claude_job,
     job_status,
     next_queued_job_id,
     pause_job,
     prompt_rows,
+    reset_retry_attempts,
     resume_due_jobs,
     resume_job,
     set_prompt_status,
@@ -34,6 +36,7 @@ from llmjobtracker.claude_jobs import (
 )
 from llmjobtracker.pricing import compute_cost_usd
 from llmjobtracker.runner import RateLimitError, Runner, RunResult
+from llmjobtracker.settings import get_settings
 from llmjobtracker.storage import connect
 
 logger = logging.getLogger(__name__)
@@ -82,6 +85,29 @@ def _resume_time(limit: RateLimitError) -> str | None:
     if limit.resets_at is None:
         return None
     return (limit.resets_at + RESUME_MARGIN).astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _fixed_interval_resume_at(interval_minutes: int) -> str:
+    deadline = datetime.now(UTC) + timedelta(minutes=interval_minutes)
+    return deadline.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _fixed_interval_message(interval_minutes: int, attempt: int, max_attempts: int) -> str:
+    return (
+        f"Paused at a plan limit. Retrying automatically in {interval_minutes} minutes "
+        f"(attempt {attempt} of {max_attempts}), or click Resume."
+    )
+
+
+def _gave_up_message(max_attempts: int) -> str:
+    return (
+        f"Paused at a plan limit. Stopped retrying automatically after {max_attempts} attempts "
+        "with no success. Click Resume to try again."
+    )
+
+
+def _manual_only_message() -> str:
+    return "Paused at a plan limit. Click Resume when you want the job to continue."
 
 
 class ClaudeJobQueue:
@@ -155,6 +181,26 @@ class ClaudeJobQueue:
         """The answer text streamed so far for a running prompt, or None if it isn't live."""
         with self._lock:
             return self._live.get((job_id, position))
+
+    def _pause_plan(
+        self, conn: sqlite3.Connection, job_id: int, limit: RateLimitError
+    ) -> tuple[str, str | None]:
+        """What to tell the user and when to auto-resume, per the selected retry policy
+        (D-201). Returns (message, resume_at) for `pause_job`."""
+        settings = get_settings(conn)
+        if settings.retry_policy == "manual_only":
+            return _manual_only_message(), None
+        if settings.retry_policy == "fixed_interval":
+            attempt = bump_retry_attempts(conn, job_id)
+            if attempt > settings.retry_max_attempts:
+                return _gave_up_message(settings.retry_max_attempts), None
+            resume_at = _fixed_interval_resume_at(settings.retry_interval_minutes)
+            message = _fixed_interval_message(
+                settings.retry_interval_minutes, attempt, settings.retry_max_attempts
+            )
+            return message, resume_at
+        # "reset_time": today's D-75 default, unchanged.
+        return _paused_message(limit), _resume_time(limit)
 
     # The worker thread.
 
@@ -267,7 +313,8 @@ class ClaudeJobQueue:
                     if self._stop.is_set():
                         return
                     set_prompt_status(conn, prompt.id, ("running",), "queued")
-                    pause_job(conn, job_id, _paused_message(limit), _resume_time(limit))
+                    message, resume_at = self._pause_plan(conn, job_id, limit)
+                    pause_job(conn, job_id, message, resume_at)
                     return
                 except Exception as error:
                     if self._stop.is_set():
@@ -328,6 +375,9 @@ class ClaudeJobQueue:
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
             )
+            # A successful prompt breaks the fixed_interval policy's consecutive-pause streak
+            # (D-201), the same as a manual Resume does.
+            reset_retry_attempts(conn, job_id)
         transition(conn, job_id, ("processing",), "done")
 
     def _fail_prompt(
