@@ -220,33 +220,47 @@ class JobReviseTurnView(BaseModel):
 
 
 def create_app(
-    launch_token: str, db_path: Path, runner: Runner, *, run_worker: bool = False
+    launch_token: str,
+    db_path: Path,
+    runner: Runner,
+    *,
+    run_worker: bool = False,
+    codex_runner: Runner | None = None,
 ) -> FastAPI:
     """Build the app. Requests must send `launch_token` in the X-Launch-Token header.
 
     `run_worker` starts the Claude Jobs worker with the app. Tests leave it off and step the
     queue themselves (ClaudeJobQueue.process_next), so the results are repeatable.
+
+    `runner` is always registered under the `claude_code` backend. `codex_runner`, when given,
+    is registered under `codex` (D-195: one global backend for the whole app, chosen in
+    Settings) - tests that only care about one backend can leave it out.
     """
     # A Job Application's own files live under files/<company>/<role_title>/ (files.md),
     # alongside but separate from profile/ (db_path.parent is the data folder itself).
     files_root = db_path.parent / "files"
     render, on_result = make_pipeline(db_path.parent, files_root)
-    # The listing sanity check runs through a LangGraph proof of concept (D-191); every other
-    # job kind still calls `runner` directly.
-    queue = ClaudeJobQueue(
-        db_path,
-        runner,
-        on_result=on_result,
-        render=render,
-        runner_overrides={JOB_KIND_CHECK: LangGraphCheckRunner(runner)},
-    )
+    runners: dict[str, Runner] = {"claude_code": runner}
+    if codex_runner is not None:
+        runners["codex"] = codex_runner
 
     # A stopped worker can leave jobs half done. Put them back in the queue (D-62).
     startup_conn = connect(db_path)
     try:
         recover_interrupted(startup_conn)
+        active_backend = get_settings(startup_conn).backend
     finally:
         startup_conn.close()
+
+    # The listing sanity check runs through a LangGraph proof of concept (D-191); every other
+    # job kind still calls the selected backend's runner directly.
+    queue = ClaudeJobQueue(
+        db_path,
+        runners.get(active_backend, runner),
+        on_result=on_result,
+        render=render,
+        runner_overrides={JOB_KIND_CHECK: LangGraphCheckRunner(runner)},
+    )
 
     def require_token(x_launch_token: str | None = Header(default=None)) -> None:
         if x_launch_token is None or not secrets.compare_digest(x_launch_token, launch_token):
@@ -290,11 +304,12 @@ def create_app(
         edit: SettingsEdit, conn: Annotated[Connection, Depends(get_db)]
     ) -> Settings:
         current = get_settings(conn)
+        new_backend = edit.backend if edit.backend is not None else current.backend
         try:
-            return save_settings(
+            saved = save_settings(
                 conn,
                 edit.user_name,
-                edit.backend if edit.backend is not None else current.backend,
+                new_backend,
                 edit.retry_policy if edit.retry_policy is not None else current.retry_policy,
                 edit.retry_interval_minutes
                 if edit.retry_interval_minutes is not None
@@ -305,6 +320,9 @@ def create_app(
             )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+        if new_backend != current.backend and new_backend in runners:
+            queue.set_runner(runners[new_backend])
+        return saved
 
     @app.get(
         "/job-applications",

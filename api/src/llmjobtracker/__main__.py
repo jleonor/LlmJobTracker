@@ -7,6 +7,7 @@ import uvicorn
 
 from llmjobtracker.app import create_app
 from llmjobtracker.claude_code_runner import ClaudeCodeRunner
+from llmjobtracker.codex_runner import CodexRunner
 from llmjobtracker.migrations import migrate
 from llmjobtracker.storage import connect, data_dir, database_path
 
@@ -22,7 +23,10 @@ def main() -> None:
         conn.close()
     token = os.environ.get("LJT_TOKEN") or secrets.token_urlsafe(32)
     runner = ClaudeCodeRunner(workdir=data_dir() / "runs")
-    app = create_app(token, database_path(data_dir()), runner, run_worker=True)
+    codex_runner = CodexRunner(workdir=data_dir() / "runs")
+    app = create_app(
+        token, database_path(data_dir()), runner, run_worker=True, codex_runner=codex_runner
+    )
     uvicorn.run(app, host=HOST, port=PORT)
 
 

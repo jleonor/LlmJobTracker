@@ -141,6 +141,16 @@ class ClaudeJobQueue:
     def wake(self) -> None:
         self._wake.set()
 
+    def set_runner(self, runner: Runner) -> None:
+        """Switch the default runner (D-195: one global backend for the whole app).
+
+        A job already dispatching (`_run_job`) snapshots the default runner it started with, so
+        an in-flight job finishes on that runner even if this is called mid-job; only the next
+        job to start picks up the new one.
+        """
+        with self._lock:
+            self._runner = runner
+
     def live_text(self, job_id: int, position: int) -> str | None:
         """The answer text streamed so far for a running prompt, or None if it isn't live."""
         with self._lock:
@@ -206,6 +216,10 @@ class ClaudeJobQueue:
             conn.close()
 
     def _run_job(self, conn: sqlite3.Connection, job_id: int, cancel: threading.Event) -> None:
+        # Snapshotted once per job, not re-read per prompt: a backend switch (set_runner) mid-job
+        # must not change which runner an already-running job uses (D-195).
+        with self._lock:
+            default_runner = self._runner
         for prompt in prompt_rows(conn, job_id):
             if prompt.status == "done":
                 continue
@@ -245,7 +259,7 @@ class ClaudeJobQueue:
 
             with self._lock:
                 self._live[key] = ""
-            runner = self._runner_overrides.get(prompt.prompt_kind, self._runner)
+            runner = self._runner_overrides.get(prompt.prompt_kind, default_runner)
             try:
                 try:
                     result = runner.run(text, cancel=cancel, json_schema=schema, on_text=on_text)
