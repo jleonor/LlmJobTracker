@@ -103,6 +103,12 @@ PROFILE_FILE_KINDS = tuple(kind for kind in _V9_FILE_KINDS if kind != "own_fact_
 PROFILE_OUTPUT_KINDS = tuple(kind for kind in _V9_OUTPUT_KINDS if kind != "fact_sheet")
 FACT_STATUSES = ("unverified", "verified", "rejected")
 
+# Phase 7 values (D-195, D-197, D-198, D-201).
+RUNNER_BACKENDS = ("claude_code", "codex")
+# "reset_time" is D-75's existing behavior (auto-resume at the CLI-reported reset time),
+# kept as the default so upgrading does not change how a paused job already behaves.
+RETRY_POLICIES = ("reset_time", "fixed_interval", "manual_only")
+
 
 def _in_list(values: tuple[str, ...]) -> str:
     return ", ".join(f"'{value}'" for value in values)
@@ -858,6 +864,44 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE job_revise_turns_old RENAME TO job_revise_turns",
             "CREATE INDEX job_revise_turns_by_section "
             "ON job_revise_turns (job_application_id, section_kind, id)",
+        ),
+    ),
+    Migration(
+        version=23,
+        name="add backend selection, retry policy and token tracking (D-195, D-197, D-198, D-201)",
+        up=(
+            "ALTER TABLE settings ADD COLUMN backend TEXT NOT NULL DEFAULT 'claude_code' "
+            f"CHECK (backend IN ({_in_list(RUNNER_BACKENDS)}))",
+            "ALTER TABLE settings ADD COLUMN retry_policy TEXT NOT NULL DEFAULT 'reset_time' "
+            f"CHECK (retry_policy IN ({_in_list(RETRY_POLICIES)}))",
+            "ALTER TABLE settings ADD COLUMN retry_interval_minutes INTEGER NOT NULL DEFAULT 60 "
+            "CHECK (retry_interval_minutes > 0)",
+            "ALTER TABLE settings ADD COLUMN retry_max_attempts INTEGER NOT NULL DEFAULT 24 "
+            "CHECK (retry_max_attempts > 0)",
+            "ALTER TABLE claude_job_prompts ADD COLUMN input_tokens INTEGER",
+            "ALTER TABLE claude_job_prompts ADD COLUMN output_tokens INTEGER",
+            f"""
+            CREATE TABLE model_prices (
+                id INTEGER PRIMARY KEY,
+                provider TEXT NOT NULL CHECK (provider IN ({_in_list(RUNNER_BACKENDS)})),
+                model TEXT NOT NULL,
+                input_price_per_token REAL NOT NULL DEFAULT 0 CHECK (input_price_per_token >= 0),
+                output_price_per_token REAL NOT NULL DEFAULT 0
+                    CHECK (output_price_per_token >= 0),
+                pricing_url TEXT,
+                updated_at TEXT NOT NULL DEFAULT ({_NOW}),
+                UNIQUE (provider, model)
+            )
+            """,
+        ),
+        down=(
+            "DROP TABLE model_prices",
+            "ALTER TABLE claude_job_prompts DROP COLUMN output_tokens",
+            "ALTER TABLE claude_job_prompts DROP COLUMN input_tokens",
+            "ALTER TABLE settings DROP COLUMN retry_max_attempts",
+            "ALTER TABLE settings DROP COLUMN retry_interval_minutes",
+            "ALTER TABLE settings DROP COLUMN retry_policy",
+            "ALTER TABLE settings DROP COLUMN backend",
         ),
     ),
 )
