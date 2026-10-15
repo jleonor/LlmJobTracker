@@ -48,6 +48,11 @@ from llmjobtracker.job_files import (
     sanitize_path_part,
     write_generated_job_file,
 )
+from llmjobtracker.lane_pipeline import (
+    JOB_KIND_EXTRACT_LANES,
+    build_extract_lanes_prompt,
+    store_extract_lanes_result,
+)
 from llmjobtracker.migrations import CONTRACT_TYPES, WORK_MODES
 from llmjobtracker.profile_files import profile_file_path, profile_file_text
 from llmjobtracker.profile_pipeline import (
@@ -2002,6 +2007,8 @@ def make_pipeline(
         if prompt.prompt_kind == JOB_KIND_INTERVIEW_PREP:
             application_id = _application_id_for(conn, prompt.claude_job_id)
             return RenderedPrompt(text=build_interview_prep_prompt(conn, application_id))
+        if prompt.prompt_kind == JOB_KIND_EXTRACT_LANES:
+            return RenderedPrompt(text=build_extract_lanes_prompt(conn))
         return revise_render(conn, prompt)
 
     def on_result(conn: sqlite3.Connection, prompt: PromptRow, result: RunResult) -> None:
@@ -2045,6 +2052,9 @@ def make_pipeline(
             application_id = _application_id_for(conn, prompt.claude_job_id)
             pairs = parse_interview_prep_answer(result.text)
             _store_interview_prep_result(conn, application_id, pairs)
+            return
+        if prompt.prompt_kind == JOB_KIND_EXTRACT_LANES:
+            store_extract_lanes_result(conn, result.text)
             return
         # JOB_KIND_CHECK and JOB_KIND_IDENTITY have nothing to store (D-146, intake-steps.md: the
         # identity answer is read back and parsed on demand, since the row it belongs to may not

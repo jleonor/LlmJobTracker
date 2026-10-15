@@ -1039,7 +1039,12 @@ def test_migration_twenty_eight_adds_lanes(conn: sqlite3.Connection) -> None:
     row = conn.execute(
         "SELECT name, description, reasoning, position FROM lanes WHERE name = 'Data Analytics'"
     ).fetchone()
-    assert tuple(row) == ("Data Analytics", "Reporting and dashboard roles", "Matches past BI work", 0)
+    assert tuple(row) == (
+        "Data Analytics",
+        "Reporting and dashboard roles",
+        "Matches past BI work",
+        0,
+    )
 
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("INSERT INTO lanes (description) VALUES ('missing a name')")  # name required
