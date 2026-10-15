@@ -13,6 +13,7 @@ from llmjobtracker.claude_code_runner import (
     ClaudeCodeRunner,
     auth_status,
     build_args,
+    login,
     logout,
     parse_stream,
 )
@@ -475,5 +476,31 @@ def test_logout_does_nothing_without_the_executable(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(subprocess, "run", lambda args, **_k: calls.append(args))
 
     logout()
+
+    assert calls == []
+
+
+def test_login_launches_the_cli_login_command_without_waiting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_popen(args: list[str], **_kwargs: Any) -> None:
+        calls.append(args)
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "claude")
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    login()
+
+    assert calls == [["claude", "auth", "login"]]
+
+
+def test_login_does_nothing_without_the_executable(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    monkeypatch.setattr(subprocess, "Popen", lambda args, **_k: calls.append(args))
+
+    login()
 
     assert calls == []

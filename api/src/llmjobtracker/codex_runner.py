@@ -21,6 +21,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -77,6 +78,20 @@ def logout() -> None:
     if executable is None:
         return
     subprocess.run([executable, "logout"], capture_output=True, text=True, timeout=AUTH_TIMEOUT_S)
+
+
+def login() -> None:
+    """Runs `codex login`, which opens a browser window for the user to finish signing in there
+    (the user's own action - nothing here enters a credential). Launched with Popen, not run
+    with a timeout like auth_status/logout above - mirrors claude_code_runner.login()'s own
+    reasoning, including its own visible console window on Windows (D-213) - confirmed live to
+    print the real local OAuth callback server and auth URL there, so the user can see it and
+    close it themselves. Does nothing if the CLI isn't on PATH."""
+    executable = shutil.which("codex")
+    if executable is None:
+        return
+    creation_flags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
+    subprocess.Popen([executable, "login"], creationflags=creation_flags)
 
 
 def build_args(executable: str, schema_path: Path | None = None, model: str = MODEL) -> list[str]:

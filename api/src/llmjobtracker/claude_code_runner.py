@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -78,6 +79,21 @@ def logout() -> None:
     subprocess.run(
         [executable, "auth", "logout"], capture_output=True, text=True, timeout=AUTH_TIMEOUT_S
     )
+
+
+def login() -> None:
+    """Runs `claude auth login`, which opens a browser window for the user to finish signing in
+    there (the user's own action - nothing here enters a credential). Launched with Popen, not
+    run with a timeout like auth_status/logout above: those are quick local reads, this blocks
+    until the browser flow completes, which can take minutes. Given its own visible console
+    window on Windows (D-213) - confirmed live to print the CLI's own login prompt there - so
+    the user can see it and close it themselves, instead of it silently inheriting this
+    backend's own (usually invisible) console. Does nothing if the CLI isn't on PATH."""
+    executable = shutil.which("claude")
+    if executable is None:
+        return
+    creation_flags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
+    subprocess.Popen([executable, "auth", "login"], creationflags=creation_flags)
 
 
 def build_args(

@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from llmjobtracker.claude_code_runner import ClaudeCodeRunner
 from llmjobtracker.claude_code_runner import auth_status as claude_code_auth_status
+from llmjobtracker.claude_code_runner import login as claude_code_login
 from llmjobtracker.claude_code_runner import logout as claude_code_logout
 from llmjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
 from llmjobtracker.claude_jobs import (
@@ -28,6 +29,7 @@ from llmjobtracker.claude_jobs import (
 )
 from llmjobtracker.codex_runner import CodexRunner
 from llmjobtracker.codex_runner import auth_status as codex_auth_status
+from llmjobtracker.codex_runner import login as codex_login
 from llmjobtracker.codex_runner import logout as codex_logout
 from llmjobtracker.export_llm_bundle import (
     LlmAppStatus,
@@ -594,6 +596,23 @@ def create_app(
         if backend == "codex":
             codex_logout()
             return codex_auth_status()
+        raise HTTPException(status_code=404, detail=f"Unknown backend: {backend!r}")
+
+    @app.post(
+        "/settings/{backend}/login",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_token)],
+    )
+    def backend_login(backend: str) -> None:
+        """Launches the backend's own browser sign-in flow (D-213) - fire-and-forget, since the
+        CLI blocks until the user finishes there, which can take minutes. The frontend refreshes
+        auth-status afterward; this route has nothing new to report immediately."""
+        if backend == "claude_code":
+            claude_code_login()
+            return
+        if backend == "codex":
+            codex_login()
+            return
         raise HTTPException(status_code=404, detail=f"Unknown backend: {backend!r}")
 
     @app.get(

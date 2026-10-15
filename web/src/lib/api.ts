@@ -607,6 +607,13 @@ export function logoutBackend(backend: Backend): Promise<AuthStatus> {
   })
 }
 
+// Launches the backend's own browser sign-in flow (D-213). Fire-and-forget on the backend side
+// (the CLI blocks until the user finishes there), so this resolves before login actually
+// completes - fetchAuthStatus needs a fresh call afterward to see whether it worked.
+export async function loginBackend(backend: Backend): Promise<void> {
+  await request<void>(`/api/settings/${encodeURIComponent(backend)}/login`, { method: 'POST' })
+}
+
 export function fetchProfileFiles(): Promise<ProfileFile[]> {
   return request<ProfileFile[]>('/api/profile/files')
 }

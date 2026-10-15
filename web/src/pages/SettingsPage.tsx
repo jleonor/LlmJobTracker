@@ -18,6 +18,7 @@ import {
   fetchPricesFromProvider,
   fetchPricesResult,
   fetchPricingUrls,
+  loginBackend,
   logoutBackend,
   openLlmApp,
   renameModelPrice,
@@ -394,6 +395,7 @@ function AuthSection() {
   const [status, setStatus] = useState<Record<Backend, AuthStatus> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<Backend | null>(null)
+  const [loginStarted, setLoginStarted] = useState<Backend | null>(null)
 
   function reload() {
     fetchAuthStatus()
@@ -410,11 +412,25 @@ function AuthSection() {
 
   async function logout(backend: Backend) {
     setBusy(backend)
+    setLoginStarted(null)
     try {
       const fresh = await logoutBackend(backend)
       setStatus((current) => (current ? { ...current, [backend]: fresh } : current))
     } catch (failure) {
       setError(failure instanceof ApiError ? failure.message : 'Could not log out.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function login(backend: Backend) {
+    setBusy(backend)
+    setError(null)
+    try {
+      await loginBackend(backend)
+      setLoginStarted(backend)
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'Could not start login.')
     } finally {
       setBusy(null)
     }
@@ -438,29 +454,47 @@ function AuthSection() {
       {status && (
         <div className="flex flex-col gap-2">
           {BACKENDS.map((backend) => (
-            <div key={backend} className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{BACKEND_LABELS[backend]}</span>
-                <Badge variant={status[backend].logged_in ? 'secondary' : 'destructive'}>
-                  {status[backend].logged_in ? 'Logged in' : 'Not logged in'}
-                </Badge>
-                <span className="text-xs text-muted-foreground">{status[backend].detail}</span>
+            <div key={backend} className="flex flex-col gap-1">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{BACKEND_LABELS[backend]}</span>
+                  <Badge variant={status[backend].logged_in ? 'secondary' : 'destructive'}>
+                    {status[backend].logged_in ? 'Logged in' : 'Not logged in'}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{status[backend].detail}</span>
+                </div>
+                {status[backend].logged_in ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy === backend}
+                    onClick={() => void logout(backend)}
+                  >
+                    Log out
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy === backend}
+                    onClick={() => void login(backend)}
+                  >
+                    Log in
+                  </Button>
+                )}
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy === backend || !status[backend].logged_in}
-                onClick={() => void logout(backend)}
-              >
-                Log out
-              </Button>
+              {loginStarted === backend && !status[backend].logged_in && (
+                <p className="text-xs text-muted-foreground">
+                  Check your browser to finish signing in, then Refresh above.
+                </p>
+              )}
             </div>
           ))}
         </div>
       )}
       <p className="text-xs text-muted-foreground">
-        Logging in is done through the CLI itself (<code>claude auth login</code> or{' '}
-        <code>codex login</code>), outside the app.
+        Log in opens the CLI's own browser sign-in flow (<code>claude auth login</code> or{' '}
+        <code>codex login</code>) - nothing you type here is involved.
       </p>
     </section>
   )

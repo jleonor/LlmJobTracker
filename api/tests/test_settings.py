@@ -396,3 +396,20 @@ def test_logout_calls_the_right_backends_logout_and_returns_fresh_status(
 def test_logout_rejects_an_unknown_backend(client: TestClient) -> None:
     response = client.post("/settings/chatgpt/logout")
     assert response.status_code == 404
+
+
+def test_login_launches_the_right_backends_login(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    called: list[str] = []
+    monkeypatch.setattr(app_module, "codex_login", lambda: called.append("codex"))
+
+    response = client.post("/settings/codex/login")
+
+    assert response.status_code == 204
+    assert called == ["codex"]
+
+
+def test_login_rejects_an_unknown_backend(client: TestClient) -> None:
+    response = client.post("/settings/chatgpt/login")
+    assert response.status_code == 404
