@@ -12,6 +12,7 @@ import {
   ApiError,
   createJobApplication,
   fetchIntakeIdentityResult,
+  fetchLanes,
   fetchProfileFiles,
   fetchPromptExchange,
   intakeCheckListingText,
@@ -27,6 +28,7 @@ import type {
   AddJobWorkflow,
   DuplicateListingMatch,
   JobIdentityAnswer,
+  Lane,
   ListingExtraction,
   ProfileFile,
 } from '@/lib/types'
@@ -102,6 +104,8 @@ export function AddJobOverlay({
   const [workflow, setWorkflow] = useState<AddJobWorkflow>('basic')
   const [masterCvOptions, setMasterCvOptions] = useState<ProfileFile[] | null>(null)
   const [masterCvId, setMasterCvId] = useState<number | null>(null)
+  // The approved lane catalog (D-182, D-215) - loaded once, the same way masterCvOptions is.
+  const [laneOptions, setLaneOptions] = useState<Lane[] | null>(null)
 
   // Stage: source / review
   const [method, setMethod] = useState<Method>('paste')
@@ -180,6 +184,20 @@ export function AddJobOverlay({
       })
       .catch(() => {
         if (!cancelled) setMasterCvOptions([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchLanes()
+      .then((lanes) => {
+        if (!cancelled) setLaneOptions(lanes)
+      })
+      .catch(() => {
+        if (!cancelled) setLaneOptions([])
       })
     return () => {
       cancelled = true
@@ -339,6 +357,11 @@ export function AddJobOverlay({
   const canUseWorkflow = workflow === 'basic' || masterCvId !== null
   const masterCvItems: Record<string, string> = { [NONE]: 'Not selected' }
   for (const file of masterCvOptions ?? []) masterCvItems[String(file.id)] = file.original_name
+  // The approved lane catalog (D-215) - a value the identity step suggested that isn't (or is no
+  // longer) in the catalog is kept as its own item, so a suggestion is never silently dropped.
+  const laneItems: Record<string, string> = { [NONE]: 'Not selected' }
+  for (const option of laneOptions ?? []) laneItems[option.name] = option.name
+  if (lane.trim() && !(lane in laneItems)) laneItems[lane] = lane
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -577,7 +600,26 @@ export function AddJobOverlay({
                 </div>
                 <div className="flex flex-col gap-1">
                   <Label htmlFor="add-job-lane">Lane</Label>
-                  <Input id="add-job-lane" value={lane} onChange={(event) => setLane(event.target.value)} />
+                  <Select
+                    items={laneItems}
+                    value={lane.trim() === '' ? NONE : lane}
+                    onValueChange={(next) => setLane(next === NONE || !next ? '' : next)}
+                    disabled={laneOptions === null}
+                  >
+                    <SelectTrigger id="add-job-lane" className="w-full">
+                      <SelectValue placeholder="Not selected" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>Not selected</SelectItem>
+                      {Object.keys(laneItems)
+                        .filter((key) => key !== NONE)
+                        .map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex flex-col gap-1">
                   <Label htmlFor="add-job-location">Location</Label>

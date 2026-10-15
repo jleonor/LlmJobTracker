@@ -27,6 +27,7 @@ import {
   deleteJobApplication,
   deleteJobFile,
   downloadJobFile,
+  fetchLanes,
   fetchProfileFiles,
   fetchProfileOutputs,
   generateApplicationHistory,
@@ -48,6 +49,7 @@ import type {
   JobApplicationDetail,
   JobApplicationEdit,
   JobApplicationFile,
+  Lane,
   ProfileFile,
   StatusHistoryEntry,
 } from '@/lib/types'
@@ -456,6 +458,7 @@ function JobDetailsEditDialog({
 }) {
   const [roleTitle, setRoleTitle] = useState('')
   const [lane, setLane] = useState('')
+  const [laneOptions, setLaneOptions] = useState<Lane[] | null>(null)
   const [portalName, setPortalName] = useState('')
   const [portalUrl, setPortalUrl] = useState('')
   const [location, setLocation] = useState('')
@@ -465,6 +468,22 @@ function JobDetailsEditDialog({
   const [requirements, setRequirements] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // The approved lane catalog (D-182, D-215) - loaded once this dialog exists, not just while
+  // open, so it's ready the first time the user opens it.
+  useEffect(() => {
+    let cancelled = false
+    fetchLanes()
+      .then((lanes) => {
+        if (!cancelled) setLaneOptions(lanes)
+      })
+      .catch(() => {
+        if (!cancelled) setLaneOptions([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Reset the form from the current application each time the dialog opens, so a cancelled edit
   // never leaks into the next one.
@@ -526,6 +545,12 @@ function JobDetailsEditDialog({
     }
   }
 
+  // The approved lane catalog (D-215) - the application's current lane is kept as its own item
+  // even if it's not (or no longer) in the catalog, so an existing value is never silently lost.
+  const laneItems: Record<string, string> = { [NONE]: 'Not selected' }
+  for (const option of laneOptions ?? []) laneItems[option.name] = option.name
+  if (lane.trim() && !(lane in laneItems)) laneItems[lane] = lane
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[70vh] w-full max-w-lg flex-col gap-3 sm:max-w-lg">
@@ -537,7 +562,26 @@ function JobDetailsEditDialog({
             <Input value={roleTitle} onChange={(event) => setRoleTitle(event.target.value)} />
           </FormField>
           <FormField label="Lane">
-            <Input value={lane} onChange={(event) => setLane(event.target.value)} />
+            <Select
+              items={laneItems}
+              value={lane.trim() === '' ? NONE : lane}
+              onValueChange={(next) => setLane(next === NONE || !next ? '' : next)}
+              disabled={laneOptions === null}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Not selected" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Not selected</SelectItem>
+                {Object.keys(laneItems)
+                  .filter((key) => key !== NONE)
+                  .map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </FormField>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FormField label="Portal name">
