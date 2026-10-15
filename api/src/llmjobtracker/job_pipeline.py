@@ -256,13 +256,31 @@ Score every one of these requirements, in this order:
 
 {numbered}
 
+Use this scale for both numbers - pick the band the evidence actually supports, not a guess:
+
+WEIGHT (how important this requirement is to the role):
+- 9-10: stated as required, essential, a must-have, or clearly a core, frequently-performed duty
+- 6-8: stated as preferred, a strong plus, or clearly tied to a core duty without being labeled
+  essential
+- 3-5: mentioned once, grouped with several "nice to have" items, or tied only to a secondary duty
+- 0-2: mentioned only in passing, or relevant to a minor or rarely-performed part of the role
+
+MATCH (how well this person's background meets it):
+- 9-10: the career history shows direct, repeated, or multi-year evidence that matches this
+  requirement closely
+- 6-8: the career history shows clear evidence, but shorter, less direct, or with an adjacent
+  tool/responsibility rather than an exact one
+- 3-5: only tangential or transferable evidence - a related skill or general experience, not a
+  direct demonstration
+- 0-2: no evidence for this requirement anywhere in the material given
+
 For each, answer with one block, in the same order, referring to each requirement only by its
 number - never retype its text:
 
 === REQUIREMENT ===
 NUMBER: <its number from the list above>
-WEIGHT: <0-10 - how important this requirement is to the role>
-MATCH: <0-10 - how well this person's background meets it>
+WEIGHT: <0-10, from the scale above>
+MATCH: <0-10, from the scale above>
 REASONING: <one or two sentences, citing the career history, questionnaire analysis, or strategy>
 === END REQUIREMENT ===
 
