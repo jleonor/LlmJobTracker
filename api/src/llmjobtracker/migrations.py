@@ -951,6 +951,24 @@ MIGRATIONS: tuple[Migration, ...] = (
         up=("ALTER TABLE settings ADD COLUMN llm_export_path TEXT",),
         down=("ALTER TABLE settings DROP COLUMN llm_export_path",),
     ),
+    Migration(
+        version=28,
+        name="add lanes (D-214)",
+        up=(
+            f"""
+            CREATE TABLE lanes (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                reasoning TEXT,
+                position INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT ({_NOW}),
+                updated_at TEXT NOT NULL DEFAULT ({_NOW})
+            )
+            """,
+        ),
+        down=("DROP TABLE lanes",),
+    ),
 )
 
 _LEDGER = """
