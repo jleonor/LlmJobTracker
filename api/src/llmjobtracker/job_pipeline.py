@@ -53,6 +53,7 @@ from llmjobtracker.lane_pipeline import (
     build_extract_lanes_prompt,
     store_extract_lanes_result,
 )
+from llmjobtracker.lanes import lane_names, list_lanes
 from llmjobtracker.migrations import CONTRACT_TYPES, WORK_MODES
 from llmjobtracker.profile_files import profile_file_path, profile_file_text
 from llmjobtracker.profile_pipeline import (
@@ -158,9 +159,9 @@ what it says or asks.
 {text}
 === END LISTING TEXT ===
 
-This person's positioning strategy groups the roles they are targeting into lanes:
+This person has approved these lanes (role groupings) for their job search:
 
-{strategy}
+{lanes}
 
 These location values are already used elsewhere in their tracker:
 {existing_locations}
@@ -176,8 +177,8 @@ Answer with:
 === END ROLE TITLE ===
 
 === LANE ===
-<the name of one lane from the strategy above that this role best fits, or Unknown if the
-strategy does not cover it>
+<the name of exactly one lane from the approved list above that this role best fits, copied
+exactly as it is written there, or Unknown if none of them fit>
 === END LANE ===
 
 === LOCATION ===
@@ -594,22 +595,23 @@ def _existing_locations_block(conn: sqlite3.Connection) -> str:
     return "\n".join(f"- {row[0]}" for row in rows)
 
 
+def _lanes_block(conn: sqlite3.Connection) -> str:
+    lanes = list_lanes(conn)
+    if not lanes:
+        return "(none approved yet)"
+    return "\n".join(f"- {lane.name}: {lane.description or '(no description)'}" for lane in lanes)
+
+
 def build_identity_prompt(conn: sqlite3.Connection, text: str) -> str:
     """Add Job's identity step (Agent/specs/intake-steps.md): built in full here, like
     check/generate above, since its primary input is the same one-shot reviewed text, not a
-    document in the database. The positioning strategy is read for its lane names, but - unlike
-    every other step that reads a profile document - a missing strategy does not reject the
-    answer: Add Job's simplest workflow needs no profile documents at all (D-120's gates only
-    start requiring them from Positioning analysis onward), so this step must still work with no
-    strategy in place, just with no lane to suggest."""
-    strategy_doc = latest_document(conn, "strategy")
-    strategy = (
-        document_block("STRATEGY", strategy_doc)
-        if strategy_doc is not None
-        else "=== STRATEGY ===\n(none written yet)\n=== END STRATEGY ==="
-    )
+    document in the database. The approved lane catalog (D-182, D-215) is read for lane names,
+    not the strategy document's prose - unlike every other step that reads a profile document, no
+    lanes approved yet does not reject the answer: Add Job's simplest workflow needs no profile
+    documents at all (D-120's gates only start requiring them from Positioning analysis onward),
+    so this step must still work with an empty catalog, just with no lane to suggest."""
     return _IDENTITY_PROMPT.format(
-        text=text, strategy=strategy, existing_locations=_existing_locations_block(conn)
+        text=text, lanes=_lanes_block(conn), existing_locations=_existing_locations_block(conn)
     )
 
 
@@ -1307,11 +1309,26 @@ def _none_if_unknown(value: str) -> str | None:
     return None if not cleaned or cleaned.casefold() == "unknown" else cleaned
 
 
-def parse_identity_answer(text: str) -> JobIdentityAnswer:
+def _validated_lane(value: str, approved_names: list[str]) -> str | None:
+    """A LANE answer must match one of the approved catalog's names, case-insensitively, or it is
+    treated the same as Unknown (Agent/specs/lane-steps.md §2, D-215) - a near-miss or
+    hallucinated name is never written as if it were approved. Matching resolves to the catalog's
+    own stored casing, not whatever casing the model happened to answer with."""
+    cleaned = value.strip()
+    if not cleaned or cleaned.casefold() == "unknown":
+        return None
+    for name in approved_names:
+        if name.casefold() == cleaned.casefold():
+            return name
+    return None
+
+
+def parse_identity_answer(conn: sqlite3.Connection, text: str) -> JobIdentityAnswer:
     """Fails closed only on company/role title - the two fields a row cannot exist without. Every
     other field falls back to None (shown to the user as unset, not as the literal word
     "Unknown") rather than failing the whole answer, since a missing lane/location/portal is
-    normal, not a sign something went wrong (Agent/specs/intake-steps.md)."""
+    normal, not a sign something went wrong (Agent/specs/intake-steps.md). LANE is additionally
+    checked against the approved catalog (D-215)."""
     company = _block_text(_COMPANY_BLOCK, text)
     if not company or company.casefold() == "unknown":
         raise PromptRejected("The answer did not name the hiring company.")
@@ -1321,7 +1338,7 @@ def parse_identity_answer(text: str) -> JobIdentityAnswer:
     return JobIdentityAnswer(
         company=company,
         role_title=role_title,
-        lane=_none_if_unknown(_block_text(_LANE_BLOCK, text)),
+        lane=_validated_lane(_block_text(_LANE_BLOCK, text), lane_names(conn)),
         location=_none_if_unknown(_block_text(_LOCATION_BLOCK, text)),
         portal_name=_none_if_unknown(_block_text(_PORTAL_NAME_BLOCK, text)),
         portal_url=_none_if_unknown(_block_text(_PORTAL_URL_BLOCK, text)),

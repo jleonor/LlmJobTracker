@@ -1083,7 +1083,7 @@ def create_app(
         if exchange is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         try:
-            return parse_identity_answer(exchange.result_text or "")
+            return parse_identity_answer(conn, exchange.result_text or "")
         except PromptRejected as error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
