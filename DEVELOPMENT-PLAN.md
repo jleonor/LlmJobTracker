@@ -1,6 +1,6 @@
 # LlmJobTracker: Development Plan
 
-**Current phase: 7, done.** Phases 0 through 7 are done; `main` is fast-forwarded to Phase 7's end (D-61, D-213). Phase 8's step list is not yet drafted.
+**Current phase: 8.** Phases 0 through 7 are done; `main` is fast-forwarded to Phase 7's end (D-61, D-213). Phase 8's step list is drafted (D-214), awaiting approval before any code (rule 7).
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -737,17 +737,34 @@ Done when
 
 ## Phase 8: Lanes
 
-**Goal:** the positioning strategy's lanes become a named, described list on the Profile page, used as the source of truth when adding a job.
+**Goal:** the positioning strategy's lanes become a named, described list on the Profile page, used as the source of truth whenever a lane is chosen — by the user or by the LLM — and every existing job application and positioning analysis is re-baselined against it.
 
 Scope
-- Profile page: a "Lanes" section below the LLM Generated Profile files — each lane's name, description and the reasoning for why it fits the user, read from the positioning strategy document.
-- Add Job's lane field (currently free text, manually editable since D-178) becomes a selection from this list.
-- Decide how a lane is edited: inline on the Profile page, or only through Revise (LLM) on the strategy document, with the Lanes section as a read view extracted from it.
+- Profile page: a "Lanes" section below the LLM Generated Profile files — each lane's name, description and the reasoning for why it fits the user.
+- Lanes are stored in their own table, not read live from the strategy document's prose. A "Sync from strategy" action (a Claude Job) parses the current strategy document into lane rows; the user then edits each lane inline on the Profile page (D-214). Sync replaces the stored lanes and is confirmed before it runs, since it can overwrite manual edits.
+- Add Job's lane field (currently free text, manually editable since D-178) and Job details' own lane field (D-178) both become a `<Select>` over the stored lane names, instead of free text. `job_applications.lane` stays a plain `TEXT` column (matching D-178's own reasoning) holding the selected lane's name — no foreign key, since a lane rename is expected to be rare and manual re-selection is simple enough.
+- Wherever the LLM picks a lane (Add Job's identity step, and the one-off reassignment pass below), it must choose from the approved list by name, or Unknown — never free text (D-215). This only ever reads a job's listing text, never Job details' generated description, since every job has a listing from the moment it's created but may not yet have Job details filled in (D-216).
+- One-off, unbuttoned: every existing job application's `lane` is reassigned once against the approved list, since the old freeform values predate it and some don't match an approved name's exact wording (D-217).
+- One-off, buttoned: every job application's positioning analysis (fit/gaps/strategy/unclear/match_score/breakdown document) is cleared and regenerated under whichever backend is currently selected, via a Settings action the user can also reuse later (D-218).
+
+Step list (drafted 2026-10-15, awaiting approval)
+
+1. Cut `phase-8-lanes` from `main` (D-61). Write `Agent/specs/lane-steps.md`: the `extract_lanes` prompt contract (strategy document in; one NAME/DESCRIPTION/REASONING block per lane out) and the `assign_job_lane` prompt contract (a job's listing text plus the approved lane catalog in; one lane name or Unknown out). Docs only.
+2. Migration: `lanes` (`id`, `name`, `description`, `reasoning`, `position` INTEGER, `created_at`, `updated_at`). Tests: applies and rolls back on a copy of the dev database and an empty database.
+3. Backend: `extract_lanes` Claude Job (`lane_pipeline.py`, following `job_pipeline.py`'s submit/render/on_result shape) — gated on the strategy document existing; parses NAME/DESCRIPTION/REASONING blocks and replaces every row in `lanes` in the parsed order. Tests with `FakeRunner`: a good answer (multiple lanes), an answer with no lane blocks (rejected, existing lanes left untouched).
+4. Backend CRUD: `GET /lanes` (list, ordered by `position`), `POST /lanes` (append), `PATCH /lanes/{id}` (name/description/reasoning/position), `DELETE /lanes/{id}`. Tests: each route, including a delete that leaves other lanes' `position` values unchanged.
+5. Frontend: a "Lanes" section on the Profile page below "LLM Generated Profile", listing each lane's name, description and reasoning with Edit and Remove (mirroring the existing upload-section row pattern) and an Add button for a new lane; a "Sync from strategy" button runs step 3's Claude Job behind a confirm dialog warning it replaces the current list.
+6. Frontend: Add Job's lane `<Input>` (`AddJobOverlay.tsx`) and Job details' Edit dialog's lane field (`JobApplicationEdit.lane`) both become a `<Select>` populated from `GET /lanes`, instead of free text. The Edit dialog stays manual-only — no LLM re-suggest button there (D-215).
+7. Backend: `build_identity_prompt` (Add Job's identity step, `job_pipeline.py:592`) switches from reading the strategy document's prose for lane names to listing the actual stored `lanes` (name, description and reasoning), still picking exactly one name or Unknown. Its input stays the listing text alone, unchanged — not gated on Job details (D-216). Tests with `FakeRunner`: a listing matching one approved lane, a listing matching none (Unknown).
+8. Backend: `assign_job_lane` Claude Job — the same matching prompt as step 7, but standalone (only touches `lane`, not company/role/location/portal), reading a job's `listing` job file's extracted text. A one-time, unbuttoned route loops every job application with a listing file and queues this job for each (skipping and reporting applications with no listing file). Triggered once this phase, not a persistent UI feature (D-217). Tests with `FakeRunner`.
+9. Backend: `POST /positioning/rescore-all` — loops every job application, skips (and reports) any failing `positioning_ready`, and for the rest calls `clear_positioning` then `submit_generate_positioning` to requeue it. Reuses the existing Claude Jobs queue (D-50) as-is; no new queue mechanic.
+10. Frontend: a "Re-score all positioning analyses" button in Settings (D-218), with a confirm dialog matching the existing "Open LLM app?" pattern — stating the count to be queued, the count skipped and why, the currently selected backend/model, and a warning that it can take a while and use real usage.
+11. Checks: `scripts/check.py` output; personal-data scan; screenshots of the Lanes section after a real Sync from strategy, Add Job's lane picker constrained to the approved list, Job details' lane `<Select>`, the one-time reassignment visibly correcting a real application's lane, and the Settings re-score confirm dialog plus a completed real re-score run under Codex.
 
 Done when
-- [ ] The Lanes section lists each lane with its name, description and reasoning, matching the positioning strategy document.
-- [ ] Adding a job selects a lane from this list instead of free text.
-- [ ] A lane change, through whichever edit path is chosen, shows up in both the Lanes section and Add Job's picker.
+- [ ] The Lanes section lists each lane with its name, description and reasoning, editable inline (D-214), and a Sync from strategy action can (re)populate it from the positioning strategy document.
+- [ ] Add Job and Job details both pick a lane from the approved list instead of free text; the LLM-driven assignment (Add Job's identity step, and the one-time reassignment pass) never proposes a name outside it (D-215).
+- [ ] Every existing job application's lane has been re-assigned once against the approved list (D-217), and every job application's positioning analysis has been cleared and regenerated under the currently selected backend (D-218).
 
 ---
 
