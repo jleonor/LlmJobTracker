@@ -22,6 +22,7 @@ from llmjobtracker.job_pipeline import (
     JobStepNotReady,
     RequirementScore,
     application_history_ready,
+    clear_positioning,
     compute_match_score,
     interview_prep_ready,
     job_details_ready,
@@ -694,6 +695,58 @@ def test_generate_positioning_end_to_end_computes_and_stores_the_score(db_path: 
         conn.close()
 
 
+def test_clear_positioning_resets_the_score_and_removes_the_breakdown_file(
+    db_path: Path,
+) -> None:
+    app_id = make_positioning_ready(db_path)
+    queue = make_queue(db_path, FakeRunner(text=GOOD_POSITIONING_ANSWER))
+    conn = connect(db_path)
+    try:
+        job_id = submit_generate_positioning(conn, queue, app_id)
+    finally:
+        conn.close()
+    run_all(queue)
+
+    files_root = db_path.parent / "files"
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+        assert job is not None and job.status == "done"
+        breakdown_path = files_root / str(
+            [f for f in list_job_files(conn, app_id) if f["kind"] == "positioning_breakdown"][0][
+                "stored_path"
+            ]
+        )
+        assert breakdown_path.exists()
+
+        detail = clear_positioning(conn, files_root, app_id)
+
+        assert detail is not None
+        assert detail.fit == []
+        assert detail.gaps == []
+        assert detail.strategy is None
+        assert detail.unclear == []
+        assert detail.match_score is None
+        row = conn.execute(
+            "SELECT positioning_scores FROM job_applications WHERE id = ?", (app_id,)
+        ).fetchone()
+        assert json.loads(row["positioning_scores"]) == []
+        assert [
+            f for f in list_job_files(conn, app_id) if f["kind"] == "positioning_breakdown"
+        ] == []
+        assert not breakdown_path.exists()
+    finally:
+        conn.close()
+
+
+def test_clear_positioning_of_an_unknown_application_returns_none(db_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        assert clear_positioning(conn, db_path.parent / "files", 999) is None
+    finally:
+        conn.close()
+
+
 def test_generate_positioning_fails_the_job_when_requirement_numbers_dont_match(
     db_path: Path,
 ) -> None:
@@ -980,6 +1033,33 @@ def test_positioning_route_201_when_ready_400_when_not(db_path: Path) -> None:
         response = client.post(f"/job-applications/{ready_id}/positioning/generate")
         assert response.status_code == 201
         assert response.json()["kind"] == "generate_positioning"
+
+
+def test_clear_positioning_route_resets_the_application(db_path: Path) -> None:
+    app_id = make_positioning_ready(db_path)
+    queue = make_queue(db_path, FakeRunner(text=GOOD_POSITIONING_ANSWER))
+    conn = connect(db_path)
+    try:
+        submit_generate_positioning(conn, queue, app_id)
+    finally:
+        conn.close()
+    run_all(queue)
+
+    with TestClient(create_app(TOKEN, db_path, FakeRunner())) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        response = client.post(f"/job-applications/{app_id}/positioning/clear")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["fit"] == []
+    assert body["match_score"] is None
+    assert [f for f in body["files"] if f["kind"] == "positioning_breakdown"] == []
+
+
+def test_clear_positioning_route_for_unknown_application_is_not_found(db_path: Path) -> None:
+    with TestClient(create_app(TOKEN, db_path, FakeRunner())) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        assert client.post("/job-applications/999/positioning/clear").status_code == 404
 
 
 def test_application_history_route_201_when_ready_400_when_not(db_path: Path) -> None:

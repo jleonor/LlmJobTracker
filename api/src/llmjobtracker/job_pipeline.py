@@ -37,8 +37,13 @@ from llmjobtracker.claude_job_queue import (
 )
 from llmjobtracker.claude_jobs import PromptRow
 from llmjobtracker.file_preview import eml_to_text, msg_to_text
-from llmjobtracker.job_applications import update_job_application
+from llmjobtracker.job_applications import (
+    JobApplicationDetail,
+    get_job_application_detail,
+    update_job_application,
+)
 from llmjobtracker.job_files import (
+    clear_job_files_of_kind,
     latest_job_file_of_kind,
     sanitize_path_part,
     write_generated_job_file,
@@ -1798,6 +1803,32 @@ def _store_positioning_result(
         document.encode("utf-8"),
         extracted_text=document,
     )
+
+
+def clear_positioning(
+    conn: sqlite3.Connection, files_root: Path, application_id: int
+) -> JobApplicationDetail | None:
+    """Positioning analysis's Edit dialog "Clear all" (D-208): resets the manual fit/gaps/
+    strategy/unclear fields, same as any other Edit form, but also wipes match_score,
+    positioning_scores and the breakdown document - the three fields _store_positioning_result
+    writes together and that have no Edit form field of their own (job_applications.py's
+    _EDITABLE_COLUMNS comment), since D-47 computes match_score from them rather than letting
+    a hand edit touch it. Clearing the section needs all of it gone together, not just the part
+    a normal Edit form owns.
+    """
+    update_job_application(
+        conn,
+        application_id,
+        {"fit": [], "gaps": [], "strategy": None, "unclear": []},
+    )
+    with conn:
+        conn.execute(
+            "UPDATE job_applications SET match_score = NULL, positioning_scores = '[]' "
+            "WHERE id = ?",
+            (application_id,),
+        )
+    clear_job_files_of_kind(conn, files_root, application_id, "positioning_breakdown")
+    return get_job_application_detail(conn, application_id)
 
 
 def _store_application_history_result(

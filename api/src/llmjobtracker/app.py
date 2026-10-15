@@ -60,6 +60,7 @@ from llmjobtracker.job_pipeline import (
     ADD_JOB_WORKFLOWS,
     JobIdentityAnswer,
     JobStepNotReady,
+    clear_positioning,
     parse_identity_answer,
     queue_add_job_chain,
     submit_check_job_listing_text,
@@ -1046,6 +1047,22 @@ def create_app(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
             ) from error
         return _job_or_404(conn, job_id)
+
+    @app.post(
+        "/job-applications/{application_id}/positioning/clear",
+        response_model=JobApplicationDetail,
+        dependencies=[Depends(require_token)],
+    )
+    def clear_positioning_route(
+        application_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> JobApplicationDetail:
+        """Positioning analysis's Edit dialog "Clear all" (D-208) - not a PATCH, since match_score
+        and the breakdown document aren't columns an Edit form may touch (job_applications.py's
+        _EDITABLE_COLUMNS)."""
+        detail = clear_positioning(conn, files_root, application_id)
+        if detail is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return detail
 
     @app.post(
         "/job-applications/{application_id}/application-history/generate",

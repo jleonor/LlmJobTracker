@@ -395,6 +395,15 @@ export function generatePositioning(id: number): Promise<ClaudeJob> {
   return request<ClaudeJob>(`/api/job-applications/${id}/positioning/generate`, { method: 'POST' })
 }
 
+// Positioning analysis's Edit dialog "Clear all" (D-208): also wipes match_score, the per-
+// requirement scores and the breakdown document - not a PATCH, since none of those are fields
+// an Edit form may touch.
+export function clearPositioning(id: number): Promise<JobApplicationDetailData> {
+  return request<JobApplicationDetailData>(`/api/job-applications/${id}/positioning/clear`, {
+    method: 'POST',
+  })
+}
+
 export function generateApplicationHistory(id: number): Promise<ClaudeJob> {
   return request<ClaudeJob>(`/api/job-applications/${id}/application-history/generate`, {
     method: 'POST',

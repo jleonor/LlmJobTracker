@@ -23,6 +23,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import {
   ApiError,
+  clearPositioning,
   deleteJobApplication,
   downloadJobFile,
   fetchProfileFiles,
@@ -891,6 +892,10 @@ function PositioningEditDialog({
   const [gaps, setGaps] = useState('')
   const [strategy, setStrategy] = useState('')
   const [unclear, setUnclear] = useState('')
+  // Set by Clear all (D-208): match_score, the per-requirement scores and the breakdown
+  // document have no field of their own here, so clearing them is staged the same way the text
+  // fields above are - nothing happens until Save, and Cancel drops it like everything else.
+  const [clearScores, setClearScores] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -900,6 +905,7 @@ function PositioningEditDialog({
     setGaps(listToLines(application.gaps))
     setStrategy(application.strategy ?? '')
     setUnclear(listToLines(application.unclear))
+    setClearScores(false)
     setError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -909,12 +915,16 @@ function PositioningEditDialog({
     setGaps('')
     setStrategy('')
     setUnclear('')
+    setClearScores(true)
   }
 
   async function save() {
     setBusy(true)
     setError(null)
     try {
+      if (clearScores) {
+        await clearPositioning(application.id)
+      }
       await patchJobApplication(application.id, {
         fit: linesToList(fit),
         gaps: linesToList(gaps),
