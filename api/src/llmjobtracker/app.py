@@ -73,6 +73,7 @@ from llmjobtracker.job_pipeline import (
     clear_match_score,
     clear_positioning,
     parse_identity_answer,
+    positioning_ready,
     queue_add_job_chain,
     submit_check_job_listing_text,
     submit_extract_job_identity,
@@ -230,6 +231,11 @@ class LaneCreate(BaseModel):
 
 
 class LaneReassignmentSummary(BaseModel):
+    queued: int
+    skipped: int
+
+
+class PositioningRescoreSummary(BaseModel):
     queued: int
     skipped: int
 
@@ -1551,6 +1557,30 @@ def create_app(
             except LaneAssignmentNotReady:
                 skipped += 1
         return LaneReassignmentSummary(queued=queued, skipped=skipped)
+
+    @app.post(
+        "/positioning/rescore-all",
+        response_model=PositioningRescoreSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def rescore_all_positioning(
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> PositioningRescoreSummary:
+        """Settings' "Re-score all positioning analyses" action (D-218): clears and requeues
+        Positioning analysis for every application meeting positioning_ready, under whichever
+        backend is currently selected (D-195/D-206). Applications failing the gate are skipped
+        and counted, not treated as an error. Reuses the existing Claude Jobs queue (D-50) - no
+        new queue mechanic."""
+        queued = 0
+        skipped = 0
+        for application in list_job_applications(conn):
+            if not positioning_ready(conn, application.id):
+                skipped += 1
+                continue
+            clear_positioning(conn, files_root, application.id)
+            submit_generate_positioning(conn, queue, application.id)
+            queued += 1
+        return PositioningRescoreSummary(queued=queued, skipped=skipped)
 
     @app.get(
         "/profile/revise/{output_kind}/turns",
