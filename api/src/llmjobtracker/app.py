@@ -96,6 +96,8 @@ from llmjobtracker.job_revise_turns import (
 from llmjobtracker.job_revise_turns import (
     turn_for_job as job_revise_turn_for_job,
 )
+from llmjobtracker.lane_pipeline import LaneSyncNotReady, submit_extract_lanes
+from llmjobtracker.lanes import Lane, LaneEdit, create_lane, delete_lane, list_lanes, update_lane
 from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.listing_intake import (
     ListingExtraction,
@@ -214,6 +216,12 @@ class PricingUrlEdit(BaseModel):
 class LlmAppOpened(BaseModel):
     backend: str
     bundle_path: str
+
+
+class LaneCreate(BaseModel):
+    name: str
+    description: str | None = None
+    reasoning: str | None = None
 
 
 class ListingUrlRequest(BaseModel):
@@ -1458,6 +1466,61 @@ def create_app(
             ) from error
         except ProfileBusy as error:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        return _job_or_404(conn, job_id)
+
+    @app.get("/lanes", response_model=list[Lane], dependencies=[Depends(require_token)])
+    def read_lanes(conn: Annotated[Connection, Depends(get_db)]) -> list[Lane]:
+        return list_lanes(conn)
+
+    @app.post(
+        "/lanes",
+        response_model=Lane,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def add_lane(body: LaneCreate, conn: Annotated[Connection, Depends(get_db)]) -> Lane:
+        try:
+            return create_lane(conn, body.name, body.description, body.reasoning)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.patch("/lanes/{lane_id}", response_model=Lane, dependencies=[Depends(require_token)])
+    def edit_lane(
+        lane_id: int, edit: LaneEdit, conn: Annotated[Connection, Depends(get_db)]
+    ) -> Lane:
+        try:
+            updated = update_lane(conn, lane_id, edit)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        if updated is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return updated
+
+    @app.delete(
+        "/lanes/{lane_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_token)],
+    )
+    def remove_lane(lane_id: int, conn: Annotated[Connection, Depends(get_db)]) -> Response:
+        delete_lane(conn, lane_id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.post(
+        "/lanes/sync",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def sync_lanes(conn: Annotated[Connection, Depends(get_db)]) -> ClaudeJob:
+        """The Lanes section's "Sync from strategy" action (D-214): replaces every stored lane
+        with a fresh parse of the positioning strategy document. The frontend confirms with the
+        user before calling this, since it can overwrite manual edits."""
+        try:
+            job_id = submit_extract_lanes(conn, queue)
+        except LaneSyncNotReady as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
         return _job_or_404(conn, job_id)
 
     @app.get(
