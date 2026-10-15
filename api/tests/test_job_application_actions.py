@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 import llmjobtracker.app as app_module
 from llmjobtracker.app import TOKEN_HEADER, create_app
 from llmjobtracker.job_applications import insert_job_application
-from llmjobtracker.job_files import job_file_text
+from llmjobtracker.job_files import insert_job_file, job_file_text
 from llmjobtracker.runner import FakeRunner
 from llmjobtracker.storage import connect
 
@@ -378,6 +378,105 @@ def test_edit_with_an_empty_body_changes_nothing(client: TestClient, db_path: Pa
 
     assert response.status_code == 200
     assert response.json()["notes"] == "Keep this."
+
+
+# --- Edit: role_title (D-207) -----------------------------------------------------------------
+
+
+def test_edit_writes_role_title(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+
+    response = client.patch(f"/job-applications/{app_id}", json={"role_title": "Senior Analyst"})
+
+    assert response.status_code == 200
+    assert response.json()["role_title"] == "Senior Analyst"
+
+
+def test_edit_trims_role_title(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+
+    response = client.patch(f"/job-applications/{app_id}", json={"role_title": "  Senior  "})
+
+    assert response.status_code == 200
+    assert response.json()["role_title"] == "Senior"
+
+
+def test_edit_rejects_a_blank_role_title(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+
+    response = client.patch(f"/job-applications/{app_id}", json={"role_title": "   "})
+
+    assert response.status_code == 400
+    unchanged = client.get(f"/job-applications/{app_id}")
+    assert unchanged.json()["role_title"] == "Analyst"
+
+
+def test_edit_renames_the_managed_folder_and_its_stored_files(
+    client: TestClient, db_path: Path
+) -> None:
+    files_root = db_path.parent / "files"
+    app_id = add_application(db_path, company="Co", role_title="Analyst")
+    conn = connect(db_path)
+    try:
+        folder = files_root / "Co" / "Analyst"
+        folder.mkdir(parents=True)
+        (folder / "Job Listing.md").write_text("Some listing text.", encoding="utf-8")
+        insert_job_file(
+            conn,
+            app_id,
+            kind="listing",
+            name="Job Listing.md",
+            stored_path="Co/Analyst/Job Listing.md",
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client.patch(f"/job-applications/{app_id}", json={"role_title": "Senior Analyst"})
+
+    assert response.status_code == 200
+    assert not folder.exists()
+    new_folder = files_root / "Co" / "Senior Analyst"
+    assert (new_folder / "Job Listing.md").read_text(encoding="utf-8") == "Some listing text."
+
+    conn = connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT stored_path FROM job_files WHERE job_application_id = ?", (app_id,)
+        ).fetchone()
+        assert row["stored_path"] == "Co/Senior Analyst/Job Listing.md"
+    finally:
+        conn.close()
+
+    download = client.get(f"/job-applications/{app_id}/files/999999999/download")
+    assert download.status_code == 404  # sanity check the route itself still works post-rename
+
+
+def test_edit_renaming_to_the_same_title_is_a_no_op(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path, company="Co", role_title="Analyst")
+
+    response = client.patch(f"/job-applications/{app_id}", json={"role_title": "Analyst"})
+
+    assert response.status_code == 200
+    assert response.json()["role_title"] == "Analyst"
+
+
+def test_edit_rejects_renaming_onto_an_existing_folder(client: TestClient, db_path: Path) -> None:
+    files_root = db_path.parent / "files"
+    app_id = add_application(db_path, company="Co", role_title="Analyst")
+    (files_root / "Co" / "Senior Analyst").mkdir(parents=True)
+
+    response = client.patch(f"/job-applications/{app_id}", json={"role_title": "Senior Analyst"})
+
+    assert response.status_code == 400
+
+
+def test_edit_renames_the_folder_even_with_no_files_yet(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path, company="Co", role_title="Analyst")
+
+    response = client.patch(f"/job-applications/{app_id}", json={"role_title": "Senior Analyst"})
+
+    assert response.status_code == 200
 
 
 # --- Master CV ---------------------------------------------------------------------------------

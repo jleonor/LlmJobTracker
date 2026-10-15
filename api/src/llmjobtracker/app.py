@@ -30,6 +30,7 @@ from llmjobtracker.codex_runner import auth_status as codex_auth_status
 from llmjobtracker.codex_runner import logout as codex_logout
 from llmjobtracker.file_preview import UnsupportedPreview, preview_for
 from llmjobtracker.job_applications import (
+    InvalidRoleTitle,
     JobApplication,
     JobApplicationDetail,
     JobApplicationEdit,
@@ -682,11 +683,15 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         try:
             detail = update_job_application(
-                conn, application_id, edit.model_dump(exclude_unset=True)
+                conn, application_id, edit.model_dump(exclude_unset=True), files_root
             )
         except UnknownField as error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown field: {error}."
+            ) from error
+        except InvalidRoleTitle as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
             ) from error
         except sqlite3.IntegrityError as error:
             raise HTTPException(

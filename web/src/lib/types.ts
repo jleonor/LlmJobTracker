@@ -104,6 +104,7 @@ export type JobApplicationDetailData = JobApplication & {
 // Matches the API's JobApplicationEdit.
 export type JobApplicationEdit = Partial<{
   lane: string | null
+  role_title: string
   portal_name: string | null
   portal_url: string | null
   location: string | null

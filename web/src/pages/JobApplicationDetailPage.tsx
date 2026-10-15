@@ -452,6 +452,7 @@ function JobDetailsEditDialog({
   onOpenChange: (open: boolean) => void
   onSaved: () => void
 }) {
+  const [roleTitle, setRoleTitle] = useState('')
   const [lane, setLane] = useState('')
   const [portalName, setPortalName] = useState('')
   const [portalUrl, setPortalUrl] = useState('')
@@ -467,6 +468,7 @@ function JobDetailsEditDialog({
   // never leaks into the next one.
   useEffect(() => {
     if (!open) return
+    setRoleTitle(application.role_title)
     setLane(application.lane ?? '')
     setPortalName(application.portal_name ?? '')
     setPortalUrl(application.portal_url ?? '')
@@ -479,10 +481,29 @@ function JobDetailsEditDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  // Resets every field this dialog owns except the job title (D-207) - clearing that would leave
+  // the application with no title at all, which the backend rejects anyway.
+  function clearAll() {
+    setLane('')
+    setPortalName('')
+    setPortalUrl('')
+    setLocation('')
+    setWorkMode('Unknown')
+    setContractType('Unknown')
+    setDescription('')
+    setRequirements('')
+  }
+
   async function save() {
+    const trimmedTitle = roleTitle.trim()
+    if (!trimmedTitle) {
+      setError('Job title cannot be blank.')
+      return
+    }
     setBusy(true)
     setError(null)
     const edit: JobApplicationEdit = {
+      role_title: trimmedTitle,
       lane: lane.trim() || null,
       portal_name: portalName.trim() || null,
       portal_url: portalUrl.trim() || null,
@@ -510,6 +531,9 @@ function JobDetailsEditDialog({
           <DialogTitle>Edit job details</DialogTitle>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          <FormField label="Job title">
+            <Input value={roleTitle} onChange={(event) => setRoleTitle(event.target.value)} />
+          </FormField>
           <FormField label="Lane">
             <Input value={lane} onChange={(event) => setLane(event.target.value)} />
           </FormField>
@@ -586,13 +610,18 @@ function JobDetailsEditDialog({
             </p>
           )}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+        <DialogFooter className="w-full sm:flex-row sm:justify-between">
+          <Button type="button" variant="ghost" onClick={clearAll}>
+            Clear all
           </Button>
-          <Button disabled={busy} onClick={() => void save()}>
-            {busy ? 'Saving...' : 'Save'}
-          </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button disabled={busy} onClick={() => void save()}>
+              {busy ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -875,6 +904,13 @@ function PositioningEditDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  function clearAll() {
+    setFit('')
+    setGaps('')
+    setStrategy('')
+    setUnclear('')
+  }
+
   async function save() {
     setBusy(true)
     setError(null)
@@ -930,13 +966,18 @@ function PositioningEditDialog({
             </p>
           )}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+        <DialogFooter className="w-full sm:flex-row sm:justify-between">
+          <Button type="button" variant="ghost" onClick={clearAll}>
+            Clear all
           </Button>
-          <Button disabled={busy} onClick={() => void save()}>
-            {busy ? 'Saving...' : 'Save'}
-          </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button disabled={busy} onClick={() => void save()}>
+              {busy ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1168,6 +1209,10 @@ function InterviewPrepEditDialog({
     setPairs((current) => current.filter((_, i) => i !== index))
   }
 
+  function clearAll() {
+    setPairs([])
+  }
+
   async function save() {
     setBusy(true)
     setError(null)
@@ -1249,13 +1294,18 @@ function InterviewPrepEditDialog({
             </p>
           )}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+        <DialogFooter className="w-full sm:flex-row sm:justify-between">
+          <Button type="button" variant="ghost" onClick={clearAll}>
+            Clear all
           </Button>
-          <Button disabled={busy} onClick={() => void save()}>
-            {busy ? 'Saving...' : 'Save'}
-          </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button disabled={busy} onClick={() => void save()}>
+              {busy ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1441,6 +1491,13 @@ function ApplicationHistoryEditDialog({
     setStageDates((current) => ({ ...current, [status]: value }))
   }
 
+  function clearAll() {
+    setNotes('')
+    setNextAction('')
+    setDueDate('')
+    setStageDates({})
+  }
+
   async function save() {
     const entries = ALL_STATUSES.filter((status) => stageDates[status])
       .map((status) => ({ status, changed_at: toChangedAt(stageDates[status]) }))
@@ -1521,13 +1578,18 @@ function ApplicationHistoryEditDialog({
             </p>
           )}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+        <DialogFooter className="w-full sm:flex-row sm:justify-between">
+          <Button type="button" variant="ghost" onClick={clearAll}>
+            Clear all
           </Button>
-          <Button disabled={busy} onClick={() => void save()}>
-            {busy ? 'Saving...' : 'Save'}
-          </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button disabled={busy} onClick={() => void save()}>
+              {busy ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

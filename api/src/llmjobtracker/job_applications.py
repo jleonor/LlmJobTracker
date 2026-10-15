@@ -27,7 +27,11 @@ END_STATUSES = ("Rejected", "Withdrawn")
 # (D-45). interview_prep (D-168) added alongside the other three - the structured per-requirement
 # positioning_scores stays deliberately out of this set, since it has no manual Edit form of its
 # own (D-47 computes match_score from it, never the user by hand). lane (D-178) lives in Job
-# details' own Edit dialog, free text, same as the rest of that form.
+# details' own Edit dialog, free text, same as the rest of that form. role_title (D-207) lives
+# there too - unlike every other field here it is NOT NULL and renames the managed files folder
+# on disk (update_job_application below), so it gets its own validation rather than a bare
+# column write. company is deliberately not included: nothing asked for renaming it, and doing so
+# would need the same folder-rename treatment.
 _EDITABLE_JSON_COLUMNS = frozenset({"requirements", "fit", "gaps", "unclear", "interview_prep"})
 _EDITABLE_COLUMNS = frozenset(
     {
@@ -42,6 +46,7 @@ _EDITABLE_COLUMNS = frozenset(
         "next_action",
         "due_date",
         "strategy",
+        "role_title",
     }
 )
 
@@ -123,6 +128,10 @@ class JobApplicationEdit(BaseModel):
     """
 
     lane: str | None = None
+    # D-207: the job title, editable from Job details like the rest of this form. Unlike every
+    # other field here it can never actually be cleared (None/blank is rejected, not written) -
+    # see update_job_application.
+    role_title: str | None = None
     portal_name: str | None = None
     portal_url: str | None = None
     location: str | None = None
@@ -327,16 +336,62 @@ class UnknownField(Exception):
     """A PATCH body named a field update_job_application doesn't know how to write."""
 
 
+class InvalidRoleTitle(Exception):
+    """A role_title edit (D-207) was blank, or would collide with another application's
+    already-existing managed folder under the same company."""
+
+
 def update_job_application(
-    conn: sqlite3.Connection, application_id: int, patch: dict[str, Any]
+    conn: sqlite3.Connection,
+    application_id: int,
+    patch: dict[str, Any],
+    files_root: Path | None = None,
 ) -> JobApplicationDetail | None:
     """Apply a partial edit from one of the job page's Edit forms (D-116) and return the result.
 
     `patch` is already filtered to the fields the caller actually sent (Pydantic's
     `exclude_unset`), so a field left out of the request is left untouched, not cleared.
+
+    A role_title edit (D-207) also renames the managed files folder on disk, so existing job
+    files stay reachable under the new title - `files_root` is only needed for that; every
+    caller that never touches role_title (every LLM pipeline today) can omit it.
     """
     if not patch:
         return get_job_application_detail(conn, application_id)
+    current = get_job_application_detail(conn, application_id)
+    if current is None:
+        return None
+    if "role_title" in patch:
+        new_title = (patch["role_title"] or "").strip()
+        if not new_title:
+            raise InvalidRoleTitle("Job title cannot be blank.")
+        patch = {**patch, "role_title": new_title}
+        if files_root is not None and new_title != current.role_title:
+            old_folder = managed_folder(files_root, current.company, current.role_title)
+            new_folder = managed_folder(files_root, current.company, new_title)
+            if old_folder != new_folder:
+                if new_folder.exists():
+                    raise InvalidRoleTitle(
+                        f"Another application already has a folder for {new_title!r}."
+                    )
+                if old_folder.exists():
+                    new_folder.parent.mkdir(parents=True, exist_ok=True)
+                    old_folder.rename(new_folder)
+                    # job_files.stored_path is a path relative to files_root, set once when each
+                    # file was stored (job_files.py) - it doesn't follow the folder on its own.
+                    old_rel = old_folder.relative_to(files_root).as_posix()
+                    new_rel = new_folder.relative_to(files_root).as_posix()
+                    with conn:
+                        for row in conn.execute(
+                            "SELECT id, stored_path FROM job_files WHERE job_application_id = ?",
+                            (application_id,),
+                        ).fetchall():
+                            stored = str(row["stored_path"])
+                            if stored == old_rel or stored.startswith(old_rel + "/"):
+                                conn.execute(
+                                    "UPDATE job_files SET stored_path = ? WHERE id = ?",
+                                    (new_rel + stored[len(old_rel) :], row["id"]),
+                                )
     assignments: list[str] = []
     params: dict[str, Any] = {"id": application_id}
     for key, value in patch.items():
