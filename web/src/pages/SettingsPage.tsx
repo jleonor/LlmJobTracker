@@ -15,6 +15,7 @@ import {
   fetchPricesResult,
   fetchPricingUrls,
   logoutBackend,
+  renameModelPrice,
   saveBackendSettings,
   saveModelPrice,
   saveModelPrices,
@@ -370,6 +371,21 @@ function PriceSection({
     }
   }
 
+  async function renameRow(model: string, newModel: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      await renameModelPrice(backend, model, newModel)
+      reloadPrices()
+      onSaved()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The model name was not changed.')
+      throw failure
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function removeRow(model: string) {
     setBusy(true)
     setError(null)
@@ -467,7 +483,7 @@ function PriceSection({
         />
       )}
 
-      <PriceTable rows={prices} busy={busy} onSave={saveRow} onDelete={removeRow} />
+      <PriceTable rows={prices} busy={busy} onSave={saveRow} onRename={renameRow} onDelete={removeRow} />
     </section>
   )
 }
@@ -546,11 +562,13 @@ function PriceTable({
   rows,
   busy,
   onSave,
+  onRename,
   onDelete,
 }: {
   rows: ModelPrice[]
   busy: boolean
   onSave: (model: string, fields: { input_price_per_token: number; output_price_per_token: number }) => void
+  onRename: (model: string, newModel: string) => Promise<void>
   onDelete: (model: string) => void
 }) {
   const [newModel, setNewModel] = useState('')
@@ -577,7 +595,14 @@ function PriceTable({
             </tr>
           )}
           {rows.map((row) => (
-            <PriceRow key={row.model} row={row} busy={busy} onSave={onSave} onDelete={onDelete} />
+            <PriceRow
+              key={row.model}
+              row={row}
+              busy={busy}
+              onSave={onSave}
+              onRename={onRename}
+              onDelete={onDelete}
+            />
           ))}
         </tbody>
       </table>
@@ -630,21 +655,52 @@ function PriceRow({
   row,
   busy,
   onSave,
+  onRename,
   onDelete,
 }: {
   row: ModelPrice
   busy: boolean
   onSave: (model: string, fields: { input_price_per_token: number; output_price_per_token: number }) => void
+  onRename: (model: string, newModel: string) => Promise<void>
   onDelete: (model: string) => void
 }) {
+  const [modelName, setModelName] = useState(row.model)
   const [inputPrice, setInputPrice] = useState(String(row.input_price_per_token))
   const [outputPrice, setOutputPrice] = useState(String(row.output_price_per_token))
+  const [renaming, setRenaming] = useState(false)
+  const trimmedModel = modelName.trim()
   const dirty =
-    inputPrice !== String(row.input_price_per_token) || outputPrice !== String(row.output_price_per_token)
+    (trimmedModel !== '' && trimmedModel !== row.model) ||
+    inputPrice !== String(row.input_price_per_token) ||
+    outputPrice !== String(row.output_price_per_token)
+
+  async function save() {
+    const pricesChanged =
+      inputPrice !== String(row.input_price_per_token) ||
+      outputPrice !== String(row.output_price_per_token)
+    const fields = {
+      input_price_per_token: Number(inputPrice) || 0,
+      output_price_per_token: Number(outputPrice) || 0,
+    }
+    const renamed = trimmedModel !== '' && trimmedModel !== row.model
+    if (renamed) {
+      setRenaming(true)
+      try {
+        await onRename(row.model, trimmedModel)
+      } finally {
+        setRenaming(false)
+      }
+    }
+    if (pricesChanged) {
+      onSave(renamed ? trimmedModel : row.model, fields)
+    }
+  }
 
   return (
     <tr>
-      <td className="py-1 pr-2">{row.model}</td>
+      <td className="py-1 pr-2">
+        <Input value={modelName} onChange={(event) => setModelName(event.target.value)} />
+      </td>
       <td className="py-1 pr-2">
         <Input type="number" value={inputPrice} onChange={(event) => setInputPrice(event.target.value)} />
       </td>
@@ -653,17 +709,7 @@ function PriceRow({
       </td>
       <td className="py-1">
         <div className="flex gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy || !dirty}
-            onClick={() =>
-              onSave(row.model, {
-                input_price_per_token: Number(inputPrice) || 0,
-                output_price_per_token: Number(outputPrice) || 0,
-              })
-            }
-          >
+          <Button variant="outline" size="sm" disabled={busy || renaming || !dirty} onClick={() => void save()}>
             Save
           </Button>
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => onDelete(row.model)}>

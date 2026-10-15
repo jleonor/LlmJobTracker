@@ -10,6 +10,7 @@ from llmjobtracker.pricing import (
     delete_model_price,
     get_pricing_url,
     list_model_prices,
+    rename_model_price,
     set_pricing_url,
     upsert_model_price,
 )
@@ -129,6 +130,59 @@ def test_delete_removes_a_row(conn: sqlite3.Connection) -> None:
     assert delete_model_price(conn, "codex", "gpt-6.1-sol") is True
     assert list_model_prices(conn, "codex") == []
     assert delete_model_price(conn, "codex", "gpt-6.1-sol") is False
+
+
+def test_rename_keeps_the_prices_under_the_corrected_name(conn: sqlite3.Connection) -> None:
+    upsert_model_price(conn, "codex", "gtp-6.1-sol", 0.000003, 0.000015)
+
+    renamed = rename_model_price(conn, "codex", "gtp-6.1-sol", "gpt-6.1-sol")
+
+    assert renamed.model == "gpt-6.1-sol"
+    assert renamed.input_price_per_token == pytest.approx(0.000003)
+    rows = list_model_prices(conn, "codex")
+    assert [row.model for row in rows] == ["gpt-6.1-sol"]
+
+
+def test_rename_trims_whitespace(conn: sqlite3.Connection) -> None:
+    upsert_model_price(conn, "codex", "gpt-6.1-sol", 0.000003, 0.000015)
+
+    renamed = rename_model_price(conn, "codex", "gpt-6.1-sol", "  gpt-6.1-sol-v2  ")
+
+    assert renamed.model == "gpt-6.1-sol-v2"
+
+
+def test_renaming_to_the_same_name_is_a_no_op(conn: sqlite3.Connection) -> None:
+    upsert_model_price(conn, "codex", "gpt-6.1-sol", 0.000003, 0.000015)
+
+    renamed = rename_model_price(conn, "codex", "gpt-6.1-sol", "gpt-6.1-sol")
+
+    assert renamed.model == "gpt-6.1-sol"
+    assert len(list_model_prices(conn, "codex")) == 1
+
+
+def test_rename_rejects_a_blank_new_name(conn: sqlite3.Connection) -> None:
+    upsert_model_price(conn, "codex", "gpt-6.1-sol", 0.000003, 0.000015)
+
+    with pytest.raises(ValueError):
+        rename_model_price(conn, "codex", "gpt-6.1-sol", "   ")
+
+
+def test_rename_rejects_a_name_that_already_has_a_price(conn: sqlite3.Connection) -> None:
+    upsert_model_price(conn, "codex", "gpt-6.1-sol", 0.000003, 0.000015)
+    upsert_model_price(conn, "codex", "gpt-5", 0.00000125, 0.00001)
+
+    with pytest.raises(ValueError):
+        rename_model_price(conn, "codex", "gpt-6.1-sol", "gpt-5")
+
+
+def test_rename_rejects_a_missing_row(conn: sqlite3.Connection) -> None:
+    with pytest.raises(ValueError):
+        rename_model_price(conn, "codex", "no-such-model", "gpt-6.1-sol")
+
+
+def test_rename_rejects_an_unknown_provider(conn: sqlite3.Connection) -> None:
+    with pytest.raises(ValueError):
+        rename_model_price(conn, "chatgpt", "gpt-5", "gpt-5-new")
 
 
 def test_pricing_url_defaults_to_none_and_can_be_set(conn: sqlite3.Connection) -> None:

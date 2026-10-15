@@ -75,6 +75,36 @@ def upsert_model_price(
     return ModelPrice(**dict(row))
 
 
+def rename_model_price(
+    conn: sqlite3.Connection, provider: str, model: str, new_model: str
+) -> ModelPrice:
+    """Fixes a stored model id's spelling in place - keeps the row's prices and updated_at,
+    unlike deleting and re-adding under the corrected name."""
+    _require_known_provider(provider)
+    new_model = new_model.strip()
+    if not new_model:
+        raise ValueError("A model id is required.")
+    if new_model != model:
+        clash = conn.execute(
+            "SELECT 1 FROM model_prices WHERE provider = ? AND model = ?", (provider, new_model)
+        ).fetchone()
+        if clash is not None:
+            raise ValueError(f"{new_model!r} already has a stored price.")
+        with conn:
+            cursor = conn.execute(
+                "UPDATE model_prices SET model = ? WHERE provider = ? AND model = ?",
+                (new_model, provider, model),
+            )
+        if cursor.rowcount == 0:
+            raise ValueError(f"No stored price for {provider}/{model!r}.")
+    row = conn.execute(
+        "SELECT * FROM model_prices WHERE provider = ? AND model = ?", (provider, new_model)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"No stored price for {provider}/{model!r}.")
+    return ModelPrice(**dict(row))
+
+
 def delete_model_price(conn: sqlite3.Connection, provider: str, model: str) -> bool:
     with conn:
         cursor = conn.execute(

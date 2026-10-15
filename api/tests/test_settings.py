@@ -143,6 +143,76 @@ def test_deleting_a_price_removes_it(client: TestClient) -> None:
     assert client.get("/settings/prices").json() == []
 
 
+def test_renaming_a_price_keeps_its_values_under_the_new_name(client: TestClient) -> None:
+    client.put(
+        "/settings/prices/codex/gtp-6.1-sol",
+        json={"input_price_per_token": 0.000003, "output_price_per_token": 0.000015},
+    )
+
+    renamed = client.put(
+        "/settings/prices/codex/gtp-6.1-sol/rename", json={"new_model": "gpt-6.1-sol"}
+    )
+
+    assert renamed.status_code == 200
+    body = renamed.json()
+    assert body["model"] == "gpt-6.1-sol"
+    assert body["input_price_per_token"] == pytest.approx(0.000003)
+    listed = client.get("/settings/prices").json()
+    assert [row["model"] for row in listed] == ["gpt-6.1-sol"]
+
+
+def test_renaming_the_active_model_updates_settings_too(client: TestClient) -> None:
+    client.put("/settings", json={"user_name": "YourName", "backend": "codex"})
+    client.put(
+        "/settings/prices/codex/gpt-6.1-sol",
+        json={"input_price_per_token": 0.000003, "output_price_per_token": 0.000015},
+    )
+
+    renamed = client.put(
+        "/settings/prices/codex/gpt-6.1-sol/rename", json={"new_model": "gpt-6.1-sol-v2"}
+    )
+
+    assert renamed.status_code == 200
+    assert client.get("/settings").json()["codex_model"] == "gpt-6.1-sol-v2"
+
+
+def test_renaming_a_non_active_model_leaves_settings_alone(client: TestClient) -> None:
+    client.put(
+        "/settings/prices/claude_code/claude-sonnet-5-old",
+        json={"input_price_per_token": 0.000003, "output_price_per_token": 0.000015},
+    )
+
+    renamed = client.put(
+        "/settings/prices/claude_code/claude-sonnet-5-old/rename",
+        json={"new_model": "claude-sonnet-5-new"},
+    )
+
+    assert renamed.status_code == 200
+    assert client.get("/settings").json()["claude_code_model"] == "claude-sonnet-5"
+
+
+def test_renaming_to_a_name_that_already_has_a_price_is_rejected(client: TestClient) -> None:
+    client.put(
+        "/settings/prices/codex/gpt-6.1-sol",
+        json={"input_price_per_token": 0.000003, "output_price_per_token": 0.000015},
+    )
+    client.put(
+        "/settings/prices/codex/gpt-5",
+        json={"input_price_per_token": 0.00000125, "output_price_per_token": 0.00001},
+    )
+
+    renamed = client.put("/settings/prices/codex/gpt-6.1-sol/rename", json={"new_model": "gpt-5"})
+
+    assert renamed.status_code == 422
+
+
+def test_renaming_a_missing_price_is_rejected(client: TestClient) -> None:
+    renamed = client.put(
+        "/settings/prices/codex/no-such-model/rename", json={"new_model": "gpt-6.1-sol"}
+    )
+    assert renamed.status_code == 422
+
+
 def test_bulk_saving_prices_confirms_several_rows_at_once(client: TestClient) -> None:
     saved = client.put(
         "/settings/prices",

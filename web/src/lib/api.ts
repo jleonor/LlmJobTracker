@@ -494,6 +494,22 @@ export function saveModelPrices(rows: ModelPrice[]): Promise<ModelPrice[]> {
   })
 }
 
+// Fixes a stored model id's spelling in place, keeping its prices (D-198's "editing by hand").
+export function renameModelPrice(
+  provider: Backend,
+  model: string,
+  newModel: string,
+): Promise<ModelPrice> {
+  return request<ModelPrice>(
+    `/api/settings/prices/${encodeURIComponent(provider)}/${encodeURIComponent(model)}/rename`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ new_model: newModel }),
+    },
+  )
+}
+
 export async function deleteModelPrice(provider: Backend, model: string): Promise<void> {
   await request<void>(
     `/api/settings/prices/${encodeURIComponent(provider)}/${encodeURIComponent(model)}`,

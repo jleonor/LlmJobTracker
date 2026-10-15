@@ -98,6 +98,7 @@ from llmjobtracker.pricing import (
     delete_model_price,
     get_pricing_url,
     list_model_prices,
+    rename_model_price,
     set_pricing_url,
     upsert_model_price,
 )
@@ -170,6 +171,10 @@ class ModelPriceEdit(BaseModel):
 class ModelPriceUpsert(ModelPriceEdit):
     provider: str
     model: str
+
+
+class ModelPriceRename(BaseModel):
+    new_model: str
 
 
 class PricingUrlEdit(BaseModel):
@@ -441,6 +446,34 @@ def create_app(
             )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.put(
+        "/settings/prices/{provider}/{model}/rename",
+        response_model=ModelPrice,
+        dependencies=[Depends(require_token)],
+    )
+    def rename_price(
+        provider: str,
+        model: str,
+        edit: ModelPriceRename,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> ModelPrice:
+        try:
+            renamed = rename_model_price(conn, provider, model, edit.new_model)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        # D-206: if the renamed row was the provider's active model, carry the rename into
+        # Settings too, so the runner keeps calling the same model id it already is.
+        current = get_settings(conn)
+        if provider == "claude_code" and current.claude_code_model == model:
+            update_settings(
+                SettingsEdit(user_name=current.user_name, claude_code_model=renamed.model), conn
+            )
+        elif provider == "codex" and current.codex_model == model:
+            update_settings(
+                SettingsEdit(user_name=current.user_name, codex_model=renamed.model), conn
+            )
+        return renamed
 
     @app.delete(
         "/settings/prices/{provider}/{model}",
