@@ -18,7 +18,6 @@ import {
   type SortState,
 } from '@/components/app/JobsTableFilters'
 import { QueueStatusBadge } from '@/components/app/QueueStatusBadge'
-import { RunnerCheck } from '@/components/app/RunnerCheck'
 import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -404,8 +403,6 @@ export function JobApplicationsPage({
           </Table>
         </div>
       )}
-
-      <RunnerCheck />
     </section>
   )
 }

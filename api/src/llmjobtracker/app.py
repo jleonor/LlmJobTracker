@@ -1174,8 +1174,14 @@ def create_app(
         return _job_revise_turn_view(queue, conn, turn)
 
     @app.post("/runs/check", response_model=RunResult, dependencies=[Depends(require_token)])
-    def run_check() -> RunResult:
-        return runner.run(CHECK_PROMPT)
+    def run_check(conn: Annotated[Connection, Depends(get_db)]) -> RunResult:
+        """Checks whichever backend and model are currently selected (D-195, D-206) - the same
+        one the next queued job would actually use."""
+        backend = get_settings(conn).backend
+        active = runner if backend == "claude_code" else codex_runner
+        if active is None:
+            raise HTTPException(status_code=400, detail="Codex is not installed.")
+        return active.run(CHECK_PROMPT)
 
     @app.get("/claude-jobs", response_model=list[ClaudeJob], dependencies=[Depends(require_token)])
     def claude_jobs(conn: Annotated[Connection, Depends(get_db)]) -> list[ClaudeJob]:

@@ -423,7 +423,8 @@ export function generateInterviewPrep(id: number): Promise<ClaudeJob> {
   })
 }
 
-export function runClaudeCheck(): Promise<RunResult> {
+// Checks whichever backend and model are currently selected (D-195, D-206).
+export function runLlmCheck(): Promise<RunResult> {
   return request<RunResult>('/api/runs/check', { method: 'POST' })
 }
 

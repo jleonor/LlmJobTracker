@@ -52,6 +52,16 @@ function groupByDate(jobs: ClaudeJob[]): DateGroup[] {
   return groups
 }
 
+// The distinct models its prompts actually ran under, in the order first used - usually one,
+// but a paused job can resume after a settings change (D-206) and finish under a second model.
+function modelsUsed(job: ClaudeJob): string[] {
+  const models: string[] = []
+  for (const prompt of job.prompts) {
+    if (prompt.model && !models.includes(prompt.model)) models.push(prompt.model)
+  }
+  return models
+}
+
 // How many of a group's jobs are in each status, in STATUS_ORDER, leaving out statuses with none.
 function countByStatus(items: PositionedJob[]): [string, number][] {
   const counts = new Map<string, number>()
@@ -163,6 +173,7 @@ function JobCard({ job, position, onChanged }: CardProps) {
 
   const Chevron = expanded ? ChevronDown : ChevronRight
   const doneCount = job.prompts.filter((prompt) => prompt.status === 'done').length
+  const models = modelsUsed(job)
 
   return (
     <article
@@ -184,6 +195,7 @@ function JobCard({ job, position, onChanged }: CardProps) {
             </h2>
             <p className="font-mono text-xs text-muted-foreground">
               created {job.created_at.replace('T', ' ').slice(0, 16)} UTC
+              {models.length > 0 && ` · ${models.join(', ')}`}
               {!expanded && ` · ${doneCount}/${job.prompts.length} prompts`}
             </p>
           </div>

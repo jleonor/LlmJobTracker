@@ -142,7 +142,7 @@ export function RunTrace({ job, clearSignal = 0 }: { job: ClaudeJob | null; clea
             onClick={() => setShowExchange((current) => !current)}
             className="font-mono text-xs text-zinc-300 underline-offset-2 hover:underline"
           >
-            {showExchange ? 'Hide' : 'Show'} the exchange with Claude
+            {showExchange ? 'Hide' : 'Show'} the exchange with the LLM
           </button>
           {showExchange && <Exchanges jobId={job.id} prompts={job.prompts} />}
         </div>
@@ -208,7 +208,7 @@ function Exchanges({ jobId, prompts }: { jobId: number; prompts: ClaudeJobPrompt
               {shown && (
                 <>
                   <PromptSentBlock text={shown.prompt_text} />
-                  <ExchangeBlock title="Claude answered" text={shown.result_text ?? '(no answer was kept)'} />
+                  <ExchangeBlock title="LLM answered" text={shown.result_text ?? '(no answer was kept)'} />
                   {shown.error && <p className="text-red-400">Check failed: {shown.error}</p>}
                 </>
               )}
@@ -261,7 +261,7 @@ export function PromptSentBlock({ text }: { text: string }) {
   const segments = splitPromptBlocks(text)
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-zinc-400">Sent to Claude ({text.length.toLocaleString()} characters)</p>
+      <p className="text-zinc-400">Sent to the LLM ({text.length.toLocaleString()} characters)</p>
       <div className="flex max-h-96 flex-col gap-1 overflow-auto rounded bg-black p-2 text-zinc-200">
         {segments.map((segment, index) =>
           segment.kind === 'text' ? (

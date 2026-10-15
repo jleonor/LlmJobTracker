@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { ApiError, runClaudeCheck } from '@/lib/api'
+import { ApiError, runLlmCheck } from '@/lib/api'
 import type { RunResult } from '@/lib/types'
 
 type State =
@@ -10,14 +10,15 @@ type State =
   | { kind: 'done'; result: RunResult }
   | { kind: 'error'; message: string }
 
-// Sends one real request to Claude through the runner and shows the answer.
-export function RunnerCheck() {
+// Sends one real request through whichever backend and model are currently selected (D-195,
+// D-206) and shows the answer - the same one the next queued job would actually use.
+export function LlmCheck() {
   const [state, setState] = useState<State>({ kind: 'idle' })
 
   async function handleClick() {
     setState({ kind: 'running' })
     try {
-      const result = await runClaudeCheck()
+      const result = await runLlmCheck()
       setState({ kind: 'done', result })
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'The check failed.'
@@ -30,14 +31,15 @@ export function RunnerCheck() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 id="runner-heading" className="text-sm font-semibold">
-            Claude runner check
+            LLM check
           </h2>
           <p className="text-xs text-muted-foreground">
-            Sends one request to Claude Code and shows the reply. Uses your Claude login.
+            Sends one request through the currently selected backend and model, and shows the
+            reply. Uses your login for that backend.
           </p>
         </div>
         <Button onClick={handleClick} disabled={state.kind === 'running'}>
-          {state.kind === 'running' ? 'Running...' : 'Run Claude check'}
+          {state.kind === 'running' ? 'Running...' : 'Run check'}
         </Button>
       </div>
 
@@ -47,6 +49,7 @@ export function RunnerCheck() {
             {state.result.text}
           </p>
           <p className="font-mono text-xs text-muted-foreground">
+            {state.result.model && `${state.result.model} · `}
             {(state.result.duration_ms / 1000).toFixed(1)} s
             {state.result.cost_usd !== null &&
               ` · estimated cost $${state.result.cost_usd.toFixed(4)}`}

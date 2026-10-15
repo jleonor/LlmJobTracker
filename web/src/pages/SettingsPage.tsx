@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { LlmCheck } from '@/components/app/LlmCheck'
 import { RunTrace } from '@/components/app/RunTrace'
 import {
   ApiError,
@@ -49,6 +50,7 @@ export function SettingsPage({ settings, onSettingsChanged, queue }: Props) {
     <div className="flex max-w-3xl flex-col gap-6">
       <h1 className="text-xl font-semibold">Settings</h1>
       <BackendSection settings={settings} onSaved={onSettingsChanged} />
+      <LlmCheck />
       <AuthSection />
       {BACKENDS.map((backend) => (
         <PriceSection key={backend} backend={backend} queue={queue} settings={settings} onSaved={onSettingsChanged} />

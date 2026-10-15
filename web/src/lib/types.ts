@@ -134,6 +134,7 @@ export type RunResult = {
   error: string | null
   duration_ms: number
   cost_usd: number | null
+  model: string | null
 }
 
 // The sidebar's display name, read from and saved to /settings.
