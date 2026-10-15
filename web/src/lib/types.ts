@@ -155,6 +155,19 @@ export type Settings = {
   codex_model: string
 }
 
+// "Open LLM app" (D-202, D-210): which backend's desktop app was launched, and where the
+// export it was pointed at lives.
+export type LlmAppOpened = {
+  backend: Backend
+  bundle_path: string
+}
+
+// Whether a backend's desktop app is installed (D-210), mirroring AuthStatus's shape (D-203).
+export type LlmAppStatus = {
+  installed: boolean
+  detail: string
+}
+
 // One stored price row (D-198).
 export type ModelPrice = {
   provider: Backend

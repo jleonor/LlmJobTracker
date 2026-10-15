@@ -2,12 +2,13 @@
 
 import secrets
 import sqlite3
+import webbrowser
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from sqlite3 import Connection
 from typing import Annotated, Final
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse
@@ -28,6 +29,7 @@ from llmjobtracker.claude_jobs import (
 from llmjobtracker.codex_runner import CodexRunner
 from llmjobtracker.codex_runner import auth_status as codex_auth_status
 from llmjobtracker.codex_runner import logout as codex_logout
+from llmjobtracker.export_llm_bundle import LlmAppStatus, export_llm_bundle, llm_app_status
 from llmjobtracker.file_preview import UnsupportedPreview, preview_for
 from llmjobtracker.job_applications import (
     InvalidRoleTitle,
@@ -143,6 +145,20 @@ CHECK_PROMPT = "Reply with the single word OK."
 
 TOKEN_HEADER = "X-Launch-Token"
 
+# "Open LLM app" (D-202, D-210): the deep link each backend's desktop app answers to, confirmed
+# live against both apps - q/prompt prefills the composer (never auto-sent), folder/path roots
+# the new session at the exported bundle (the user still confirms that folder once, per app).
+LLM_APP_DEEP_LINKS: Final[dict[str, str]] = {
+    "claude_code": "claude://code/new?q={prompt}&folder={path}",
+    "codex": "codex://new?prompt={prompt}&path={path}",
+}
+# Kept short deliberately (D-202's 14,000-character q limit) - the actual context lives in the
+# exported files, not the URL.
+LLM_APP_PROMPT = (
+    "I've exported my job tracker data into this folder. Please read seed.md first, then "
+    "help me think through my applications."
+)
+
 # The content type the browser is told for each file_preview.Preview.kind (D-107). The frontend
 # picks how to render a preview from this header, not from the file's own extension.
 PREVIEW_MEDIA_TYPES: Final[dict[str, str]] = {
@@ -181,6 +197,11 @@ class ModelPriceRename(BaseModel):
 
 class PricingUrlEdit(BaseModel):
     pricing_url: str | None = None
+
+
+class LlmAppOpened(BaseModel):
+    backend: str
+    bundle_path: str
 
 
 class ListingUrlRequest(BaseModel):
@@ -1204,6 +1225,33 @@ def create_app(
         if active is None:
             raise HTTPException(status_code=400, detail="Codex is not installed.")
         return active.run(CHECK_PROMPT)
+
+    @app.get(
+        "/llm-app/status",
+        response_model=dict[str, LlmAppStatus],
+        dependencies=[Depends(require_token)],
+    )
+    def llm_app_status_route() -> dict[str, LlmAppStatus]:
+        """Whether each backend's desktop app is installed (D-210) - checked fresh each call,
+        the same way auth-status checks each backend's CLI fresh rather than caching it."""
+        return llm_app_status()
+
+    @app.post("/llm-app/open", response_model=LlmAppOpened, dependencies=[Depends(require_token)])
+    def open_llm_app(conn: Annotated[Connection, Depends(get_db)]) -> LlmAppOpened:
+        """Rebuilds the full-data export and launches it in whichever desktop app the
+        selected backend (D-195) points at (D-202, D-210)."""
+        backend = get_settings(conn).backend
+        if not llm_app_status()[backend].installed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="That backend's desktop app does not appear to be installed.",
+            )
+        bundle_root = export_llm_bundle(conn, db_path.parent)
+        link = LLM_APP_DEEP_LINKS[backend].format(
+            prompt=quote(LLM_APP_PROMPT), path=quote(str(bundle_root))
+        )
+        webbrowser.open(link)
+        return LlmAppOpened(backend=backend, bundle_path=str(bundle_root))
 
     @app.get("/claude-jobs", response_model=list[ClaudeJob], dependencies=[Depends(require_token)])
     def claude_jobs(conn: Annotated[Connection, Depends(get_db)]) -> list[ClaudeJob]:

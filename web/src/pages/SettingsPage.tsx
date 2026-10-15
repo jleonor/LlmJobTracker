@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -11,11 +12,14 @@ import {
   ApiError,
   deleteModelPrice,
   fetchAuthStatus,
+  fetchJobApplications,
+  fetchLlmAppStatus,
   fetchModelPrices,
   fetchPricesFromProvider,
   fetchPricesResult,
   fetchPricingUrls,
   logoutBackend,
+  openLlmApp,
   renameModelPrice,
   saveBackendSettings,
   saveModelPrice,
@@ -23,9 +27,23 @@ import {
   savePricingUrl,
 } from '@/lib/api'
 import type { QueueState } from '@/lib/useClaudeJobs'
-import type { AuthStatus, Backend, ModelPrice, ParsedModelPrice, RetryPolicy, Settings } from '@/lib/types'
+import type {
+  AuthStatus,
+  Backend,
+  LlmAppStatus,
+  ModelPrice,
+  ParsedModelPrice,
+  RetryPolicy,
+  Settings,
+} from '@/lib/types'
 
 const BACKEND_LABELS: Record<Backend, string> = { claude_code: 'Claude Code', codex: 'Codex' }
+// "Open LLM app" (D-202, D-210) launches the desktop *app*, not the reasoning-task CLI the
+// same setting otherwise names - "Claude Code" there would wrongly suggest the CLI.
+const LLM_APP_LABELS: Record<Backend, string> = {
+  claude_code: 'Claude Desktop',
+  codex: 'the ChatGPT desktop app',
+}
 const BACKENDS: Backend[] = ['claude_code', 'codex']
 const RETRY_POLICY_LABELS: Record<RetryPolicy, string> = {
   reset_time: 'Auto-resume at the reported reset time',
@@ -50,6 +68,7 @@ export function SettingsPage({ settings, onSettingsChanged, queue }: Props) {
     <div className="flex max-w-3xl flex-col gap-6">
       <h1 className="text-xl font-semibold">Settings</h1>
       <BackendSection settings={settings} onSaved={onSettingsChanged} />
+      <OpenLlmAppSection settings={settings} />
       <LlmCheck />
       <AuthSection />
       {BACKENDS.map((backend) => (
@@ -179,6 +198,139 @@ function BackendSection({ settings, onSaved }: { settings: Settings; onSaved: ()
           Save
         </Button>
       </div>
+    </section>
+  )
+}
+
+// --- Open LLM app (D-202, D-210) ----------------------------------------------------------------
+
+function OpenLlmAppSection({ settings }: { settings: Settings }) {
+  const [installStatus, setInstallStatus] = useState<Record<Backend, LlmAppStatus> | null>(null)
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [appCount, setAppCount] = useState<number | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [opened, setOpened] = useState<string | null>(null)
+
+  function reloadInstallStatus() {
+    fetchLlmAppStatus()
+      .then((result) => {
+        setInstallStatus(result)
+        setStatusError(null)
+      })
+      .catch((failure: unknown) => {
+        setStatusError(
+          failure instanceof ApiError ? failure.message : 'Could not check installed apps.',
+        )
+      })
+  }
+
+  useEffect(reloadInstallStatus, [])
+
+  // Optimistic until the check actually says otherwise - matches the backend's own "can't
+  // check, so assume available" default rather than disabling the button on a slow load.
+  const installed = installStatus ? installStatus[settings.backend].installed : true
+
+  function openConfirm() {
+    setError(null)
+    setOpened(null)
+    setConfirmOpen(true)
+    fetchJobApplications()
+      .then((apps) => setAppCount(apps.length))
+      .catch(() => setAppCount(null))
+  }
+
+  async function confirmAndOpen() {
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await openLlmApp()
+      setOpened(result.bundle_path)
+      setConfirmOpen(false)
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'Could not open the LLM app.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby="open-llm-app-heading"
+      className="flex flex-col gap-3 rounded border border-border bg-card p-4"
+    >
+      <div className="flex items-center justify-between">
+        <h2 id="open-llm-app-heading" className="text-sm font-semibold">
+          Open LLM app
+        </h2>
+        <Button variant="ghost" size="sm" onClick={reloadInstallStatus}>
+          Refresh
+        </Button>
+      </div>
+      {statusError && <p className="text-sm text-destructive">{statusError}</p>}
+      <div className="flex flex-col gap-2">
+        {BACKENDS.map((backend) => (
+          <div key={backend} className="flex items-center gap-2">
+            <span className="text-sm font-medium">{LLM_APP_LABELS[backend]}</span>
+            {installStatus ? (
+              <>
+                <Badge variant={installStatus[backend].installed ? 'secondary' : 'destructive'}>
+                  {installStatus[backend].installed ? 'Installed' : 'Not installed'}
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {installStatus[backend].detail}
+                </span>
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground">Checking...</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between gap-4 border-t border-border pt-3">
+        <p className="text-xs text-muted-foreground">
+          Exports a read-only copy of every job application, your profile documents, and a
+          database snapshot, then opens it in {LLM_APP_LABELS[settings.backend]}.
+        </p>
+        <Button
+          disabled={!installed}
+          title={installed ? undefined : `${LLM_APP_LABELS[settings.backend]} is not installed.`}
+          onClick={openConfirm}
+        >
+          Open LLM app
+        </Button>
+      </div>
+      {opened && (
+        <p className="text-xs text-muted-foreground">
+          Exported to <span className="font-mono">{opened}</span> and opened in{' '}
+          {LLM_APP_LABELS[settings.backend]}.
+        </p>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Open LLM app?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {appCount === null ? 'Every' : appCount} job application
+            {appCount === 1 ? '' : 's'} and their files, your profile documents, and a database
+            snapshot will be exported and opened in {LLM_APP_LABELS[settings.backend]}. Nothing
+            you do there changes the live tracker.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button disabled={busy || !installed} onClick={() => void confirmAndOpen()}>
+              {busy ? 'Opening...' : 'Open'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

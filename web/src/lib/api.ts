@@ -12,6 +12,8 @@ import type {
   JobApplicationFile,
   JobIdentityAnswer,
   ListingExtraction,
+  LlmAppOpened,
+  LlmAppStatus,
   ModelPrice,
   ParsedModelPrice,
   ProfileFile,
@@ -435,6 +437,18 @@ export function generateInterviewPrep(id: number): Promise<ClaudeJob> {
 // Checks whichever backend and model are currently selected (D-195, D-206).
 export function runLlmCheck(): Promise<RunResult> {
   return request<RunResult>('/api/runs/check', { method: 'POST' })
+}
+
+// "Open LLM app" (D-202, D-210): rebuilds the full-data export and launches it in whichever
+// desktop app the selected backend (D-195) points at.
+export function openLlmApp(): Promise<LlmAppOpened> {
+  return request<LlmAppOpened>('/api/llm-app/open', { method: 'POST' })
+}
+
+// Whether each backend's desktop app is installed (D-210) - checked fresh each call, so the
+// button can be disabled for whichever one isn't.
+export function fetchLlmAppStatus(): Promise<Record<Backend, LlmAppStatus>> {
+  return request<Record<Backend, LlmAppStatus>>('/api/llm-app/status')
 }
 
 export function fetchSettings(): Promise<Settings> {
