@@ -52,6 +52,7 @@ from llmjobtracker.job_files import (
     DuplicateListingMatch,
     JobApplicationFile,
     JobFileUploadError,
+    delete_job_file,
     find_duplicate_listing,
     insert_job_file,
     listing_text_sha256,
@@ -62,6 +63,7 @@ from llmjobtracker.job_pipeline import (
     ADD_JOB_WORKFLOWS,
     JobIdentityAnswer,
     JobStepNotReady,
+    clear_match_score,
     clear_positioning,
     parse_identity_answer,
     queue_add_job_chain,
@@ -836,6 +838,23 @@ def create_app(
             else preview.content.encode("utf-8")
         )
         return Response(content=content, media_type=PREVIEW_MEDIA_TYPES[preview.kind])
+
+    @app.delete(
+        "/job-applications/{application_id}/files/{file_id}",
+        dependencies=[Depends(require_token)],
+    )
+    def remove_job_file(
+        application_id: int, file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> None:
+        try:
+            kind = delete_job_file(conn, files_root, application_id, file_id)
+        except JobFileUploadError as error:
+            raise HTTPException(status_code=error.status, detail=error.message) from error
+        if kind == "positioning_breakdown":
+            # The breakdown document is what match_score/positioning_scores were computed from
+            # (D-47) - removing just the file would otherwise leave a score with nothing to
+            # back it up (D-211).
+            clear_match_score(conn, application_id)
 
     @app.post(
         "/job-applications/{application_id}/listing/extract-url",

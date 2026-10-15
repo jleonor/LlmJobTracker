@@ -195,6 +195,29 @@ def clear_job_files_of_kind(
         (files_root / str(row["stored_path"])).unlink(missing_ok=True)
 
 
+def delete_job_file(
+    conn: sqlite3.Connection, files_root: Path, application_id: int, file_id: int
+) -> str:
+    """Remove one of a Job Application's own files: the job_files row and its copy on disk
+    (D-211) - mirrors profile_files.delete_profile_file. Checked against application_id first
+    (not just that the id exists), the same guard _job_file_or_404 (app.py) already applies to
+    every other per-file route, so one application can't reach past another's row.
+
+    Returns the removed file's kind, so a caller can react to removing a generated file the
+    same way profile file deletion does (D-95) - e.g. clearing match_score when the positioning
+    breakdown document itself is the one being removed.
+    """
+    row = conn.execute(
+        "SELECT job_application_id, stored_path, kind FROM job_files WHERE id = ?", (file_id,)
+    ).fetchone()
+    if row is None or row["job_application_id"] != application_id:
+        raise JobFileUploadError(404, "No such file.")
+    with conn:
+        conn.execute("DELETE FROM job_files WHERE id = ?", (file_id,))
+    (files_root / str(row["stored_path"])).unlink(missing_ok=True)
+    return str(row["kind"])
+
+
 def job_file_text(conn: sqlite3.Connection, file_id: int) -> JobFileText | None:
     """The extracted text for one of a Job Application's own files (D-122), for a later prompt
     to read as context (job-llm-steps.md) — mirrors profile_files.profile_file_text."""

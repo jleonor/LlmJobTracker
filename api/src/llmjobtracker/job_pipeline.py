@@ -1823,6 +1823,20 @@ def _store_positioning_result(
     )
 
 
+def clear_match_score(conn: sqlite3.Connection, application_id: int) -> None:
+    """Clears match_score and positioning_scores only - D-47's two fields with no Edit form
+    field of their own, meaningless without the breakdown document they were computed for.
+    Used on its own when just the breakdown file is removed (D-211), and as part of
+    clear_positioning's fuller reset below (D-208).
+    """
+    with conn:
+        conn.execute(
+            "UPDATE job_applications SET match_score = NULL, positioning_scores = '[]' "
+            "WHERE id = ?",
+            (application_id,),
+        )
+
+
 def clear_positioning(
     conn: sqlite3.Connection, files_root: Path, application_id: int
 ) -> JobApplicationDetail | None:
@@ -1839,12 +1853,7 @@ def clear_positioning(
         application_id,
         {"fit": [], "gaps": [], "strategy": None, "unclear": []},
     )
-    with conn:
-        conn.execute(
-            "UPDATE job_applications SET match_score = NULL, positioning_scores = '[]' "
-            "WHERE id = ?",
-            (application_id,),
-        )
+    clear_match_score(conn, application_id)
     clear_job_files_of_kind(conn, files_root, application_id, "positioning_breakdown")
     return get_job_application_detail(conn, application_id)
 

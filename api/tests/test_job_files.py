@@ -5,6 +5,8 @@ import pytest
 
 from llmjobtracker.job_applications import insert_job_application
 from llmjobtracker.job_files import (
+    JobFileUploadError,
+    delete_job_file,
     find_duplicate_listing,
     insert_job_file,
     list_job_files,
@@ -58,6 +60,61 @@ def test_insert_and_list_job_files(db_path: Path) -> None:
     assert [f["kind"] for f in files] == ["listing", "eml"]
     assert files[1]["date"] == "2026-10-01T12:03:00Z"
     assert files[0]["date"] is None
+
+
+def test_delete_job_file_removes_the_row_and_the_copy_on_disk(
+    db_path: Path, tmp_path: Path
+) -> None:
+    conn = connect(db_path)
+    try:
+        migrate(conn)
+        app_id = insert_job_application(conn, {"company": "Co", "role_title": "Analyst"})
+        files_root = tmp_path / "files"
+        folder = managed_folder(files_root, "Co", "Analyst")
+        folder.mkdir(parents=True)
+        (folder / "notes.txt").write_text("x", encoding="utf-8")
+        file_id = insert_job_file(
+            conn, app_id, kind="other", name="notes.txt", stored_path="Co/Analyst/notes.txt"
+        )
+        conn.commit()
+
+        kind = delete_job_file(conn, files_root, app_id, file_id)
+
+        assert kind == "other"
+        assert list_job_files(conn, app_id) == []
+        assert not (folder / "notes.txt").exists()
+    finally:
+        conn.close()
+
+
+def test_delete_job_file_rejects_an_unknown_id(db_path: Path, tmp_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        migrate(conn)
+        app_id = insert_job_application(conn, {"company": "Co", "role_title": "Analyst"})
+        with pytest.raises(JobFileUploadError):
+            delete_job_file(conn, tmp_path / "files", app_id, 999999)
+    finally:
+        conn.close()
+
+
+def test_delete_job_file_rejects_a_file_from_a_different_application(
+    db_path: Path, tmp_path: Path
+) -> None:
+    conn = connect(db_path)
+    try:
+        migrate(conn)
+        app_id = insert_job_application(conn, {"company": "Co", "role_title": "Analyst"})
+        other_id = insert_job_application(conn, {"company": "Other", "role_title": "Role"})
+        file_id = insert_job_file(
+            conn, app_id, kind="other", name="notes.txt", stored_path="Co/Analyst/notes.txt"
+        )
+        conn.commit()
+
+        with pytest.raises(JobFileUploadError):
+            delete_job_file(conn, tmp_path / "files", other_id, file_id)
+    finally:
+        conn.close()
 
 
 def test_job_file_rejects_an_unknown_kind(db_path: Path) -> None:

@@ -215,6 +215,22 @@ export function downloadJobFile(applicationId: number, fileId: number, name: str
   return downloadFile(`/api/job-applications/${applicationId}/files/${fileId}/download`, name)
 }
 
+// Removes one of a Job Application's own files: the row and its copy on disk (D-211), the same
+// way deleteProfileFile does.
+export async function deleteJobFile(applicationId: number, fileId: number): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`/api/job-applications/${applicationId}/files/${fileId}`, {
+      method: 'DELETE',
+    })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+}
+
 // Reads the preview the API built for one of a Job Application's own files (D-116), the same
 // way fetchProfileFilePreview does.
 export async function fetchJobFilePreview(

@@ -25,6 +25,7 @@ import {
   ApiError,
   clearPositioning,
   deleteJobApplication,
+  deleteJobFile,
   downloadJobFile,
   fetchProfileFiles,
   fetchProfileOutputs,
@@ -2127,6 +2128,7 @@ function FileGroup({
               applicationId={applicationId}
               file={file}
               showKind={showKind}
+              onChanged={onChanged}
             />
           ))}
         </ul>
@@ -2146,10 +2148,12 @@ function JobFileRow({
   applicationId,
   file,
   showKind,
+  onChanged,
 }: {
   applicationId: number
   file: JobApplicationFile
   showKind: boolean
+  onChanged: () => void
 }) {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -2187,6 +2191,20 @@ function JobFileRow({
     } catch (failure) {
       setError(failure instanceof ApiError ? failure.message : 'The file could not be downloaded.')
     } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    const ok = window.confirm(`Remove "${file.name}"? Its copy in the app is deleted.`)
+    if (!ok) return
+    setBusy(true)
+    setError(null)
+    try {
+      await deleteJobFile(applicationId, file.id)
+      onChanged()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The file could not be removed.')
       setBusy(false)
     }
   }
@@ -2232,6 +2250,15 @@ function JobFileRow({
               <FolderOpen className="size-3.5" aria-hidden="true" />
             </Button>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            aria-label={`Remove ${file.name}`}
+            onClick={() => void remove()}
+          >
+            ×
+          </Button>
         </div>
       </div>
       {error && (

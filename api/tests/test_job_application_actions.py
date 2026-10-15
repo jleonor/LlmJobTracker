@@ -283,6 +283,111 @@ def test_preview_of_an_unknown_file_is_not_found(client: TestClient, db_path: Pa
     assert response.status_code == 404
 
 
+# --- Delete a file (D-211) --------------------------------------------------------------------
+
+
+def test_deleting_a_file_removes_the_row_and_the_copy_on_disk(
+    client: TestClient, db_path: Path
+) -> None:
+    app_id = add_application(db_path)
+    uploaded = client.post(
+        f"/job-applications/{app_id}/files/other",
+        headers={"X-File-Name": "notes.txt"},
+        content=b"Some notes.",
+    ).json()
+    stored_path = db_path.parent / "files" / "Co" / "Analyst" / "notes.txt"
+    assert stored_path.exists()
+
+    response = client.delete(f"/job-applications/{app_id}/files/{uploaded['id']}")
+
+    assert response.status_code == 200
+    assert not stored_path.exists()
+    assert client.get(f"/job-applications/{app_id}").json()["files"] == []
+
+
+def test_deleting_an_unknown_file_is_not_found(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+    response = client.delete(f"/job-applications/{app_id}/files/999999")
+    assert response.status_code == 404
+
+
+def test_deleting_a_file_scoped_to_a_different_application_is_not_found(
+    client: TestClient, db_path: Path
+) -> None:
+    app_id = add_application(db_path)
+    other_app_id = add_application(db_path, company="Other Co", role_title="Other Role")
+    uploaded = client.post(
+        f"/job-applications/{app_id}/files/other",
+        headers={"X-File-Name": "notes.txt"},
+        content=b"Some notes.",
+    ).json()
+
+    response = client.delete(f"/job-applications/{other_app_id}/files/{uploaded['id']}")
+
+    assert response.status_code == 404
+    assert client.get(f"/job-applications/{app_id}").json()["files"] != []
+
+
+def test_deleting_the_positioning_breakdown_also_clears_the_match_score(
+    client: TestClient, db_path: Path
+) -> None:
+    app_id = add_application(db_path)
+    conn = connect(db_path)
+    try:
+        folder = db_path.parent / "files" / "Co" / "Analyst"
+        folder.mkdir(parents=True)
+        (folder / "Positioning breakdown.md").write_text("breakdown", encoding="utf-8")
+        insert_job_file(
+            conn,
+            app_id,
+            kind="positioning_breakdown",
+            name="Positioning breakdown.md",
+            stored_path="Co/Analyst/Positioning breakdown.md",
+        )
+        conn.execute(
+            "UPDATE job_applications SET match_score = 81.0, positioning_scores = '[]' "
+            "WHERE id = ?",
+            (app_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    file_id = client.get(f"/job-applications/{app_id}").json()["files"][0]["id"]
+
+    response = client.delete(f"/job-applications/{app_id}/files/{file_id}")
+
+    assert response.status_code == 200
+    detail = client.get(f"/job-applications/{app_id}").json()
+    assert detail["match_score"] is None
+    assert detail["files"] == []
+
+
+def test_deleting_a_non_breakdown_file_leaves_the_match_score_alone(
+    client: TestClient, db_path: Path
+) -> None:
+    app_id = add_application(db_path)
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE job_applications SET match_score = 81.0, positioning_scores = '[]' "
+            "WHERE id = ?",
+            (app_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    uploaded = client.post(
+        f"/job-applications/{app_id}/files/other",
+        headers={"X-File-Name": "notes.txt"},
+        content=b"Some notes.",
+    ).json()
+
+    response = client.delete(f"/job-applications/{app_id}/files/{uploaded['id']}")
+
+    assert response.status_code == 200
+    assert client.get(f"/job-applications/{app_id}").json()["match_score"] == 81.0
+
+
 # --- Edit ------------------------------------------------------------------------------------
 
 
