@@ -49,11 +49,16 @@ from llmjobtracker.job_files import (
     write_generated_job_file,
 )
 from llmjobtracker.lane_pipeline import (
+    JOB_KIND_ASSIGN_LANE,
     JOB_KIND_EXTRACT_LANES,
+    build_assign_lane_prompt,
     build_extract_lanes_prompt,
+    lanes_block,
+    store_assign_lane_result,
     store_extract_lanes_result,
+    validate_lane_name,
 )
-from llmjobtracker.lanes import lane_names, list_lanes
+from llmjobtracker.lanes import lane_names
 from llmjobtracker.migrations import CONTRACT_TYPES, WORK_MODES
 from llmjobtracker.profile_files import profile_file_path, profile_file_text
 from llmjobtracker.profile_pipeline import (
@@ -595,13 +600,6 @@ def _existing_locations_block(conn: sqlite3.Connection) -> str:
     return "\n".join(f"- {row[0]}" for row in rows)
 
 
-def _lanes_block(conn: sqlite3.Connection) -> str:
-    lanes = list_lanes(conn)
-    if not lanes:
-        return "(none approved yet)"
-    return "\n".join(f"- {lane.name}: {lane.description or '(no description)'}" for lane in lanes)
-
-
 def build_identity_prompt(conn: sqlite3.Connection, text: str) -> str:
     """Add Job's identity step (Agent/specs/intake-steps.md): built in full here, like
     check/generate above, since its primary input is the same one-shot reviewed text, not a
@@ -611,7 +609,7 @@ def build_identity_prompt(conn: sqlite3.Connection, text: str) -> str:
     documents at all (D-120's gates only start requiring them from Positioning analysis onward),
     so this step must still work with an empty catalog, just with no lane to suggest."""
     return _IDENTITY_PROMPT.format(
-        text=text, lanes=_lanes_block(conn), existing_locations=_existing_locations_block(conn)
+        text=text, lanes=lanes_block(conn), existing_locations=_existing_locations_block(conn)
     )
 
 
@@ -1309,20 +1307,6 @@ def _none_if_unknown(value: str) -> str | None:
     return None if not cleaned or cleaned.casefold() == "unknown" else cleaned
 
 
-def _validated_lane(value: str, approved_names: list[str]) -> str | None:
-    """A LANE answer must match one of the approved catalog's names, case-insensitively, or it is
-    treated the same as Unknown (Agent/specs/lane-steps.md §2, D-215) - a near-miss or
-    hallucinated name is never written as if it were approved. Matching resolves to the catalog's
-    own stored casing, not whatever casing the model happened to answer with."""
-    cleaned = value.strip()
-    if not cleaned or cleaned.casefold() == "unknown":
-        return None
-    for name in approved_names:
-        if name.casefold() == cleaned.casefold():
-            return name
-    return None
-
-
 def parse_identity_answer(conn: sqlite3.Connection, text: str) -> JobIdentityAnswer:
     """Fails closed only on company/role title - the two fields a row cannot exist without. Every
     other field falls back to None (shown to the user as unset, not as the literal word
@@ -1338,7 +1322,7 @@ def parse_identity_answer(conn: sqlite3.Connection, text: str) -> JobIdentityAns
     return JobIdentityAnswer(
         company=company,
         role_title=role_title,
-        lane=_validated_lane(_block_text(_LANE_BLOCK, text), lane_names(conn)),
+        lane=validate_lane_name(_block_text(_LANE_BLOCK, text), lane_names(conn)),
         location=_none_if_unknown(_block_text(_LOCATION_BLOCK, text)),
         portal_name=_none_if_unknown(_block_text(_PORTAL_NAME_BLOCK, text)),
         portal_url=_none_if_unknown(_block_text(_PORTAL_URL_BLOCK, text)),
@@ -2026,6 +2010,9 @@ def make_pipeline(
             return RenderedPrompt(text=build_interview_prep_prompt(conn, application_id))
         if prompt.prompt_kind == JOB_KIND_EXTRACT_LANES:
             return RenderedPrompt(text=build_extract_lanes_prompt(conn))
+        if prompt.prompt_kind == JOB_KIND_ASSIGN_LANE:
+            application_id = _application_id_for(conn, prompt.claude_job_id)
+            return RenderedPrompt(text=build_assign_lane_prompt(conn, application_id))
         return revise_render(conn, prompt)
 
     def on_result(conn: sqlite3.Connection, prompt: PromptRow, result: RunResult) -> None:
@@ -2072,6 +2059,10 @@ def make_pipeline(
             return
         if prompt.prompt_kind == JOB_KIND_EXTRACT_LANES:
             store_extract_lanes_result(conn, result.text)
+            return
+        if prompt.prompt_kind == JOB_KIND_ASSIGN_LANE:
+            application_id = _application_id_for(conn, prompt.claude_job_id)
+            store_assign_lane_result(conn, application_id, result.text)
             return
         # JOB_KIND_CHECK and JOB_KIND_IDENTITY have nothing to store (D-146, intake-steps.md: the
         # identity answer is read back and parsed on demand, since the row it belongs to may not

@@ -96,7 +96,12 @@ from llmjobtracker.job_revise_turns import (
 from llmjobtracker.job_revise_turns import (
     turn_for_job as job_revise_turn_for_job,
 )
-from llmjobtracker.lane_pipeline import LaneSyncNotReady, submit_extract_lanes
+from llmjobtracker.lane_pipeline import (
+    LaneAssignmentNotReady,
+    LaneSyncNotReady,
+    submit_assign_job_lane,
+    submit_extract_lanes,
+)
 from llmjobtracker.lanes import Lane, LaneEdit, create_lane, delete_lane, list_lanes, update_lane
 from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.listing_intake import (
@@ -222,6 +227,11 @@ class LaneCreate(BaseModel):
     name: str
     description: str | None = None
     reasoning: str | None = None
+
+
+class LaneReassignmentSummary(BaseModel):
+    queued: int
+    skipped: int
 
 
 class ListingUrlRequest(BaseModel):
@@ -1522,6 +1532,25 @@ def create_app(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
             ) from error
         return _job_or_404(conn, job_id)
+
+    @app.post(
+        "/lanes/reassign-all",
+        response_model=LaneReassignmentSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def reassign_all_lanes(conn: Annotated[Connection, Depends(get_db)]) -> LaneReassignmentSummary:
+        """The one-off reassignment pass (D-217): queues assign_job_lane for every application
+        with a listing file, skipping (and counting) any that don't have one yet. Not exposed in
+        any UI - triggered once this phase via this route directly, not a reusable button."""
+        queued = 0
+        skipped = 0
+        for application in list_job_applications(conn):
+            try:
+                submit_assign_job_lane(conn, queue, application.id)
+                queued += 1
+            except LaneAssignmentNotReady:
+                skipped += 1
+        return LaneReassignmentSummary(queued=queued, skipped=skipped)
 
     @app.get(
         "/profile/revise/{output_kind}/turns",

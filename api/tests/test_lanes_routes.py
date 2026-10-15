@@ -7,6 +7,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from llmjobtracker.app import TOKEN_HEADER, create_app
+from llmjobtracker.job_applications import insert_job_application
+from llmjobtracker.job_files import insert_job_file
 from llmjobtracker.runner import FakeRunner
 from llmjobtracker.storage import connect
 
@@ -24,6 +26,25 @@ def write_strategy(db_path: Path, text: str = "Lead with data work.") -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def add_application(db_path: Path, *, with_listing: bool) -> int:
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(conn, {"company": "Acme Inc", "role_title": "Analyst"})
+        if with_listing:
+            insert_job_file(
+                conn,
+                app_id,
+                kind="listing",
+                name="Job Listing.md",
+                stored_path=f"Acme Inc/Analyst {app_id}/Job Listing.md",
+                extracted_text="Senior Data Analyst, must know SQL.",
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return app_id
 
 
 def test_lanes_start_empty(client: TestClient) -> None:
@@ -97,3 +118,19 @@ def test_sync_route_replaces_the_stored_lanes(db_path: Path) -> None:
         response = client.post("/lanes/sync")
         assert response.status_code == 201
         assert response.json()["kind"] == "extract_lanes"
+
+
+def test_reassign_all_route_skips_applications_with_no_listing(client: TestClient) -> None:
+    assert client.post("/lanes/reassign-all").json() == {"queued": 0, "skipped": 0}
+
+
+def test_reassign_all_route_counts_queued_and_skipped(db_path: Path) -> None:
+    add_application(db_path, with_listing=True)
+    add_application(db_path, with_listing=True)
+    add_application(db_path, with_listing=False)
+
+    with TestClient(create_app(TOKEN, db_path, FakeRunner(text="OK"))) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        response = client.post("/lanes/reassign-all")
+        assert response.status_code == 200
+        assert response.json() == {"queued": 2, "skipped": 1}

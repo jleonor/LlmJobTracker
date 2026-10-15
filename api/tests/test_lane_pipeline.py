@@ -1,6 +1,6 @@
-"""Tests for extract_lanes (Agent/specs/lane-steps.md §1, D-214): the Lanes section's "Sync from
-strategy" action, which regenerates the approved lane catalog from the positioning strategy
-document.
+"""Tests for the lane Claude Jobs (Agent/specs/lane-steps.md, D-214): extract_lanes, the Lanes
+section's "Sync from strategy" action, and assign_job_lane, the per-application step behind the
+one-off reassignment pass (D-217).
 """
 
 from pathlib import Path
@@ -9,12 +9,18 @@ import pytest
 
 from llmjobtracker.claude_job_queue import ClaudeJobQueue, PromptRejected
 from llmjobtracker.claude_jobs import get_claude_job
+from llmjobtracker.job_applications import insert_job_application
+from llmjobtracker.job_files import insert_job_file
 from llmjobtracker.job_pipeline import make_pipeline
 from llmjobtracker.lane_pipeline import (
+    JOB_KIND_ASSIGN_LANE,
     JOB_KIND_EXTRACT_LANES,
+    LaneAssignmentNotReady,
     LaneSyncNotReady,
+    build_assign_lane_prompt,
     build_extract_lanes_prompt,
     parse_lanes_answer,
+    submit_assign_job_lane,
     submit_extract_lanes,
 )
 from llmjobtracker.lanes import create_lane, list_lanes
@@ -176,3 +182,156 @@ def test_extract_lanes_job_with_no_lane_blocks_leaves_existing_lanes_untouched(
     finally:
         conn.close()
     assert [lane.name for lane in lanes] == ["Existing Lane"]
+
+
+# --- assign_job_lane (D-217's one-off reassignment pass) ---------------------------------------
+
+
+def add_application_with_listing(db_path: Path, listing_text: str) -> int:
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(conn, {"company": "Acme Inc", "role_title": "Analyst"})
+        insert_job_file(
+            conn,
+            app_id,
+            kind="listing",
+            name="Job Listing.md",
+            stored_path="Acme Inc/Analyst/Job Listing.md",
+            extracted_text=listing_text,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return app_id
+
+
+def test_build_assign_lane_prompt_includes_the_listing_and_catalog(db_path: Path) -> None:
+    app_id = add_application_with_listing(db_path, "Senior Data Analyst, must know SQL.")
+    conn = connect(db_path)
+    try:
+        create_lane(conn, "Data Analytics", "Reporting roles.", None)
+        conn.commit()
+        prompt = build_assign_lane_prompt(conn, app_id)
+    finally:
+        conn.close()
+    assert "TASK: assign_job_lane" in prompt
+    assert "Senior Data Analyst, must know SQL." in prompt
+    assert "Data Analytics: Reporting roles." in prompt
+
+
+def test_build_assign_lane_prompt_rejects_a_listing_with_no_text(db_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(conn, {"company": "Acme Inc", "role_title": "Analyst"})
+        insert_job_file(
+            conn,
+            app_id,
+            kind="listing",
+            name="Job Listing.md",
+            stored_path="Acme Inc/Analyst/Job Listing.md",
+            extracted_text=None,
+        )
+        conn.commit()
+        with pytest.raises(PromptRejected, match="no readable text"):
+            build_assign_lane_prompt(conn, app_id)
+    finally:
+        conn.close()
+
+
+def test_submit_assign_job_lane_requires_a_listing_file(db_path: Path) -> None:
+    queue = make_queue(db_path, FakeRunner(text="unused"))
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(conn, {"company": "Acme Inc", "role_title": "Analyst"})
+        conn.commit()
+        with pytest.raises(LaneAssignmentNotReady):
+            submit_assign_job_lane(conn, queue, app_id)
+    finally:
+        conn.close()
+
+
+def test_assign_job_lane_job_writes_the_matched_lane(db_path: Path) -> None:
+    app_id = add_application_with_listing(db_path, "Senior Data Analyst, must know SQL.")
+    conn = connect(db_path)
+    try:
+        create_lane(conn, "Data Analytics", None, None)
+        create_lane(conn, "Product Analytics", None, None)
+        conn.commit()
+    finally:
+        conn.close()
+
+    runner = FakeRunner(text="=== LANE ===\nData Analytics\n=== END LANE ===")
+    queue = make_queue(db_path, runner)
+    conn = connect(db_path)
+    try:
+        job_id = submit_assign_job_lane(conn, queue, app_id)
+    finally:
+        conn.close()
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+        assert job is not None
+        assert job.status == "done"
+        assert job.prompts[0].prompt_kind == JOB_KIND_ASSIGN_LANE
+        row = conn.execute("SELECT lane FROM job_applications WHERE id = ?", (app_id,)).fetchone()
+    finally:
+        conn.close()
+    assert row["lane"] == "Data Analytics"
+
+
+def test_assign_job_lane_job_matches_case_insensitively_to_the_catalogs_own_casing(
+    db_path: Path,
+) -> None:
+    app_id = add_application_with_listing(db_path, "Senior Data Analyst, must know SQL.")
+    conn = connect(db_path)
+    try:
+        create_lane(conn, "Data Analytics", None, None)
+        conn.commit()
+    finally:
+        conn.close()
+
+    runner = FakeRunner(text="=== LANE ===\ndata analytics\n=== END LANE ===")
+    queue = make_queue(db_path, runner)
+    conn = connect(db_path)
+    try:
+        job_id = submit_assign_job_lane(conn, queue, app_id)
+    finally:
+        conn.close()
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        assert get_claude_job(conn, job_id).status == "done"  # type: ignore[union-attr]
+        row = conn.execute("SELECT lane FROM job_applications WHERE id = ?", (app_id,)).fetchone()
+    finally:
+        conn.close()
+    assert row["lane"] == "Data Analytics"
+
+
+def test_assign_job_lane_job_clears_lane_for_an_unmatched_answer(db_path: Path) -> None:
+    app_id = add_application_with_listing(db_path, "Senior Data Analyst, must know SQL.")
+    conn = connect(db_path)
+    try:
+        create_lane(conn, "Product Analytics", None, None)
+        conn.commit()
+    finally:
+        conn.close()
+
+    runner = FakeRunner(text="=== LANE ===\nUnknown\n=== END LANE ===")
+    queue = make_queue(db_path, runner)
+    conn = connect(db_path)
+    try:
+        job_id = submit_assign_job_lane(conn, queue, app_id)
+    finally:
+        conn.close()
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        assert get_claude_job(conn, job_id).status == "done"  # type: ignore[union-attr]
+        row = conn.execute("SELECT lane FROM job_applications WHERE id = ?", (app_id,)).fetchone()
+    finally:
+        conn.close()
+    assert row["lane"] is None
