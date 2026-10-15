@@ -1558,6 +1558,31 @@ def create_app(
                 skipped += 1
         return LaneReassignmentSummary(queued=queued, skipped=skipped)
 
+    def _rescore_candidates(conn: Connection) -> tuple[list[JobApplication], int]:
+        """Every application meeting positioning_ready, plus a count of the rest - shared by the
+        preview (GET) and the actual run (POST) below, so the dialog's preview count can never
+        drift from what running it actually does."""
+        ready: list[JobApplication] = []
+        skipped = 0
+        for application in list_job_applications(conn):
+            if positioning_ready(conn, application.id):
+                ready.append(application)
+            else:
+                skipped += 1
+        return ready, skipped
+
+    @app.get(
+        "/positioning/rescore-all",
+        response_model=PositioningRescoreSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def preview_rescore_all_positioning(
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> PositioningRescoreSummary:
+        """The confirm dialog's preview count (D-218) - read-only, changes nothing."""
+        ready, skipped = _rescore_candidates(conn)
+        return PositioningRescoreSummary(queued=len(ready), skipped=skipped)
+
     @app.post(
         "/positioning/rescore-all",
         response_model=PositioningRescoreSummary,
@@ -1571,16 +1596,11 @@ def create_app(
         backend is currently selected (D-195/D-206). Applications failing the gate are skipped
         and counted, not treated as an error. Reuses the existing Claude Jobs queue (D-50) - no
         new queue mechanic."""
-        queued = 0
-        skipped = 0
-        for application in list_job_applications(conn):
-            if not positioning_ready(conn, application.id):
-                skipped += 1
-                continue
+        ready, skipped = _rescore_candidates(conn)
+        for application in ready:
             clear_positioning(conn, files_root, application.id)
             submit_generate_positioning(conn, queue, application.id)
-            queued += 1
-        return PositioningRescoreSummary(queued=queued, skipped=skipped)
+        return PositioningRescoreSummary(queued=len(ready), skipped=skipped)
 
     @app.get(
         "/profile/revise/{output_kind}/turns",

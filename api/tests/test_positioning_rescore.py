@@ -1,6 +1,7 @@
-"""Tests for POST /positioning/rescore-all (D-218): the Settings "Re-score all positioning
-analyses" action - clears and requeues Positioning analysis for every application that meets
-positioning_ready, skipping (and counting) the rest.
+"""Tests for /positioning/rescore-all (D-218): the Settings "Re-score all positioning analyses"
+action. GET previews the counts (read-only, for the confirm dialog); POST clears and requeues
+Positioning analysis for every application that meets positioning_ready, skipping (and counting)
+the rest.
 """
 
 from pathlib import Path
@@ -95,6 +96,22 @@ def test_rescore_all_route_clears_and_requeues_a_ready_application(db_path: Path
         positioning_jobs = [job for job in jobs if job["kind"] == "generate_positioning"]
         assert len(positioning_jobs) == 1
         assert positioning_jobs[0]["job_application_id"] == app_id
+
+
+def test_preview_route_matches_the_post_route_and_changes_nothing(db_path: Path) -> None:
+    app_id = make_positioning_ready(db_path)
+
+    with TestClient(create_app(TOKEN, db_path, FakeRunner(text="OK"))) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        preview = client.get("/positioning/rescore-all")
+        assert preview.status_code == 200
+        assert preview.json() == {"queued": 1, "skipped": 0}
+
+        # Read-only: the application's existing positioning result is still there.
+        detail = client.get(f"/job-applications/{app_id}").json()
+        assert detail["match_score"] == 42.0
+        assert detail["fit"] == ["Old fit"]
+        assert client.get("/claude-jobs").json() == []
 
 
 def test_rescore_all_route_counts_ready_and_not_ready_applications_together(

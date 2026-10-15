@@ -17,6 +17,7 @@ import type {
   LlmAppStatus,
   ModelPrice,
   ParsedModelPrice,
+  PositioningRescoreSummary,
   ProfileFile,
   ProfileFileKind,
   ProfileOutput,
@@ -470,6 +471,16 @@ export function fetchLlmAppStatus(): Promise<Record<Backend, LlmAppStatus>> {
 
 export function fetchSettings(): Promise<Settings> {
   return request<Settings>('/api/settings')
+}
+
+// Settings' "Re-score all positioning analyses" action (D-218). GET previews the counts
+// read-only, for the confirm dialog; POST runs it for real.
+export function fetchPositioningRescorePreview(): Promise<PositioningRescoreSummary> {
+  return request<PositioningRescoreSummary>('/api/positioning/rescore-all')
+}
+
+export function runPositioningRescoreAll(): Promise<PositioningRescoreSummary> {
+  return request<PositioningRescoreSummary>('/api/positioning/rescore-all', { method: 'POST' })
 }
 
 export function saveSettings(userName: string): Promise<Settings> {

@@ -227,6 +227,13 @@ export type Lane = {
   position: number
 }
 
+// Settings' "Re-score all positioning analyses" action (D-218). GET previews these counts
+// read-only; POST runs it for real and returns the same shape.
+export type PositioningRescoreSummary = {
+  queued: number
+  skipped: number
+}
+
 // The newest version of one of the three generated profile documents (D-86), as /profile/outputs
 // lists it. kind is one of PROMPT_KINDS: full_cv_history, questionnaire_analysis, strategy.
 export type ProfileOutput = {
