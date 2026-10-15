@@ -153,6 +153,8 @@ export type Settings = {
   // D-206: which model each backend uses, selected from that provider's own price table.
   claude_code_model: string
   codex_model: string
+  // D-212: where "Open LLM app" rebuilds its export. null means the default (Downloads).
+  llm_export_path: string | null
 }
 
 // "Open LLM app" (D-202, D-210): which backend's desktop app was launched, and where the

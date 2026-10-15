@@ -1,6 +1,6 @@
 """App settings: the user's display name, and Phase 7's backend/retry-policy/model choices.
 
-One row, always id 1 (migration 12, widened by migrations 23 and 26). There is nothing to
+One row, always id 1 (migration 12, widened by migrations 23, 26 and 27). There is nothing to
 create or delete, only read and save.
 """
 
@@ -32,12 +32,16 @@ class Settings(BaseModel):
     # D-206: which model each backend uses, selected from that provider's own price table.
     claude_code_model: str
     codex_model: str
+    # D-212: where "Open LLM app" rebuilds its export. None means the default (Downloads) -
+    # export_llm_bundle.llm_export_folder resolves that, not this module (D-20: this module
+    # stays plain settings storage, never knowing what the path is used for).
+    llm_export_path: str | None = None
 
 
 def get_settings(conn: sqlite3.Connection) -> Settings:
     row = conn.execute(
         "SELECT user_name, backend, retry_policy, retry_interval_minutes, retry_max_attempts, "
-        "claude_code_model, codex_model FROM settings WHERE id = 1"
+        "claude_code_model, codex_model, llm_export_path FROM settings WHERE id = 1"
     ).fetchone()
     if row is None:
         return Settings(
@@ -48,6 +52,7 @@ def get_settings(conn: sqlite3.Connection) -> Settings:
             retry_max_attempts=DEFAULT_RETRY_MAX_ATTEMPTS,
             claude_code_model=DEFAULT_CLAUDE_CODE_MODEL,
             codex_model=DEFAULT_CODEX_MODEL,
+            llm_export_path=None,
         )
     return Settings(**dict(row))
 
@@ -61,6 +66,7 @@ def save_settings(
     retry_max_attempts: int,
     claude_code_model: str,
     codex_model: str,
+    llm_export_path: str | None,
 ) -> Settings:
     name = user_name.strip() or DEFAULT_USER_NAME
     if backend not in RUNNER_BACKENDS:
@@ -77,11 +83,12 @@ def save_settings(
         raise ValueError("claude_code_model cannot be empty")
     if not codex_model:
         raise ValueError("codex_model cannot be empty")
+    cleaned_export_path = (llm_export_path or "").strip() or None
     with conn:
         conn.execute(
             "UPDATE settings SET user_name = ?, backend = ?, retry_policy = ?, "
             "retry_interval_minutes = ?, retry_max_attempts = ?, claude_code_model = ?, "
-            "codex_model = ? WHERE id = 1",
+            "codex_model = ?, llm_export_path = ? WHERE id = 1",
             (
                 name,
                 backend,
@@ -90,6 +97,7 @@ def save_settings(
                 retry_max_attempts,
                 claude_code_model,
                 codex_model,
+                cleaned_export_path,
             ),
         )
     return Settings(
@@ -100,4 +108,5 @@ def save_settings(
         retry_max_attempts=retry_max_attempts,
         claude_code_model=claude_code_model,
         codex_model=codex_model,
+        llm_export_path=cleaned_export_path,
     )

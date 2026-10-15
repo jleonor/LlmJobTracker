@@ -1,3 +1,4 @@
+import shutil
 import sqlite3
 import sys
 import winreg
@@ -8,6 +9,7 @@ import pytest
 import llmjobtracker.export_llm_bundle as export_module
 from llmjobtracker.export_llm_bundle import (
     LLM_APP_SCHEMES,
+    LlmExportBundleBusy,
     _url_scheme_registered,
     export_llm_bundle,
     llm_app_status,
@@ -27,27 +29,70 @@ def _migrated_conn(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def test_llm_export_folder_is_fixed_under_the_data_folder(tmp_path: Path) -> None:
-    assert llm_export_folder(tmp_path) == tmp_path / "llm-export"
+def _set_export_path(conn: sqlite3.Connection, path: Path) -> None:
+    """Points Settings' llm_export_path (D-212) at a tmp_path location, so tests never touch
+    the real Downloads folder the unconfigured default would otherwise resolve to."""
+    save_settings(
+        conn,
+        "YourName",
+        "claude_code",
+        "reset_time",
+        60,
+        24,
+        "claude-sonnet-5",
+        "gpt-6.1-sol",
+        str(path),
+    )
+
+
+# --- Where the export goes (D-212) --------------------------------------------------------------
+
+
+def test_llm_export_folder_defaults_to_downloads(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    assert llm_export_folder(None) == tmp_path / "Downloads" / "LlmJobTrackerExport"
+
+
+def test_llm_export_folder_defaults_when_the_configured_path_is_blank(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    assert llm_export_folder("") == tmp_path / "Downloads" / "LlmJobTrackerExport"
+
+
+def test_llm_export_folder_uses_the_configured_path_exactly(tmp_path: Path) -> None:
+    configured = tmp_path / "wherever" / "MyExport"
+    assert llm_export_folder(str(configured)) == configured
+
+
+# --- Building the bundle -------------------------------------------------------------------------
 
 
 def test_export_writes_a_seed_file_and_db_snapshot(db_path: Path) -> None:
     conn = _migrated_conn(db_path)
     try:
+        target = db_path.parent / "export-target"
+        _set_export_path(conn, target)
+
         bundle_root = export_llm_bundle(conn, db_path.parent)
 
-        assert bundle_root == db_path.parent / "llm-export"
+        assert bundle_root == target
         seed_text = (bundle_root / "seed.md").read_text(encoding="utf-8")
         assert "YourName" in seed_text
         assert "CREATE TABLE" in seed_text
+        assert "sqlite3" in seed_text
         assert (bundle_root / "tracker.db").exists()
     finally:
         conn.close()
 
 
-def test_export_copies_job_files_under_jobs_company_role(db_path: Path) -> None:
+def test_export_copies_job_files_under_files_company_role(db_path: Path) -> None:
     conn = _migrated_conn(db_path)
     try:
+        target = db_path.parent / "export-target"
+        _set_export_path(conn, target)
         app_id = insert_job_application(conn, {"company": "Co", "role_title": "Analyst"})
         folder = managed_folder(db_path.parent / "files", "Co", "Analyst")
         folder.mkdir(parents=True)
@@ -63,7 +108,7 @@ def test_export_copies_job_files_under_jobs_company_role(db_path: Path) -> None:
 
         bundle_root = export_llm_bundle(conn, db_path.parent)
 
-        exported_file = bundle_root / "jobs" / "Co" / "Analyst" / "Job Listing.md"
+        exported_file = bundle_root / "files" / "Co" / "Analyst" / "Job Listing.md"
         assert exported_file.read_text(encoding="utf-8") == "Some listing text."
         assert not exported_file.is_symlink()
     finally:
@@ -73,11 +118,13 @@ def test_export_copies_job_files_under_jobs_company_role(db_path: Path) -> None:
 def test_export_skips_a_job_with_no_files_yet(db_path: Path) -> None:
     conn = _migrated_conn(db_path)
     try:
+        target = db_path.parent / "export-target"
+        _set_export_path(conn, target)
         insert_job_application(conn, {"company": "Co", "role_title": "Analyst"})
 
         bundle_root = export_llm_bundle(conn, db_path.parent)
 
-        assert not (bundle_root / "jobs" / "Co").exists()
+        assert not (bundle_root / "files" / "Co").exists()
     finally:
         conn.close()
 
@@ -85,6 +132,8 @@ def test_export_skips_a_job_with_no_files_yet(db_path: Path) -> None:
 def test_export_copies_profile_files(db_path: Path) -> None:
     conn = _migrated_conn(db_path)
     try:
+        target = db_path.parent / "export-target"
+        _set_export_path(conn, target)
         store_profile_file(conn, db_path.parent, "master_cv", "CV.pdf", b"cv bytes")
         conn.commit()
 
@@ -103,13 +152,30 @@ def test_export_db_snapshot_does_not_change_when_the_live_db_changes_later(
 ) -> None:
     conn = _migrated_conn(db_path)
     try:
+        target = db_path.parent / "export-target"
         save_settings(
-            conn, "Before", "claude_code", "reset_time", 60, 24, "claude-sonnet-5", "gpt-6.1-sol"
+            conn,
+            "Before",
+            "claude_code",
+            "reset_time",
+            60,
+            24,
+            "claude-sonnet-5",
+            "gpt-6.1-sol",
+            str(target),
         )
         bundle_root = export_llm_bundle(conn, db_path.parent)
 
         save_settings(
-            conn, "After", "claude_code", "reset_time", 60, 24, "claude-sonnet-5", "gpt-6.1-sol"
+            conn,
+            "After",
+            "claude_code",
+            "reset_time",
+            60,
+            24,
+            "claude-sonnet-5",
+            "gpt-6.1-sol",
+            str(target),
         )
 
         snapshot_conn = connect(bundle_root / "tracker.db")
@@ -125,6 +191,8 @@ def test_export_db_snapshot_does_not_change_when_the_live_db_changes_later(
 def test_writing_into_the_exported_db_never_reaches_the_live_database(db_path: Path) -> None:
     conn = _migrated_conn(db_path)
     try:
+        target = db_path.parent / "export-target"
+        _set_export_path(conn, target)
         bundle_root = export_llm_bundle(conn, db_path.parent)
 
         snapshot_conn = connect(bundle_root / "tracker.db")
@@ -143,6 +211,8 @@ def test_writing_into_the_exported_db_never_reaches_the_live_database(db_path: P
 def test_export_rebuilds_from_scratch_each_time(db_path: Path) -> None:
     conn = _migrated_conn(db_path)
     try:
+        target = db_path.parent / "export-target"
+        _set_export_path(conn, target)
         bundle_root = export_llm_bundle(conn, db_path.parent)
         stale = bundle_root / "stale.txt"
         stale.write_text("leftover", encoding="utf-8")
@@ -157,6 +227,8 @@ def test_export_rebuilds_from_scratch_each_time(db_path: Path) -> None:
 def test_export_skips_a_duplicate_company_role_folder_without_erroring(db_path: Path) -> None:
     conn = _migrated_conn(db_path)
     try:
+        target = db_path.parent / "export-target"
+        _set_export_path(conn, target)
         insert_job_application(conn, {"company": "Co", "role_title": "Analyst"})
         insert_job_application(conn, {"company": "Co", "role_title": "Analyst"})
         folder = managed_folder(db_path.parent / "files", "Co", "Analyst")
@@ -165,9 +237,56 @@ def test_export_skips_a_duplicate_company_role_folder_without_erroring(db_path: 
 
         bundle_root = export_llm_bundle(conn, db_path.parent)
 
-        assert (bundle_root / "jobs" / "Co" / "Analyst" / "x.txt").read_text(
+        assert (bundle_root / "files" / "Co" / "Analyst" / "x.txt").read_text(
             encoding="utf-8"
         ) == "x"
+    finally:
+        conn.close()
+
+
+def test_export_never_leaves_the_target_half_wiped_if_the_build_crashes(
+    db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The old approach (wipe the live target, then rebuild in place) could crash between
+    those two steps and leave the target empty. Staging-then-swap means a crash while building
+    leaves the previous export untouched."""
+    conn = _migrated_conn(db_path)
+    try:
+        target = db_path.parent / "export-target"
+        _set_export_path(conn, target)
+        export_llm_bundle(conn, db_path.parent)
+        assert (target / "seed.md").exists()
+
+        monkeypatch.setattr(
+            export_module,
+            "_write_seed_file",
+            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+        with pytest.raises(RuntimeError):
+            export_llm_bundle(conn, db_path.parent)
+
+        # The previous export is still intact - never wiped in anticipation of a rebuild that
+        # didn't finish.
+        assert (target / "seed.md").exists()
+        assert (target / "tracker.db").exists()
+    finally:
+        conn.close()
+
+
+def test_export_raises_a_clear_error_when_the_target_cannot_be_replaced(
+    db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conn = _migrated_conn(db_path)
+    try:
+        target = db_path.parent / "export-target"
+        _set_export_path(conn, target)
+        export_llm_bundle(conn, db_path.parent)
+
+        # Simulate a locked file: rmtree can't actually clear the old target.
+        monkeypatch.setattr(shutil, "rmtree", lambda *args, **kwargs: None)
+
+        with pytest.raises(LlmExportBundleBusy):
+            export_llm_bundle(conn, db_path.parent)
     finally:
         conn.close()
 

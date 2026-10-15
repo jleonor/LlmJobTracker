@@ -23,6 +23,8 @@ def test_open_llm_app_exports_and_launches_claude_by_default(
     client: TestClient, db_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _assume_both_installed(monkeypatch)
+    export_target = db_path.parent / "export-target"
+    client.put("/settings", json={"user_name": "YourName", "llm_export_path": str(export_target)})
     opened: list[str] = []
     monkeypatch.setattr(webbrowser, "open", opened.append)
 
@@ -32,7 +34,7 @@ def test_open_llm_app_exports_and_launches_claude_by_default(
     body = response.json()
     assert body["backend"] == "claude_code"
     bundle_path = Path(body["bundle_path"])
-    assert bundle_path == db_path.parent / "llm-export"
+    assert bundle_path == export_target
     assert (bundle_path / "seed.md").exists()
     assert (bundle_path / "tracker.db").exists()
     assert len(opened) == 1
@@ -44,7 +46,15 @@ def test_open_llm_app_launches_codex_when_selected(
     client: TestClient, db_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _assume_both_installed(monkeypatch)
-    client.put("/settings", json={"user_name": "YourName", "backend": "codex"})
+    export_target = db_path.parent / "export-target"
+    client.put(
+        "/settings",
+        json={
+            "user_name": "YourName",
+            "backend": "codex",
+            "llm_export_path": str(export_target),
+        },
+    )
     opened: list[str] = []
     monkeypatch.setattr(webbrowser, "open", opened.append)
 

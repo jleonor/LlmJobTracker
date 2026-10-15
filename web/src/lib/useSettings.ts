@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS: Settings = {
   retry_max_attempts: 24,
   claude_code_model: 'claude-sonnet-5',
   codex_model: 'gpt-6.1-sol',
+  llm_export_path: null,
 }
 
 export type SettingsState = { settings: Settings; reload: () => void }

@@ -19,6 +19,7 @@ DEFAULTS = {
     "retry_max_attempts": 24,
     "claude_code_model": "claude-sonnet-5",
     "codex_model": "gpt-6.1-sol",
+    "llm_export_path": None,
 }
 
 
@@ -66,6 +67,7 @@ def test_saving_only_the_name_keeps_the_backend_and_retry_policy(client: TestCli
         "retry_max_attempts": 24,
         "claude_code_model": "claude-sonnet-5",
         "codex_model": "gpt-6.1-sol",
+        "llm_export_path": None,
     }
 
 
@@ -89,7 +91,38 @@ def test_saving_the_backend_and_retry_policy(client: TestClient) -> None:
         "retry_max_attempts": 10,
         "claude_code_model": "claude-sonnet-5",
         "codex_model": "gpt-6.1-sol",
+        "llm_export_path": None,
     }
+
+
+def test_saving_an_llm_export_path_is_read_back(client: TestClient) -> None:
+    saved = client.put(
+        "/settings",
+        json={"user_name": "YourName", "llm_export_path": "D:\\Exports\\MyTracker"},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["llm_export_path"] == "D:\\Exports\\MyTracker"
+
+    read_again = client.get("/settings")
+    assert read_again.json()["llm_export_path"] == "D:\\Exports\\MyTracker"
+
+
+def test_saving_only_the_name_keeps_the_llm_export_path(client: TestClient) -> None:
+    client.put("/settings", json={"user_name": "Alex", "llm_export_path": "D:\\Exports\\MyTracker"})
+
+    saved = client.put("/settings", json={"user_name": "Alex Again"})
+
+    assert saved.json()["llm_export_path"] == "D:\\Exports\\MyTracker"
+
+
+def test_saving_a_blank_llm_export_path_clears_it(client: TestClient) -> None:
+    client.put(
+        "/settings", json={"user_name": "YourName", "llm_export_path": "D:\\Exports\\MyTracker"}
+    )
+
+    saved = client.put("/settings", json={"user_name": "YourName", "llm_export_path": "   "})
+
+    assert saved.json()["llm_export_path"] is None
 
 
 def test_an_unknown_backend_is_rejected(client: TestClient) -> None:

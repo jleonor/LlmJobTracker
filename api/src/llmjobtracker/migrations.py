@@ -945,6 +945,12 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE settings DROP COLUMN claude_code_model",
         ),
     ),
+    Migration(
+        version=27,
+        name="add settings.llm_export_path (D-212)",
+        up=("ALTER TABLE settings ADD COLUMN llm_export_path TEXT",),
+        down=("ALTER TABLE settings DROP COLUMN llm_export_path",),
+    ),
 )
 
 _LEDGER = """

@@ -499,6 +499,16 @@ export function saveBackendSettings(
   })
 }
 
+// "Open LLM app" (D-212): where the export is rebuilt. A blank path clears it back to the
+// default (Downloads).
+export function saveLlmExportPath(userName: string, path: string): Promise<Settings> {
+  return request<Settings>('/api/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_name: userName, llm_export_path: path }),
+  })
+}
+
 export function fetchModelPrices(): Promise<ModelPrice[]> {
   return request<ModelPrice[]>('/api/settings/prices')
 }

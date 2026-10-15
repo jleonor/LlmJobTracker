@@ -29,7 +29,12 @@ from llmjobtracker.claude_jobs import (
 from llmjobtracker.codex_runner import CodexRunner
 from llmjobtracker.codex_runner import auth_status as codex_auth_status
 from llmjobtracker.codex_runner import logout as codex_logout
-from llmjobtracker.export_llm_bundle import LlmAppStatus, export_llm_bundle, llm_app_status
+from llmjobtracker.export_llm_bundle import (
+    LlmAppStatus,
+    LlmExportBundleBusy,
+    export_llm_bundle,
+    llm_app_status,
+)
 from llmjobtracker.file_preview import UnsupportedPreview, preview_for
 from llmjobtracker.job_applications import (
     InvalidRoleTitle,
@@ -181,6 +186,9 @@ class SettingsEdit(BaseModel):
     retry_max_attempts: int | None = None
     claude_code_model: str | None = None
     codex_model: str | None = None
+    # D-212: a blank string (not None) clears it back to the default - None here still just
+    # means "keep the stored value", the same as every other field above.
+    llm_export_path: str | None = None
 
 
 class ModelPriceEdit(BaseModel):
@@ -393,6 +401,9 @@ def create_app(
             else current.claude_code_model
         )
         new_codex_model = edit.codex_model if edit.codex_model is not None else current.codex_model
+        new_llm_export_path = (
+            edit.llm_export_path if edit.llm_export_path is not None else current.llm_export_path
+        )
         try:
             saved = save_settings(
                 conn,
@@ -407,6 +418,7 @@ def create_app(
                 else current.retry_max_attempts,
                 new_claude_model,
                 new_codex_model,
+                new_llm_export_path,
             )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
@@ -1265,7 +1277,10 @@ def create_app(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="That backend's desktop app does not appear to be installed.",
             )
-        bundle_root = export_llm_bundle(conn, db_path.parent)
+        try:
+            bundle_root = export_llm_bundle(conn, db_path.parent)
+        except LlmExportBundleBusy as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         link = LLM_APP_DEEP_LINKS[backend].format(
             prompt=quote(LLM_APP_PROMPT), path=quote(str(bundle_root))
         )

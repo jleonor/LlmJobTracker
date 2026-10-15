@@ -22,6 +22,7 @@ import {
   openLlmApp,
   renameModelPrice,
   saveBackendSettings,
+  saveLlmExportPath,
   saveModelPrice,
   saveModelPrices,
   savePricingUrl,
@@ -68,7 +69,7 @@ export function SettingsPage({ settings, onSettingsChanged, queue }: Props) {
     <div className="flex max-w-3xl flex-col gap-6">
       <h1 className="text-xl font-semibold">Settings</h1>
       <BackendSection settings={settings} onSaved={onSettingsChanged} />
-      <OpenLlmAppSection settings={settings} />
+      <OpenLlmAppSection settings={settings} onSaved={onSettingsChanged} />
       <LlmCheck />
       <AuthSection />
       {BACKENDS.map((backend) => (
@@ -204,14 +205,40 @@ function BackendSection({ settings, onSaved }: { settings: Settings; onSaved: ()
 
 // --- Open LLM app (D-202, D-210) ----------------------------------------------------------------
 
-function OpenLlmAppSection({ settings }: { settings: Settings }) {
+function OpenLlmAppSection({
+  settings,
+  onSaved,
+}: {
+  settings: Settings
+  onSaved: () => void
+}) {
   const [installStatus, setInstallStatus] = useState<Record<Backend, LlmAppStatus> | null>(null)
   const [statusError, setStatusError] = useState<string | null>(null)
+  const [exportPath, setExportPath] = useState(settings.llm_export_path ?? '')
+  const [pathBusy, setPathBusy] = useState(false)
+  const [pathError, setPathError] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [appCount, setAppCount] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState<string | null>(null)
+
+  useEffect(() => {
+    setExportPath(settings.llm_export_path ?? '')
+  }, [settings.llm_export_path])
+
+  async function saveExportPath() {
+    setPathBusy(true)
+    setPathError(null)
+    try {
+      await saveLlmExportPath(settings.user_name, exportPath.trim())
+      onSaved()
+    } catch (failure) {
+      setPathError(failure instanceof ApiError ? failure.message : 'The path was not saved.')
+    } finally {
+      setPathBusy(false)
+    }
+  }
 
   function reloadInstallStatus() {
     fetchLlmAppStatus()
@@ -268,6 +295,32 @@ function OpenLlmAppSection({ settings }: { settings: Settings }) {
           Refresh
         </Button>
       </div>
+
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="llm-export-path">Export location</Label>
+        <div className="flex items-end gap-2">
+          <Input
+            id="llm-export-path"
+            className="flex-1"
+            placeholder="Downloads\LlmJobTrackerExport (default)"
+            value={exportPath}
+            onChange={(event) => setExportPath(event.target.value)}
+          />
+          <Button
+            variant="outline"
+            disabled={pathBusy || exportPath.trim() === (settings.llm_export_path ?? '')}
+            onClick={() => void saveExportPath()}
+          >
+            Save path
+          </Button>
+        </div>
+        {pathError && <p className="text-xs text-destructive">{pathError}</p>}
+        <p className="text-xs text-muted-foreground">
+          Leave blank to use the default (your Downloads folder). Rebuilt fresh at this exact
+          path every time, so the external app only needs to be trusted here once.
+        </p>
+      </div>
+
       {statusError && <p className="text-sm text-destructive">{statusError}</p>}
       <div className="flex flex-col gap-2">
         {BACKENDS.map((backend) => (
