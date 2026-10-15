@@ -216,6 +216,17 @@ export type ProfileFile = {
   generated: boolean
 }
 
+// The approved, named list of positioning directions a Job Application's lane field picks from
+// (D-182, D-214). Edited inline on the Profile page; (re)populated in bulk from the positioning
+// strategy document by the Sync from strategy action.
+export type Lane = {
+  id: number
+  name: string
+  description: string | null
+  reasoning: string | null
+  position: number
+}
+
 // The newest version of one of the three generated profile documents (D-86), as /profile/outputs
 // lists it. kind is one of PROMPT_KINDS: full_cv_history, questionnaire_analysis, strategy.
 export type ProfileOutput = {

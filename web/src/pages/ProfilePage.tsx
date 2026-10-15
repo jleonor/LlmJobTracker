@@ -2,21 +2,30 @@ import { Download, FolderOpen } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { FilePreview } from '@/components/app/FilePreview'
 import { ProfileOutputs } from '@/components/app/ProfileOutputs'
 import { ReviseOverlay } from '@/components/app/ReviseOverlay'
 import {
   ApiError,
+  createLane,
+  deleteLane,
   deleteProfileFile,
   downloadProfileFile,
+  fetchLanes,
   fetchProfileFiles,
   openProfileFile,
   revealProfileFile,
   saveSettings,
+  syncLanesFromStrategy,
+  updateLane,
   uploadProfileFile,
 } from '@/lib/api'
 import { useClaudeJobs } from '@/lib/useClaudeJobs'
-import type { ProfileFile, ProfileFileKind } from '@/lib/types'
+import type { Lane, ProfileFile, ProfileFileKind } from '@/lib/types'
 
 // The upload sections, in the order of the Profile page (D-58). Labels are the user's words.
 // collapsible is for sections that can hold many files (D-91); the single-file kinds (D-88,
@@ -108,6 +117,10 @@ export function ProfilePage({
   const analysis = [...queue.jobs].reverse().find((job) => job.kind === 'profile_analysis')
   const finishedAnalysis =
     analysis && (analysis.status === 'done' || analysis.status === 'failed') ? analysis.id : null
+  // Same pattern, for the Lanes section's Sync from strategy action (D-214).
+  const laneSync = [...queue.jobs].reverse().find((job) => job.kind === 'extract_lanes')
+  const finishedLaneSync =
+    laneSync && (laneSync.status === 'done' || laneSync.status === 'failed') ? laneSync.id : null
 
   useEffect(() => {
     let cancelled = false
@@ -191,6 +204,8 @@ export function ProfilePage({
               />
             ))}
           </div>
+
+          <LanesSection refreshKey={finishedLaneSync} />
         </>
       )}
     </section>
@@ -499,5 +514,266 @@ function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void
         onOpenChange={setPreviewOpen}
       />
     </li>
+  )
+}
+
+// The approved lane catalog (D-182, D-214): edited inline here, and (re)populated in bulk from
+// the positioning strategy document by Sync from strategy. refreshKey is the latest extract_lanes
+// Claude Job's id once it finishes (ProfilePage's own queue poll), the same pattern ProfileOutputs
+// already uses for profile_analysis.
+function LanesSection({ refreshKey }: { refreshKey: number | null }) {
+  const [state, setState] = useState<'loading' | 'error' | 'ready'>('loading')
+  const [lanes, setLanes] = useState<Lane[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [editing, setEditing] = useState<Lane | 'new' | null>(null)
+  const [syncConfirmOpen, setSyncConfirmOpen] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
+
+  function reload() {
+    fetchLanes()
+      .then((rows) => {
+        setLanes(rows)
+        setState('ready')
+      })
+      .catch((failure: unknown) => {
+        setError(failure instanceof ApiError ? failure.message : 'Could not load lanes.')
+        setState('error')
+      })
+  }
+
+  useEffect(reload, [])
+
+  // When a Sync from strategy job finishes, the list is read again without a click.
+  useEffect(() => {
+    if (refreshKey !== null) reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey])
+
+  async function remove(lane: Lane) {
+    if (!window.confirm(`Remove the "${lane.name}" lane?`)) return
+    try {
+      await deleteLane(lane.id)
+      reload()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'Could not remove the lane.')
+    }
+  }
+
+  async function startSync() {
+    setSyncing(true)
+    setSyncError(null)
+    try {
+      await syncLanesFromStrategy()
+      setSyncConfirmOpen(false)
+    } catch (failure) {
+      setSyncError(failure instanceof ApiError ? failure.message : 'The sync did not start.')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby="lanes-heading"
+      className="flex flex-col gap-3 rounded border border-border bg-card p-4"
+    >
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 id="lanes-heading" className="text-sm font-semibold">
+            Lanes
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            The approved list Add Job and Job details pick a lane from.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setEditing('new')}>
+            Add lane
+          </Button>
+          <Button variant="outline" onClick={() => setSyncConfirmOpen(true)}>
+            Sync from strategy
+          </Button>
+        </div>
+      </div>
+
+      {state === 'loading' && <p className="text-xs text-muted-foreground">Loading lanes...</p>}
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
+
+      {state === 'ready' && lanes.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No lanes yet. Add one by hand, or Sync from strategy once a positioning strategy exists.
+        </p>
+      )}
+
+      {state === 'ready' && lanes.length > 0 && (
+        <ul className="flex flex-col divide-y divide-border">
+          {lanes.map((lane) => (
+            <li
+              key={lane.id}
+              className="group/lane flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0"
+            >
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-medium">{lane.name}</span>
+                {lane.description && (
+                  <p className="text-xs text-muted-foreground">{lane.description}</p>
+                )}
+                {lane.reasoning && (
+                  <p className="text-xs italic text-muted-foreground">{lane.reasoning}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover/lane:opacity-100">
+                <Button variant="ghost" size="sm" onClick={() => setEditing(lane)}>
+                  Edit
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => void remove(lane)}>
+                  Remove
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <LaneEditDialog
+        lane={editing === 'new' ? null : editing}
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null)
+        }}
+        onSaved={() => {
+          setEditing(null)
+          reload()
+        }}
+      />
+
+      <Dialog open={syncConfirmOpen} onOpenChange={setSyncConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sync lanes from strategy?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This replaces every lane above with a fresh reading of your positioning strategy
+            document. Any manual edits to the current list will be lost.
+          </p>
+          {syncError && <p className="text-sm text-destructive">{syncError}</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSyncConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button disabled={syncing} onClick={() => void startSync()}>
+              {syncing ? 'Queuing...' : 'Sync'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
+  )
+}
+
+function LaneEditDialog({
+  lane,
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  lane: Lane | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSaved: () => void
+}) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [reasoning, setReasoning] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Reset the form from the current lane each time the dialog opens (or opens fresh for a new
+  // one), the same pattern JobDetailsEditDialog uses.
+  useEffect(() => {
+    if (!open) return
+    setName(lane?.name ?? '')
+    setDescription(lane?.description ?? '')
+    setReasoning(lane?.reasoning ?? '')
+    setError(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  async function save() {
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      setError('A lane needs a name.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    const fields = {
+      name: trimmedName,
+      description: description.trim() || null,
+      reasoning: reasoning.trim() || null,
+    }
+    try {
+      if (lane) {
+        await updateLane(lane.id, fields)
+      } else {
+        await createLane(fields)
+      }
+      onSaved()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The save failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[80vh] w-full max-w-lg flex-col gap-3 sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{lane ? 'Edit lane' : 'Add lane'}</DialogTitle>
+        </DialogHeader>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="lane-name" className="text-xs">
+              Name
+            </Label>
+            <Input id="lane-name" value={name} onChange={(event) => setName(event.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="lane-description" className="text-xs">
+              Description
+            </Label>
+            <Textarea
+              id="lane-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="lane-reasoning" className="text-xs">
+              Reasoning
+            </Label>
+            <Textarea
+              id="lane-reasoning"
+              value={reasoning}
+              onChange={(event) => setReasoning(event.target.value)}
+            />
+          </div>
+        </div>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button disabled={busy} onClick={() => void save()}>
+            {busy ? 'Saving...' : 'Save'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

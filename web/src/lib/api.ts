@@ -11,6 +11,7 @@ import type {
   JobApplicationEdit,
   JobApplicationFile,
   JobIdentityAnswer,
+  Lane,
   ListingExtraction,
   LlmAppOpened,
   LlmAppStatus,
@@ -639,6 +640,44 @@ export async function uploadProfileFile(kind: ProfileFileKind, file: File): Prom
 
 export function startProfileAnalysis(): Promise<ClaudeJob> {
   return request<ClaudeJob>('/api/profile/analysis', { method: 'POST' })
+}
+
+export function fetchLanes(): Promise<Lane[]> {
+  return request<Lane[]>('/api/lanes')
+}
+
+export function createLane(fields: {
+  name: string
+  description?: string | null
+  reasoning?: string | null
+}): Promise<Lane> {
+  return request<Lane>('/api/lanes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  })
+}
+
+export function updateLane(
+  id: number,
+  fields: Partial<{ name: string; description: string | null; reasoning: string | null }>,
+): Promise<Lane> {
+  return request<Lane>(`/api/lanes/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  })
+}
+
+export async function deleteLane(id: number): Promise<void> {
+  await request<void>(`/api/lanes/${id}`, { method: 'DELETE' })
+}
+
+// The Lanes section's "Sync from strategy" action (D-214): replaces every stored lane with a
+// fresh parse of the positioning strategy document. The frontend confirms with the user first,
+// since this can overwrite manual edits.
+export function syncLanesFromStrategy(): Promise<ClaudeJob> {
+  return request<ClaudeJob>('/api/lanes/sync', { method: 'POST' })
 }
 
 // The newest version of each of the three generated documents, for the analysis overlay's
