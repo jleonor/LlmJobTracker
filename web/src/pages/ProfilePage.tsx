@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { FilePreview } from '@/components/app/FilePreview'
 import { ProfileOutputs } from '@/components/app/ProfileOutputs'
 import { ReviseOverlay } from '@/components/app/ReviseOverlay'
+import { RunTrace } from '@/components/app/RunTrace'
 import {
   ApiError,
   createLane,
@@ -526,9 +527,16 @@ function LanesSection({ refreshKey }: { refreshKey: number | null }) {
   const [lanes, setLanes] = useState<Lane[]>([])
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<Lane | 'new' | null>(null)
-  const [syncConfirmOpen, setSyncConfirmOpen] = useState(false)
-  const [syncing, setSyncing] = useState(false)
+  const [syncOpen, setSyncOpen] = useState(false)
+  const [syncRunning, setSyncRunning] = useState(false)
+  const [syncJobId, setSyncJobId] = useState<number | null>(null)
+  const [syncBusy, setSyncBusy] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
+
+  // Self-contained poll for the sync job's own trace (D-220) - the same pattern
+  // GenerateSectionOverlay already uses, independent of ProfilePage's own poll for refreshKey.
+  const { jobs } = useClaudeJobs()
+  const syncJob = syncJobId === null ? null : (jobs.find((job) => job.id === syncJobId) ?? null)
 
   function reload() {
     fetchLanes()
@@ -550,6 +558,16 @@ function LanesSection({ refreshKey }: { refreshKey: number | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey])
 
+  // Reset the dialog's own run state each time it opens, so a previous run never leaks into
+  // the next one (the same pattern GenerateSectionOverlay uses for `open`).
+  useEffect(() => {
+    if (!syncOpen) return
+    setSyncRunning(false)
+    setSyncJobId(null)
+    setSyncBusy(false)
+    setSyncError(null)
+  }, [syncOpen])
+
   async function remove(lane: Lane) {
     if (!window.confirm(`Remove the "${lane.name}" lane?`)) return
     try {
@@ -561,15 +579,16 @@ function LanesSection({ refreshKey }: { refreshKey: number | null }) {
   }
 
   async function startSync() {
-    setSyncing(true)
+    setSyncBusy(true)
     setSyncError(null)
     try {
-      await syncLanesFromStrategy()
-      setSyncConfirmOpen(false)
+      const job = await syncLanesFromStrategy()
+      setSyncJobId(job.id)
+      setSyncRunning(true)
     } catch (failure) {
       setSyncError(failure instanceof ApiError ? failure.message : 'The sync did not start.')
     } finally {
-      setSyncing(false)
+      setSyncBusy(false)
     }
   }
 
@@ -591,7 +610,7 @@ function LanesSection({ refreshKey }: { refreshKey: number | null }) {
           <Button variant="outline" onClick={() => setEditing('new')}>
             Add lane
           </Button>
-          <Button variant="outline" onClick={() => setSyncConfirmOpen(true)}>
+          <Button variant="outline" onClick={() => setSyncOpen(true)}>
             Sync from strategy
           </Button>
         </div>
@@ -651,22 +670,31 @@ function LanesSection({ refreshKey }: { refreshKey: number | null }) {
         }}
       />
 
-      <Dialog open={syncConfirmOpen} onOpenChange={setSyncConfirmOpen}>
-        <DialogContent>
+      {/* Confirm-then-trace, the same shape as GenerateSectionOverlay's Generate/Revise dialogs
+          and ProfileOutputs' own Run profile analysis (D-220) - not a plain confirm dialog. */}
+      <Dialog open={syncOpen} onOpenChange={setSyncOpen}>
+        <DialogContent className="flex h-[85vh] w-full max-w-6xl flex-col gap-3 sm:max-w-6xl">
           <DialogHeader>
-            <DialogTitle>Sync lanes from strategy?</DialogTitle>
+            <DialogTitle>Sync lanes from strategy</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            This replaces every lane above with a fresh reading of your positioning strategy
-            document. Any manual edits to the current list will be lost.
-          </p>
-          {syncError && <p className="text-sm text-destructive">{syncError}</p>}
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+            {!syncRunning && (
+              <div className="flex flex-col gap-3">
+                <p className="text-sm text-muted-foreground">
+                  This replaces every lane above with a fresh reading of your positioning
+                  strategy document. Any manual edits to the current list will be lost.
+                </p>
+                {syncError && <p className="text-sm text-destructive">{syncError}</p>}
+                <Button disabled={syncBusy} onClick={() => void startSync()} className="self-start">
+                  {syncBusy ? 'Starting...' : 'Sync'}
+                </Button>
+              </div>
+            )}
+            {syncRunning && <RunTrace job={syncJob} />}
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSyncConfirmOpen(false)}>
-              Cancel
-            </Button>
-            <Button disabled={syncing} onClick={() => void startSync()}>
-              {syncing ? 'Queuing...' : 'Sync'}
+            <Button variant="outline" onClick={() => setSyncOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
