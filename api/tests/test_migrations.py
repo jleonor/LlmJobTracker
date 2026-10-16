@@ -43,10 +43,14 @@ def test_migrate_twice_applies_nothing_new(conn: sqlite3.Connection) -> None:
 
 def test_rollback_one_step_removes_only_the_latest_migration(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    assert rollback(conn, steps=1) == [29]
-    names = table_names(conn)
-    assert "lanes" in names  # migration 28 still applied, just its seeded row (29) undone
-    assert conn.execute("SELECT 1 FROM lanes WHERE name = 'Other'").fetchone() is None
+    assert rollback(conn, steps=1) == [30]
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO job_applications (company, role_title, status) "
+            "VALUES ('Co', 'Analyst', 'Expired')"
+        )
+    conn.rollback()  # clears the transaction the failed insert left open
+    assert conn.execute("SELECT 1 FROM lanes WHERE name = 'Other'").fetchone() is not None
     assert applied_versions(conn) == [
         1,
         2,
@@ -76,12 +80,14 @@ def test_rollback_one_step_removes_only_the_latest_migration(conn: sqlite3.Conne
         26,
         27,
         28,
+        29,
     ]
 
 
 def test_rollback_three_steps_restores_the_jobs_table(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    assert rollback(conn, steps=28) == [
+    assert rollback(conn, steps=29) == [
+        30,
         29,
         28,
         27,
@@ -119,14 +125,14 @@ def test_rollback_three_steps_restores_the_jobs_table(conn: sqlite3.Connection) 
 
 def test_rollback_all_steps_empties_the_schema(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    assert rollback(conn, steps=29) == list(range(29, 0, -1))
+    assert rollback(conn, steps=30) == list(range(30, 0, -1))
     assert "jobs" not in table_names(conn)
     assert applied_versions(conn) == []
 
 
 def test_migrate_again_after_rollback(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    rollback(conn, steps=29)
+    rollback(conn, steps=30)
     assert migrate(conn) == ALL_VERSIONS
     assert "job_applications" in table_names(conn)
 
@@ -171,6 +177,7 @@ def test_existing_jobs_survive_the_upgrade_with_a_history_row(conn: sqlite3.Conn
         27,
         28,
         29,
+        30,
     ]
 
     row = conn.execute(
@@ -192,7 +199,7 @@ def test_status_must_be_a_known_value(conn: sqlite3.Connection) -> None:
 
 def test_migration_thirteen_renames_not_started_to_identified(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    rollback(conn, steps=17)  # back to version 12, where the status is still "Not Started"
+    rollback(conn, steps=18)  # back to version 12, where the status is still "Not Started"
     app_id = conn.execute(
         "INSERT INTO job_applications (company, role_title, status) "
         "VALUES ('Old Co', 'Analyst', 'Not Started')"
@@ -204,7 +211,7 @@ def test_migration_thirteen_renames_not_started_to_identified(conn: sqlite3.Conn
     )
     conn.commit()
 
-    assert migrate(conn) == [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
+    assert migrate(conn) == [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
     row = conn.execute("SELECT status FROM job_applications WHERE id = ?", (app_id,)).fetchone()
     assert row["status"] == "Identified"
     history = conn.execute(
@@ -218,7 +225,7 @@ def test_migration_thirteen_renames_not_started_to_identified(conn: sqlite3.Conn
         )
     conn.rollback()  # clears the transaction the failed insert left open
 
-    rollback(conn, steps=17)
+    rollback(conn, steps=18)
     row = conn.execute("SELECT status FROM job_applications WHERE id = ?", (app_id,)).fetchone()
     assert row["status"] == "Not Started"
     with pytest.raises(sqlite3.IntegrityError):
@@ -293,7 +300,7 @@ def test_profile_file_kind_must_be_a_known_value(conn: sqlite3.Connection) -> No
 
 def test_the_master_cv_split_is_merged(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    rollback(conn, steps=26)  # back to version 3, the English/French kinds
+    rollback(conn, steps=27)  # back to version 3, the English/French kinds
     conn.execute(
         "INSERT INTO profile_files (kind, original_name, stored_path, sha256, size_bytes) "
         "VALUES ('master_cv_fr', 'cv fr.pdf', 'profile/fr.pdf', 'f1', 10)"
@@ -327,17 +334,18 @@ def test_the_master_cv_split_is_merged(conn: sqlite3.Connection) -> None:
         27,
         28,
         29,
+        30,
     ]
     assert conn.execute("SELECT kind FROM profile_files").fetchone()[0] == "master_cv"
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 
-    rollback(conn, steps=26)
+    rollback(conn, steps=27)
     assert conn.execute("SELECT kind FROM profile_files").fetchone()[0] == "master_cv_en"
 
 
 def test_migration_ten_drops_the_fact_sheet(conn: sqlite3.Connection) -> None:
     migrate(conn)
-    rollback(conn, steps=20)  # back to version 9, where the Fact Sheet still exists
+    rollback(conn, steps=21)  # back to version 9, where the Fact Sheet still exists
     conn.execute(
         "INSERT INTO profile_files (kind, original_name, stored_path, sha256, size_bytes) "
         "VALUES ('own_fact_sheet', 'mine.md', 'profile/mine.md', 'f1', 10)"
@@ -381,6 +389,7 @@ def test_migration_ten_drops_the_fact_sheet(conn: sqlite3.Connection) -> None:
         27,
         28,
         29,
+        30,
     ]
     assert "facts" not in table_names(conn)
     rows = conn.execute("SELECT kind FROM profile_outputs ORDER BY kind").fetchall()
@@ -398,7 +407,7 @@ def test_migration_ten_drops_the_fact_sheet(conn: sqlite3.Connection) -> None:
         )
     conn.rollback()  # clears the transaction the failed inserts left open
 
-    rollback(conn, steps=20)
+    rollback(conn, steps=21)
     assert "facts" in table_names(conn)
     assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 0
     conn.execute(
@@ -523,9 +532,9 @@ def test_migration_fifteen_adds_description_requirements_notes_and_job_files(
     assert conn.execute("SELECT 1 FROM job_files WHERE id = ?", (file_id,)).fetchall() == []
     conn.commit()
 
-    # undoes migrations 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17 and 16 (layered on top)
-    # and migration 15 itself
-    rollback(conn, steps=15)
+    # undoes migrations 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17 and 16 (layered on
+    # top) and migration 15 itself
+    rollback(conn, steps=16)
     assert "job_files" not in table_names(conn)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(job_applications)").fetchall()}
     assert not ({"description", "requirements", "notes"} & columns)
@@ -574,9 +583,9 @@ def test_migration_sixteen_adds_master_cv_reference_and_manual_positioning_field
     ).fetchone()
     assert row["master_cv_profile_file_id"] is None
 
-    # undoes migrations 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18 and 17 (layered on top) and
-    # migration 16 itself
-    rollback(conn, steps=14)
+    # undoes migrations 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18 and 17 (layered on top)
+    # and migration 16 itself
+    rollback(conn, steps=15)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(job_applications)").fetchall()}
     assert not ({"master_cv_profile_file_id", "fit", "gaps", "strategy", "unclear"} & columns)
 
@@ -616,9 +625,9 @@ def test_migration_seventeen_adds_extraction_columns_to_job_files(
         )
     conn.rollback()
 
-    # undoes migrations 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19 and 18 (layered on top) and
+    # undoes migrations 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19 and 18 (layered on top) and
     # migration 17 itself
-    rollback(conn, steps=13)
+    rollback(conn, steps=14)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(job_files)").fetchall()}
     assert not ({"sha256", "extraction_status", "extraction_message", "extracted_text"} & columns)
 
@@ -700,9 +709,9 @@ def test_job_revise_turns_are_dropped_with_their_job_and_clear_a_deleted_attachm
     conn.commit()
     assert conn.execute("SELECT 1 FROM job_revise_turns").fetchall() == []
 
-    # undoes migrations 29, 28, 27, 26, 25, 24, 23, 22, 21, 20 and 19 (layered on top) and
+    # undoes migrations 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20 and 19 (layered on top) and
     # migration 18 itself
-    rollback(conn, steps=12)
+    rollback(conn, steps=13)
     assert "job_revise_turns" not in table_names(conn)
 
 
@@ -724,9 +733,9 @@ def test_migration_nineteen_adds_positioning_scores(conn: sqlite3.Connection) ->
     )
     conn.commit()
 
-    # undoes migrations 29, 28, 27, 26, 25, 24, 23, 22, 21 and 20 (layered on top) and migration
-    # 19 itself
-    rollback(conn, steps=11)
+    # undoes migrations 30, 29, 28, 27, 26, 25, 24, 23, 22, 21 and 20 (layered on top) and
+    # migration 19 itself
+    rollback(conn, steps=12)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(job_applications)").fetchall()}
     assert "positioning_scores" not in columns
 
@@ -752,9 +761,9 @@ def test_migration_twenty_adds_source_url(conn: sqlite3.Connection) -> None:
     )
     conn.commit()
 
-    # undoes migrations 29, 28, 27, 26, 25, 24, 23, 22 and 21 (layered on top) and migration 20
-    # itself
-    rollback(conn, steps=10)
+    # undoes migrations 30, 29, 28, 27, 26, 25, 24, 23, 22 and 21 (layered on top) and migration
+    # 20 itself
+    rollback(conn, steps=11)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(job_files)").fetchall()}
     assert "source_url" not in columns
 
@@ -777,8 +786,9 @@ def test_migration_twenty_one_adds_interview_prep(conn: sqlite3.Connection) -> N
     )
     conn.commit()
 
-    # undoes migrations 29, 28, 27, 26, 25, 24, 23 and 22 (layered on top) and migration 21 itself
-    rollback(conn, steps=9)
+    # undoes migrations 30, 29, 28, 27, 26, 25, 24, 23 and 22 (layered on top) and migration 21
+    # itself
+    rollback(conn, steps=10)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(job_applications)").fetchall()}
     assert "interview_prep" not in columns
 
@@ -840,8 +850,8 @@ def test_migration_twenty_two_widens_job_revise_turns_to_interview_prep(
     conn.execute("DELETE FROM job_revise_turns WHERE section_kind = 'interview_prep'")
     conn.commit()
 
-    # undoes migrations 29, 28, 27, 26, 25, 24 and 23 (layered on top) and migration 22 itself
-    rollback(conn, steps=8)
+    # undoes migrations 30, 29, 28, 27, 26, 25, 24 and 23 (layered on top) and migration 22 itself
+    rollback(conn, steps=9)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(job_revise_turns)").fetchall()}
     assert "section_kind" in columns
     row = conn.execute("SELECT section_kind FROM job_revise_turns").fetchone()
@@ -916,8 +926,8 @@ def test_migration_twenty_three_adds_backend_tokens_and_model_prices(
         )  # provider must be a known backend
     conn.rollback()
 
-    # undoes migrations 29, 28, 27, 26, 25 and 24 (layered on top) and migration 23 itself
-    rollback(conn, steps=7)
+    # undoes migrations 30, 29, 28, 27, 26, 25 and 24 (layered on top) and migration 23 itself
+    rollback(conn, steps=8)
     assert "model_prices" not in table_names(conn)
     settings_columns = {row[1] for row in conn.execute("PRAGMA table_info(settings)").fetchall()}
     assert not (
@@ -962,8 +972,8 @@ def test_migration_twenty_four_moves_pricing_url_to_its_own_table(
         )  # one row per provider
     conn.rollback()
 
-    # undoes migrations 29, 28, 27, 26 and 25 (layered on top) and migration 24 itself
-    rollback(conn, steps=6)
+    # undoes migrations 30, 29, 28, 27, 26 and 25 (layered on top) and migration 24 itself
+    rollback(conn, steps=7)
     assert "provider_pricing" not in table_names(conn)
     model_price_columns = {
         row[1] for row in conn.execute("PRAGMA table_info(model_prices)").fetchall()
@@ -986,8 +996,8 @@ def test_migration_twenty_five_adds_retry_attempts(conn: sqlite3.Connection) -> 
         conn.execute("UPDATE claude_jobs SET retry_attempts = -1 WHERE id = ?", (job_id,))
     conn.rollback()
 
-    # undoes migrations 29, 28, 27 and 26 (layered on top) and migration 25 itself
-    rollback(conn, steps=5)
+    # undoes migrations 30, 29, 28, 27 and 26 (layered on top) and migration 25 itself
+    rollback(conn, steps=6)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(claude_jobs)").fetchall()}
     assert "retry_attempts" not in columns
 
@@ -1010,8 +1020,8 @@ def test_migration_twenty_six_adds_selectable_models(conn: sqlite3.Connection) -
     ).fetchone()
     assert tuple(row) == ("claude-opus-5", "gpt-5-codex")
 
-    # undoes migrations 29, 28 and 27 (layered on top) and migration 26 itself
-    rollback(conn, steps=4)
+    # undoes migrations 30, 29, 28 and 27 (layered on top) and migration 26 itself
+    rollback(conn, steps=5)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(settings)").fetchall()}
     assert not ({"claude_code_model", "codex_model"} & columns)
 
@@ -1027,8 +1037,8 @@ def test_migration_twenty_seven_adds_llm_export_path(conn: sqlite3.Connection) -
     row = conn.execute("SELECT llm_export_path FROM settings WHERE id = 1").fetchone()
     assert row[0] == "D:\\Exports\\Tracker"
 
-    # undoes migrations 29 and 28 (layered on top) and migration 27 itself
-    rollback(conn, steps=3)
+    # undoes migrations 30, 29 and 28 (layered on top) and migration 27 itself
+    rollback(conn, steps=4)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(settings)").fetchall()}
     assert "llm_export_path" not in columns
 
@@ -1058,7 +1068,7 @@ def test_migration_twenty_eight_adds_lanes(conn: sqlite3.Connection) -> None:
         conn.execute("INSERT INTO lanes (description) VALUES ('missing a name')")  # name required
     conn.rollback()
 
-    rollback(conn, steps=2)  # undoes migration 29 (layered on top) and migration 28 itself
+    rollback(conn, steps=3)  # undoes migrations 30 and 29 (layered on top) and migration 28 itself
     names = table_names(conn)
     assert "lanes" not in names
 
@@ -1072,6 +1082,34 @@ def test_migration_twenty_nine_seeds_the_other_lane(conn: sqlite3.Connection) ->
     assert row is not None
     assert row["description"] == "Roles that don't clearly fit any of the lanes above."
 
-    rollback(conn, steps=1)  # undoes migration 29 only
+    rollback(conn, steps=2)  # undoes migration 30 (layered on top) and migration 29 itself
     assert "lanes" in table_names(conn)  # migration 28 still applied
     assert conn.execute("SELECT 1 FROM lanes WHERE name = 'Other'").fetchone() is None
+
+
+def test_migration_thirty_adds_expired_status(conn: sqlite3.Connection) -> None:
+    migrate(conn)
+
+    app_id = conn.execute(
+        "INSERT INTO job_applications (company, role_title, status) "
+        "VALUES ('Co', 'Analyst', 'Expired')"
+    ).lastrowid
+    conn.execute(
+        "INSERT INTO status_history (job_application_id, status, changed_at) "
+        "VALUES (?, 'Expired', '2026-10-16T09:00:00Z')",
+        (app_id,),
+    )
+    conn.commit()
+    row = conn.execute("SELECT status FROM job_applications WHERE id = ?", (app_id,)).fetchone()
+    assert row["status"] == "Expired"
+
+    rollback(conn, steps=1)  # undoes migration 30 only
+    # No pre-30 status can represent Expired, so the down step falls back to Identified rather
+    # than failing the rebuild on a row the narrower CHECK can no longer hold.
+    row = conn.execute("SELECT status FROM job_applications WHERE id = ?", (app_id,)).fetchone()
+    assert row["status"] == "Identified"
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO job_applications (company, role_title, status) "
+            "VALUES ('New Co', 'Analyst', 'Expired')"
+        )

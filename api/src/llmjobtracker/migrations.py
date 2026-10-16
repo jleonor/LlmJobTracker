@@ -19,9 +19,19 @@ _V2_STATUSES = (
     "Rejected",
     "Withdrawn",
 )
-# Current values (D-101 renames "Not Started" to "Identified", matching the reference
-# spreadsheet's own word for a listing that hasn't been applied to yet).
-STATUSES = ("Identified", "Applied", "Screening", "Interview", "Offer", "Rejected", "Withdrawn")
+# D-101 renamed "Not Started" to "Identified". Frozen here the same way _V2_STATUSES is: this is
+# what migration 13's own rebuild actually applied, kept for migration 30's down step.
+_V29_STATUSES = (
+    "Identified",
+    "Applied",
+    "Screening",
+    "Interview",
+    "Offer",
+    "Rejected",
+    "Withdrawn",
+)
+# Current values (D-223 adds "Expired" as a third end state alongside Rejected/Withdrawn).
+STATUSES = (*_V29_STATUSES, "Expired")
 WORK_MODES = ("Onsite", "Hybrid", "Remote", "Unknown")
 CONTRACT_TYPES = ("Full-Time", "Part-Time", "Contract/Short Term", "Other", "Unknown")
 # A Job Application's own files (Agent/specs/files.md, D-111/D-112). "other" is the catch-all
@@ -337,6 +347,88 @@ CREATE TABLE status_history_old (
     id INTEGER PRIMARY KEY,
     job_application_id INTEGER NOT NULL REFERENCES job_applications(id) ON DELETE CASCADE,
     status TEXT NOT NULL CHECK (status IN ({_in_list(_V2_STATUSES)})),
+    changed_at TEXT NOT NULL
+)
+"""
+
+# Migration 30 (D-223): widens the status CHECK again, to add "Expired". job_applications has
+# grown many columns since migration 13's own rebuild (all added via ALTER TABLE ADD COLUMN, never
+# another rebuild), so this rebuild's shape is the table's full current column list.
+_V30_JOB_APPLICATIONS_NEW = f"""
+CREATE TABLE job_applications_new (
+    id INTEGER PRIMARY KEY,
+    company TEXT NOT NULL,
+    role_title TEXT NOT NULL,
+    lane TEXT,
+    location TEXT,
+    work_mode TEXT NOT NULL DEFAULT 'Unknown' CHECK (work_mode IN ({_in_list(WORK_MODES)})),
+    contract_type TEXT NOT NULL DEFAULT 'Unknown'
+        CHECK (contract_type IN ({_in_list(CONTRACT_TYPES)})),
+    portal_name TEXT,
+    portal_url TEXT,
+    status TEXT NOT NULL DEFAULT 'Identified' CHECK (status IN ({_in_list(STATUSES)})),
+    match_score REAL CHECK (match_score IS NULL OR (match_score >= 0 AND match_score <= 100)),
+    next_action TEXT,
+    due_date TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    description TEXT,
+    requirements TEXT NOT NULL DEFAULT '[]',
+    notes TEXT,
+    master_cv_profile_file_id INTEGER REFERENCES profile_files(id) ON DELETE SET NULL,
+    fit TEXT NOT NULL DEFAULT '[]',
+    gaps TEXT NOT NULL DEFAULT '[]',
+    strategy TEXT,
+    unclear TEXT NOT NULL DEFAULT '[]',
+    positioning_scores TEXT NOT NULL DEFAULT '[]',
+    interview_prep TEXT NOT NULL DEFAULT '[]'
+)
+"""
+
+_V30_STATUS_HISTORY_NEW = f"""
+CREATE TABLE status_history_new (
+    id INTEGER PRIMARY KEY,
+    job_application_id INTEGER NOT NULL REFERENCES job_applications(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ({_in_list(STATUSES)})),
+    changed_at TEXT NOT NULL
+)
+"""
+
+# The pre-D-223 shape, for migration 30's down step.
+_V30_JOB_APPLICATIONS_OLD = f"""
+CREATE TABLE job_applications_old (
+    id INTEGER PRIMARY KEY,
+    company TEXT NOT NULL,
+    role_title TEXT NOT NULL,
+    lane TEXT,
+    location TEXT,
+    work_mode TEXT NOT NULL DEFAULT 'Unknown' CHECK (work_mode IN ({_in_list(WORK_MODES)})),
+    contract_type TEXT NOT NULL DEFAULT 'Unknown'
+        CHECK (contract_type IN ({_in_list(CONTRACT_TYPES)})),
+    portal_name TEXT,
+    portal_url TEXT,
+    status TEXT NOT NULL DEFAULT 'Identified' CHECK (status IN ({_in_list(_V29_STATUSES)})),
+    match_score REAL CHECK (match_score IS NULL OR (match_score >= 0 AND match_score <= 100)),
+    next_action TEXT,
+    due_date TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    description TEXT,
+    requirements TEXT NOT NULL DEFAULT '[]',
+    notes TEXT,
+    master_cv_profile_file_id INTEGER REFERENCES profile_files(id) ON DELETE SET NULL,
+    fit TEXT NOT NULL DEFAULT '[]',
+    gaps TEXT NOT NULL DEFAULT '[]',
+    strategy TEXT,
+    unclear TEXT NOT NULL DEFAULT '[]',
+    positioning_scores TEXT NOT NULL DEFAULT '[]',
+    interview_prep TEXT NOT NULL DEFAULT '[]'
+)
+"""
+
+_V30_STATUS_HISTORY_OLD = f"""
+CREATE TABLE status_history_old (
+    id INTEGER PRIMARY KEY,
+    job_application_id INTEGER NOT NULL REFERENCES job_applications(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ({_in_list(_V29_STATUSES)})),
     changed_at TEXT NOT NULL
 )
 """
@@ -980,6 +1072,37 @@ MIGRATIONS: tuple[Migration, ...] = (
             "COALESCE(MAX(position) + 1, 0) FROM lanes",
         ),
         down=("DELETE FROM lanes WHERE name = 'Other'",),
+    ),
+    Migration(
+        version=30,
+        name="add the Expired status (D-223)",
+        rebuild=True,
+        up=(
+            _V30_JOB_APPLICATIONS_NEW,
+            "INSERT INTO job_applications_new SELECT * FROM job_applications",
+            "DROP TABLE job_applications",
+            "ALTER TABLE job_applications_new RENAME TO job_applications",
+            _V30_STATUS_HISTORY_NEW,
+            "INSERT INTO status_history_new SELECT * FROM status_history",
+            "DROP TABLE status_history",
+            "ALTER TABLE status_history_new RENAME TO status_history",
+            "CREATE INDEX status_history_by_job ON status_history (job_application_id, changed_at)",
+        ),
+        down=(
+            _V30_JOB_APPLICATIONS_OLD,
+            # Any row actually set to Expired has no pre-30 equivalent - falls back to Identified,
+            # the same default a brand-new application gets, rather than failing the rebuild.
+            "UPDATE job_applications SET status = 'Identified' WHERE status = 'Expired'",
+            "INSERT INTO job_applications_old SELECT * FROM job_applications",
+            "DROP TABLE job_applications",
+            "ALTER TABLE job_applications_old RENAME TO job_applications",
+            _V30_STATUS_HISTORY_OLD,
+            "DELETE FROM status_history WHERE status = 'Expired'",
+            "INSERT INTO status_history_old SELECT * FROM status_history",
+            "DROP TABLE status_history",
+            "ALTER TABLE status_history_old RENAME TO status_history",
+            "CREATE INDEX status_history_by_job ON status_history (job_application_id, changed_at)",
+        ),
     ),
 )
 

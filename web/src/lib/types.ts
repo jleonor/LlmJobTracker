@@ -52,6 +52,7 @@ export const STATUS_ORDER = [
   'Offer',
   'Rejected',
   'Withdrawn',
+  'Expired',
 ] as const
 
 // Same idea for the Queue column: a lifecycle order, not alphabetical. Matches QueueStatusBadge's

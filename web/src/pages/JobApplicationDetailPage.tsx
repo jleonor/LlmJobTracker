@@ -54,10 +54,10 @@ import type {
   StatusHistoryEntry,
 } from '@/lib/types'
 
-// The statuses that count as forward progress (D-44). Rejected and Withdrawn are end states,
-// reached from wherever the application was, not a further step in this sequence.
+// The statuses that count as forward progress (D-44). Rejected, Withdrawn and Expired (D-223)
+// are end states, reached from wherever the application was, not a further step in this sequence.
 const MAIN_STATUSES = ['Identified', 'Applied', 'Screening', 'Interview', 'Offer'] as const
-const END_STATUSES = ['Rejected', 'Withdrawn'] as const
+const END_STATUSES = ['Rejected', 'Withdrawn', 'Expired'] as const
 // D-117: every stage the Edit dialog's date editor offers, main statuses first.
 const ALL_STATUSES = [...MAIN_STATUSES, ...END_STATUSES]
 

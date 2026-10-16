@@ -18,7 +18,8 @@ DEFAULT_STATUS = "Identified"
 # D-44: forward order. A Job Application's current status (D-117) is the furthest of these it has
 # a status_history date for, unless an end state applies.
 MAIN_STATUSES = ("Identified", "Applied", "Screening", "Interview", "Offer")
-END_STATUSES = ("Rejected", "Withdrawn")
+# D-223: three end states, none of which counts as further progress than any other.
+END_STATUSES = ("Rejected", "Withdrawn", "Expired")
 
 # Columns a PATCH may touch, grouped the way the job page's Edit forms are (D-116). fit, gaps,
 # unclear and interview_prep are stored as JSON; the rest are plain columns. match_score and
@@ -429,7 +430,7 @@ class NoStatusEntries(Exception):
 
 
 def _derive_current_status(entries: list[tuple[str, str]]) -> str:
-    """The furthest-reached main status, or the later of the two end states if either is given
+    """The furthest-reached main status, or the latest-dated end state if one or more is given
     a date — matching the progress rule D-44 already uses (and StatusTimeline mirrors client
     side): reaching further counts, regardless of which has the most recent date."""
     end_entries = [entry for entry in entries if entry[0] in END_STATUSES]
