@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { ApiError, fetchPromptExchange } from '@/lib/api'
 import { PROFILE_DOCUMENT_TITLES } from '@/lib/profileDocuments'
+import { LOG_TONE } from '@/lib/tone'
 import type { ClaudeJob, ClaudeJobPrompt, PromptExchange } from '@/lib/types'
 
 // A revise prompt's kind is `revise_own_<document kind>` (D-106); the document it is about
@@ -12,13 +13,6 @@ function labelFor(promptKind: string): string {
 }
 
 type Line = { time: string | null; text: string; tone: 'info' | 'ok' | 'warn' | 'error' }
-
-const TONE: Record<Line['tone'], string> = {
-  info: 'text-zinc-300',
-  ok: 'text-emerald-400',
-  warn: 'text-amber-300',
-  error: 'text-red-400',
-}
 
 function clock(iso: string | null): string | null {
   if (!iso) return null
@@ -121,7 +115,7 @@ export function RunTrace({ job, clearSignal = 0 }: { job: ClaudeJob | null; clea
         {job && visible.length === 0 && <p className="text-zinc-500">Cleared.</p>}
         {job &&
           visible.map((line, index) => (
-            <p key={index} className={TONE[line.tone]}>
+            <p key={index} className={LOG_TONE[line.tone]}>
               {line.time && <span className="mr-2 text-zinc-500">[{line.time}]</span>}
               {line.text}
             </p>

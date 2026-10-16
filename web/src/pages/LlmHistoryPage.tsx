@@ -5,27 +5,9 @@ import { RunTrace } from '@/components/app/RunTrace'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ApiError, cancelClaudeJob, resumeClaudeJob } from '@/lib/api'
+import { QUEUE_STATUS_TEXT, QUEUE_TONE } from '@/lib/tone'
 import type { ClaudeJob } from '@/lib/types'
 import type { QueueState } from '@/lib/useClaudeJobs'
-
-const TONE: Record<string, string> = {
-  queued: 'border-[#234875] bg-[#001c3a] text-[#a6c8fd]',
-  processing: 'border-[#4a3f7a] bg-[#1d1733] text-[#c9bcff]',
-  paused: 'border-[#5c4300] bg-[#2a1800] text-[#ffca85]',
-  done: 'border-[#005333] bg-[#00210f] text-[#84e7b0]',
-  failed: 'border-[#93000a] bg-[#2a0a0a] text-[#ffb4ab]',
-  cancelled: 'border-muted-foreground/30 text-muted-foreground line-through',
-}
-
-// Just the text colour from TONE, for the per-status counts beside a date (not a full badge).
-const STATUS_TEXT: Record<string, string> = {
-  queued: 'text-[#a6c8fd]',
-  processing: 'text-[#c9bcff]',
-  paused: 'text-[#ffca85]',
-  done: 'text-[#84e7b0]',
-  failed: 'text-[#ffb4ab]',
-  cancelled: 'text-muted-foreground line-through',
-}
 
 // Active statuses first (they need attention), then resolved ones.
 const STATUS_ORDER = ['processing', 'paused', 'queued', 'failed', 'done', 'cancelled']
@@ -132,7 +114,7 @@ function DateSection({
         {group.date}
         <span className="flex gap-2 font-mono text-xs font-normal">
           {countByStatus(group.items).map(([status, count]) => (
-            <span key={status} className={STATUS_TEXT[status] ?? 'text-muted-foreground'}>
+            <span key={status} className={QUEUE_STATUS_TEXT[status] ?? 'text-muted-foreground'}>
               {count} {status}
             </span>
           ))}
@@ -202,7 +184,7 @@ function JobCard({ job, position, onChanged }: CardProps) {
         </div>
         <Badge
           variant="outline"
-          className={`shrink-0 rounded-sm font-mono text-[11px] font-normal ${TONE[job.status] ?? ''}`}
+          className={`shrink-0 rounded-sm font-mono text-[11px] font-normal ${QUEUE_TONE[job.status] ?? ''}`}
         >
           {job.status}
         </Badge>
