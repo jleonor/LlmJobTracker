@@ -9,9 +9,13 @@ prompt cap, honesty, server-side gates) apply here too and are not repeated.
 
 Lanes are stored in their own `lanes` table (D-214), not read live from the strategy document's
 prose — `extract_lanes` is how that table gets (re)populated from the strategy, and the user edits
-the result by hand afterward on the Profile page. Once the table has at least one row, every
-LLM-driven lane choice (Add Job's `extract_job_identity`, and `assign_job_lane` below) must pick a
-name from it, or answer Unknown — never invent a lane name (D-215).
+the result by hand afterward on the Profile page. The table always has at least one row: a fixed
+"Other" lane (D-219), seeded by migration and re-added by `replace_all_lanes` whenever Sync from
+strategy wipes the table — it is a catalog-completeness fallback, not something the strategy
+prompt itself writes. Every LLM-driven lane choice (Add Job's `extract_job_identity`, and
+`assign_job_lane` below) must pick a name from the catalog — a specific lane, or `Other` when the
+role is clear but doesn't fit any of them — or answer Unknown only when there isn't enough
+information to judge at all. Never invent a lane name (D-215/D-219).
 
 ## 1. Catalog sync (`extract_lanes`)
 
@@ -55,12 +59,14 @@ rejecting the whole answer (D-76's malformed-id tolerance, same spirit — a for
 lane should not cost every other lane the sync produced). On success, every existing row in
 `lanes` is replaced by the parsed list, in the order parsed (`position` assigned 0, 1, 2, ... in
 that order) — this is a full catalog replace, not a merge, which is why the frontend confirms
-before running it (D-214's own Sync-from-strategy confirm dialog).
+before running it (D-214's own Sync-from-strategy confirm dialog). The Other lane (D-219) is
+re-added after the replace if the strategy document didn't happen to produce one of its own.
 
 ## 2. Lane assignment (`assign_job_lane`, and the shared matching prompt in `extract_job_identity`)
 
-**Purpose:** pick the one approved lane (or Unknown) that best fits a single job application, from
-its listing text alone. Two callers share this matching prompt:
+**Purpose:** pick the one approved lane — a specific one, or `Other` (D-219) — that best fits a
+single job application, from its listing text alone, falling back to Unknown only when the
+listing gives too little to judge at all. Two callers share this matching prompt:
 
 - **`extract_job_identity`** (Add Job's identity step, `intake-steps.md`) — already runs on the
   reviewed listing text before a row exists; its `LANE` block is now built from the stored `lanes`
@@ -84,8 +90,10 @@ names, so the model has more than a bare label to match against).
 
 ```
 === LANE ===
-<the name of exactly one lane from the list above that this role best fits, or Unknown if none
-of them fit>
+<the name of exactly one lane from the approved list above that this role best fits, copied
+exactly as it is written there. If the role is clear but doesn't fit any of the specific lanes,
+answer Other - it is one of the approved lanes, reserved for exactly this. Answer Unknown only
+if the listing gives too little information to judge at all>
 === END LANE ===
 ```
 
@@ -94,12 +102,12 @@ NAME/PORTAL URL shape — intake-steps.md — only the `LANE` block's source lis
 strategy document's prose to the lanes catalog listed above it in the prompt.)
 
 **Code checks:** the parsed `LANE` value must, case-insensitively, equal one of the catalog's
-stored names, or be empty/Unknown (stored as `None`, same convention as every other optional field
-here, D-76/D-85) — any other value is treated the same as Unknown rather than written verbatim,
-so a near-miss or hallucinated name never ends up silently stored as if it were approved. When the
-catalog is empty, every `LANE` answer is treated as Unknown (there is nothing to match against
-yet) — `extract_job_identity` already tolerates this (`build_identity_prompt`'s existing
-no-strategy-yet fallback), and `assign_job_lane` is simply never queued while the catalog is empty.
+stored names (`Other` included — it is just another row), or be empty/Unknown (stored as `None`,
+same convention as every other optional field here, D-76/D-85) — any other value is treated the
+same as Unknown rather than written verbatim, so a near-miss or hallucinated name never ends up
+silently stored as if it were approved. The catalog is never actually empty once migration 29 has
+run (D-219 guarantees at least `Other`), but the code still tolerates an empty catalog (a
+database not yet migrated that far) the same way — every `LANE` answer falls back to Unknown.
 
 **`assign_job_lane`'s own write:** on a successful answer, `job_applications.lane` is updated
 directly to the matched name (or left `NULL` for Unknown) — no other column is touched, and no

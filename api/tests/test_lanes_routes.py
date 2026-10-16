@@ -47,20 +47,24 @@ def add_application(db_path: Path, *, with_listing: bool) -> int:
     return app_id
 
 
-def test_lanes_start_empty(client: TestClient) -> None:
-    assert client.get("/lanes").json() == []
+def test_lanes_start_with_only_the_default_other_lane(client: TestClient) -> None:
+    """Migration 29 seeds Other (D-219) - a fresh install is never truly empty."""
+    lanes = client.get("/lanes").json()
+    assert [lane["name"] for lane in lanes] == ["Other"]
+    assert lanes[0]["description"] == "Roles that don't clearly fit any of the lanes above."
 
 
 def test_adding_a_lane_appends_it_with_the_next_position(client: TestClient) -> None:
     first = client.post("/lanes", json={"name": "Data Analytics", "description": "BI roles"})
     assert first.status_code == 201
-    assert first.json()["position"] == 0
+    assert first.json()["position"] == 1  # position 0 is the seeded Other lane
 
     second = client.post("/lanes", json={"name": "Product Analytics"})
     assert second.status_code == 201
-    assert second.json()["position"] == 1
+    assert second.json()["position"] == 2
 
     assert [lane["name"] for lane in client.get("/lanes").json()] == [
+        "Other",
         "Data Analytics",
         "Product Analytics",
     ]
@@ -94,8 +98,12 @@ def test_removing_a_lane_leaves_the_others_positions_unchanged(client: TestClien
     assert removed.status_code == 204
 
     remaining = client.get("/lanes").json()
-    assert [lane["name"] for lane in remaining] == ["Product Analytics", "Platform Engineering"]
-    assert [lane["position"] for lane in remaining] == [1, third["position"]]
+    assert [lane["name"] for lane in remaining] == [
+        "Other",
+        "Product Analytics",
+        "Platform Engineering",
+    ]
+    assert [lane["position"] for lane in remaining][1:] == [2, third["position"]]
 
 
 def test_sync_route_requires_a_strategy_document(client: TestClient) -> None:

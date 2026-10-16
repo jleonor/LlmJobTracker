@@ -23,7 +23,7 @@ from llmjobtracker.lane_pipeline import (
     submit_assign_job_lane,
     submit_extract_lanes,
 )
-from llmjobtracker.lanes import create_lane, list_lanes
+from llmjobtracker.lanes import create_lane, ensure_other_lane, list_lanes
 from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.runner import FakeRunner
 from llmjobtracker.storage import connect
@@ -62,6 +62,36 @@ def write_strategy(db_path: Path, text: str = "Lead with data work.") -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+# --- ensure_other_lane (D-219) ---------------------------------------------------------------
+
+
+def test_ensure_other_lane_adds_it_when_missing(db_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        conn.execute("DELETE FROM lanes")  # migration 29 already seeded it - remove it first
+        create_lane(conn, "Data Analytics", None, None)
+        conn.commit()
+        ensure_other_lane(conn)
+        lanes = list_lanes(conn)
+    finally:
+        conn.close()
+    assert [lane.name for lane in lanes] == ["Data Analytics", "Other"]
+    assert lanes[1].description == "Roles that don't clearly fit any of the lanes above."
+
+
+def test_ensure_other_lane_is_a_no_op_once_present(db_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        conn.execute("DELETE FROM lanes")  # migration 29's own "Other" would also match
+        create_lane(conn, "other", None, None)  # lowercase - matched case-insensitively
+        conn.commit()
+        ensure_other_lane(conn)
+        lanes = list_lanes(conn)
+    finally:
+        conn.close()
+    assert [lane.name for lane in lanes] == ["other"]
 
 
 # --- Prompt building and answer parsing (no queue involved) ---------------------------------
@@ -149,8 +179,9 @@ def test_extract_lanes_job_replaces_the_stored_lanes(db_path: Path) -> None:
         lanes = list_lanes(conn)
     finally:
         conn.close()
-    assert [lane.name for lane in lanes] == ["Data Analytics", "Product Analytics"]
-    assert [lane.position for lane in lanes] == [0, 1]
+    # The Other lane (D-219) is always re-added after a full catalog replace.
+    assert [lane.name for lane in lanes] == ["Data Analytics", "Product Analytics", "Other"]
+    assert [lane.position for lane in lanes] == [0, 1, 2]
 
 
 def test_extract_lanes_job_with_no_lane_blocks_leaves_existing_lanes_untouched(
@@ -181,7 +212,42 @@ def test_extract_lanes_job_with_no_lane_blocks_leaves_existing_lanes_untouched(
         lanes = list_lanes(conn)
     finally:
         conn.close()
-    assert [lane.name for lane in lanes] == ["Existing Lane"]
+    # "Other" is migration 29's own seed; the rejected answer leaves everything untouched.
+    assert [lane.name for lane in lanes] == ["Other", "Existing Lane"]
+
+
+def test_extract_lanes_job_does_not_duplicate_an_other_lane_the_model_already_wrote(
+    db_path: Path,
+) -> None:
+    write_strategy(db_path)
+    answer = (
+        "=== LANE ===\n"
+        "NAME: Data Analytics\n"
+        "DESCRIPTION: Reporting roles.\n"
+        "REASONING: x\n"
+        "=== END LANE ===\n\n"
+        "=== LANE ===\n"
+        "NAME: other\n"
+        "DESCRIPTION: Everything else.\n"
+        "REASONING: x\n"
+        "=== END LANE ==="
+    )
+    queue = make_queue(db_path, FakeRunner(text=answer))
+    conn = connect(db_path)
+    try:
+        job_id = submit_extract_lanes(conn, queue)
+    finally:
+        conn.close()
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        assert get_claude_job(conn, job_id).status == "done"  # type: ignore[union-attr]
+        lanes = list_lanes(conn)
+    finally:
+        conn.close()
+    # Matched case-insensitively against the model's own "other" - no second row added.
+    assert [lane.name for lane in lanes] == ["Data Analytics", "other"]
 
 
 # --- assign_job_lane (D-217's one-off reassignment pass) ---------------------------------------
@@ -335,3 +401,35 @@ def test_assign_job_lane_job_clears_lane_for_an_unmatched_answer(db_path: Path) 
     finally:
         conn.close()
     assert row["lane"] is None
+
+
+def test_assign_job_lane_job_writes_other_when_the_role_fits_none_of_the_specific_lanes(
+    db_path: Path,
+) -> None:
+    """D-219: Other is just another approved catalog entry - the model answering it resolves the
+    same way any other approved name would, no special-casing in the code."""
+    app_id = add_application_with_listing(db_path, "Welder, must know TIG welding.")
+    conn = connect(db_path)
+    try:
+        create_lane(conn, "Data Analytics", None, None)
+        ensure_other_lane(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+    runner = FakeRunner(text="=== LANE ===\nOther\n=== END LANE ===")
+    queue = make_queue(db_path, runner)
+    conn = connect(db_path)
+    try:
+        job_id = submit_assign_job_lane(conn, queue, app_id)
+    finally:
+        conn.close()
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        assert get_claude_job(conn, job_id).status == "done"  # type: ignore[union-attr]
+        row = conn.execute("SELECT lane FROM job_applications WHERE id = ?", (app_id,)).fetchone()
+    finally:
+        conn.close()
+    assert row["lane"] == "Other"

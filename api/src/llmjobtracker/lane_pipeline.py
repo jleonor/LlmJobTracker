@@ -159,7 +159,9 @@ Answer with:
 
 === LANE ===
 <the name of exactly one lane from the approved list above that this role best fits, copied
-exactly as it is written there, or Unknown if none of them fit>
+exactly as it is written there. If the role is clear but doesn't fit any of the specific lanes,
+answer Other - it is one of the approved lanes, reserved for exactly this. Answer Unknown only
+if the listing gives too little information to judge at all>
 === END LANE ==="""
 
 _ASSIGNED_LANE_BLOCK = re.compile(

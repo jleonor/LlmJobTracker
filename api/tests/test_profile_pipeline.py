@@ -14,6 +14,7 @@ from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.profile_files import store_profile_file
 from llmjobtracker.profile_pipeline import (
     DEFAULT_RULES_PATH,
+    INSTRUCTIONS,
     PROMPT_KINDS,
     ProfileBusy,
     ProfileNotReady,
@@ -408,3 +409,10 @@ def test_an_analysis_reads_each_upload_again_from_its_copy(
         conn.close()
     assert text != "stale text"
     assert "Analyst, Example Corp" in text
+
+
+def test_strategy_instructions_name_lanes_with_short_job_titles() -> None:
+    """D-219: lanes should read as one or two job titles, not a long descriptive phrase - any
+    nuance belongs in the lane's own paragraph, not crammed into its name."""
+    assert "one or two closely related job titles" in INSTRUCTIONS["strategy"]
+    assert "not in its name" in INSTRUCTIONS["strategy"]

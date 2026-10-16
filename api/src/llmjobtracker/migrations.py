@@ -969,6 +969,18 @@ MIGRATIONS: tuple[Migration, ...] = (
         ),
         down=("DROP TABLE lanes",),
     ),
+    Migration(
+        version=29,
+        name="seed the default Other lane (D-219)",
+        up=(
+            # COALESCE(MAX(position) + 1, 0): appended after any lane a database already has
+            # (an upgrade), or position 0 on a brand-new, empty table.
+            "INSERT INTO lanes (name, description, position) "
+            "SELECT 'Other', 'Roles that don''t clearly fit any of the lanes above.', "
+            "COALESCE(MAX(position) + 1, 0) FROM lanes",
+        ),
+        down=("DELETE FROM lanes WHERE name = 'Other'",),
+    ),
 )
 
 _LEDGER = """

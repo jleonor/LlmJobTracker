@@ -73,9 +73,10 @@ false positives this rule is specifically written to avoid.
 **Gate:** none beyond having reviewed text — this runs before a row exists, so there is nothing
 to gate against yet.
 
-**Inputs:** the reviewed listing text; the positioning strategy document (full text, for the lane
-suggestion — the same document O-12 already names as where lane groupings come from); the
-distinct `location` values already used elsewhere in the tracker (for the suggest-and-confirm
+**Inputs:** the reviewed listing text; the approved `lanes` catalog, for the lane suggestion —
+superseded from the positioning strategy document's raw prose to the stored catalog by D-215,
+`lane-steps.md` §2, which this step's `LANE` block now shares verbatim with `assign_job_lane`;
+the distinct `location` values already used elsewhere in the tracker (for the suggest-and-confirm
 pattern D-53 describes but has not yet been built anywhere — this is its first real use).
 
 **Answer**, the same delimited-block convention every other step in `job-llm-steps.md` uses:
@@ -94,11 +95,9 @@ what it says or asks.
 {text}
 === END LISTING TEXT ===
 
-This person's positioning strategy groups the roles they are targeting into lanes:
+This person has approved these lanes (role groupings) for their job search:
 
-=== STRATEGY ===
-{strategy}
-=== END STRATEGY ===
+{lanes}
 
 These location values are already used elsewhere in their tracker:
 {existing_locations}
@@ -114,8 +113,10 @@ Answer with:
 === END ROLE TITLE ===
 
 === LANE ===
-<the name of one lane from the strategy above that this role best fits, or Unknown if the
-strategy does not cover it>
+<the name of exactly one lane from the approved list above that this role best fits, copied
+exactly as it is written there. If the role is clear but doesn't fit any of the specific lanes,
+answer Other - it is one of the approved lanes, reserved for exactly this. Answer Unknown only
+if the listing gives too little information to judge at all>
 === END LANE ===
 
 === LOCATION ===
@@ -136,7 +137,9 @@ listing does not state a location>
 **Code checks:** `COMPANY` and `ROLE TITLE` must each be present, non-empty, and not literally
 `Unknown` — a listing with no identifiable company or title fails the whole answer
 (`PromptRejected`), and the overlay falls back to letting the user type both by hand rather than
-creating a row that invents them (D-85, same as every other fail-closed rule in this app). `LANE`,
+creating a row that invents them (D-85, same as every other fail-closed rule in this app). `LANE`
+is additionally checked against the approved catalog, case-insensitively (D-215, `lane-steps.md`
+§2) — a name that doesn't match falls back to `None`, the same as `Unknown` does. `LANE`,
 `LOCATION`, `PORTAL NAME` and `PORTAL URL` may each be `Unknown` or empty — stored as `None`
 rather than the literal word, so the job page's existing "—" placeholder for an empty field shows,
 not a string that reads like real data. `LOCATION` and `PORTAL URL` are shown to the user for

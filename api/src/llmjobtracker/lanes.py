@@ -5,10 +5,18 @@ picks from (D-182, D-214). Stored in their own table, edited by hand on the Prof
 """
 
 import sqlite3
+from typing import Final
 
 from pydantic import BaseModel
 
 _COLUMNS = "id, name, description, reasoning, position"
+
+# The code-guaranteed catch-all lane (D-219): seeded by migration 29 so it exists from the
+# start, and re-added by replace_all_lanes below whenever Sync from strategy wipes the table.
+# Not written by the strategy prompt itself - it's a catalog-completeness fallback, not a real
+# positioning direction. Deleting it by hand between syncs is allowed; it isn't protected.
+OTHER_LANE_NAME: Final = "Other"
+OTHER_LANE_DESCRIPTION: Final = "Roles that don't clearly fit any of the lanes above."
 
 
 class Lane(BaseModel):
@@ -99,12 +107,30 @@ def delete_lane(conn: sqlite3.Connection, lane_id: int) -> bool:
     return cursor.rowcount == 1
 
 
+def ensure_other_lane(conn: sqlite3.Connection) -> None:
+    """Re-adds the Other lane (D-219) if it's missing, appended after every other lane. A
+    case-insensitive check, matching `validate_lane_name`'s own matching convention - a lane the
+    strategy document itself happened to name "Other" counts, no duplicate is added."""
+    names = lane_names(conn)
+    if any(name.casefold() == OTHER_LANE_NAME.casefold() for name in names):
+        return
+    with conn:
+        next_position = conn.execute("SELECT COALESCE(MAX(position) + 1, 0) FROM lanes").fetchone()[
+            0
+        ]
+        conn.execute(
+            "INSERT INTO lanes (name, description, position) VALUES (?, ?, ?)",
+            (OTHER_LANE_NAME, OTHER_LANE_DESCRIPTION, next_position),
+        )
+
+
 def replace_all_lanes(
     conn: sqlite3.Connection, lanes: list[tuple[str, str | None, str | None]]
 ) -> None:
     """Used by `extract_lanes`'s `on_result` (Sync from strategy, D-214): replaces every stored
     lane with the parsed list, in the given order (`position` 0, 1, 2, ...). A full replace, not
-    a merge - the frontend confirms before running Sync, since this can overwrite manual edits."""
+    a merge - the frontend confirms before running Sync, since this can overwrite manual edits.
+    Always ends with the Other lane (D-219) present, even though this wipes the whole table."""
     with conn:
         conn.execute("DELETE FROM lanes")
         conn.executemany(
@@ -114,3 +140,4 @@ def replace_all_lanes(
                 for position, (name, description, reasoning) in enumerate(lanes)
             ],
         )
+    ensure_other_lane(conn)

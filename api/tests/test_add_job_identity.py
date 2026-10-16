@@ -54,7 +54,7 @@ def test_build_identity_prompt_includes_the_task_and_text(db_path: Path) -> None
         conn.close()
     assert "TASK: extract_job_identity" in prompt
     assert "Senior Data Analyst at Acme Inc." in prompt
-    assert "(none approved yet)" in prompt  # no lanes stored
+    assert "- Other: Roles that don't clearly fit any of the lanes above." in prompt
     assert "(none yet)" in prompt  # no location values stored anywhere yet
 
 
