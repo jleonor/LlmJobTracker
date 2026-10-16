@@ -1,6 +1,6 @@
 # LlmJobTracker: Development Plan
 
-**Current phase: 8.** Phases 0 through 7 are done; `main` is fast-forwarded to Phase 7's end (D-61, D-213). Phase 8's step list is drafted (D-214), awaiting approval before any code (rule 7).
+**Current phase: 9.** Phases 0 through 8 are done; `main` is fast-forwarded past Phase 8's end to include D-223 (the Expired status), a small out-of-scope addition made on the same branch before it merged. Phase 9's step list is drafted (D-224/D-225), awaiting approval before any code (rule 7).
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -25,7 +25,7 @@ This plan says what gets built, in what order, and how we know a phase is done. 
 | 6 | Technical debt audit | Key functionality and components reviewed for SOLID structure; LangChain/LangGraph decided |
 | 7 | Multi-LLM support | Codex selectable in Settings; "Open LLM app" opens a read-only context bundle |
 | 8 | Lanes | Profile page gets a named, described Lanes section, sourced from the positioning strategy |
-| 9 | Font and UI audit | One consistent font and a reviewed, modern layout across the table and main pages |
+| 9 | Tech debt audit (backend/frontend reuse) and font/UI audit | Concrete reuse fixes from an updated backend/frontend audit, then one consistent font and a reviewed, modern layout across the table and main pages |
 | 10 | Memory function | A revise chat that surfaces a new background fact proposes a profile-document update |
 | 11 | Dashboard | Slicer-driven charts, a calendar heatmap, and per-lane strengths/weaknesses |
 | 12 | Shell and hardening | Electron shell, backups, run log, and an in-app LLM + browser pane |
@@ -768,16 +768,38 @@ Done when
 
 ---
 
-## Phase 9: Font and UI audit
+## Phase 9: Technical debt remediation and font/UI audit
 
-**Goal:** consistent typography and a reviewed, modern layout across the Job Applications table, the Job Application page, the Profile page and the LLM history page.
+**Goal:** concrete reuse fixes land first, from an updated backend/frontend audit (Phase 6's own inventory is now stale after Phases 7-8's real code — the Codex runner, lanes, pricing, and the Open LLM app export all landed since `planning/phase-6-inventory.md` was written). The original font/UI audit (consistent typography and a reviewed, modern layout across the Job Applications table, the Job Application page, the Profile page and the LLM history page) is kept in this phase's scope but appended as its own step list once this remediation batch is reviewed (D-224).
 
 Scope
-- Audit which font is used where today (table, page body, headings) and decide one consistent choice — candidate: Poppins throughout the table, confirmed or revised once the audit is done.
-- Review each page's layout for UX issues: the Job Applications table, the Job Application detail page, the Profile page, the LLM history page.
-- Apply the agreed font and fix the layout issues the audit finds, each confirmed in the browser with before/after screenshots (CLAUDE.md rule 5).
+- A fresh backend + frontend investigation (done in chat 2026-10-16) found five concrete, low-risk duplications and three larger SOLID "concentration of responsibility" concerns. This batch fixes the five duplications; the three larger items are noted, not acted on (D-225), the same way Phase 6's own audit flagged issues it didn't require itself to fix.
+- Backend: collapse `claude_code_runner.py`'s and `codex_runner.py`'s duplicated subprocess-management code into one shared module. Collapse `job_pipeline.py`'s and `job_revise_pipeline.py`'s duplicated `_block_text`/`_block_pattern`/`_normalize_for_match` helpers (byte-for-byte identical today, by each file's own admission in comments) into one shared module. Generalize `revise_turns.py`/`job_revise_turns.py`'s near-identical shape into one implementation.
+- Frontend: collapse the two copies of `parseCheckAnswer` (`AddJobOverlay.tsx`, `GenerateListingOverlay.tsx`) into one shared function. Collapse the four separate status/queue-badge `TONE` color maps (`StatusBadge.tsx`, `QueueStatusBadge.tsx`, `LlmHistoryPage.tsx`, `RunTrace.tsx`) into one shared palette.
+- Not in this batch (D-225): splitting `job_pipeline.py` (2075 lines) and `job_revise_pipeline.py` (1454 lines) per section, splitting `app.py`'s ~75 inline routes into per-domain `APIRouter`s, and splitting `JobApplicationDetailPage.tsx` (2321 lines). Each is a real SOLID concern the audit found, left for a later, separately-scoped pass.
+- The font/UI audit itself (one consistent font; a layout review of the table, job page, Profile page, LLM history page) is unchanged from its original scope, just deferred to an appended step list.
+
+Step list (drafted 2026-10-16, awaiting approval; backend first, then frontend, per the investigation this builds on)
+
+1. Cut `phase-9-tech-audit` from `main` (D-61).
+2. Write `planning/phase-9-audit-notes.md`: today's backend and frontend findings — the five duplications this batch fixes, plus the three large-file SOLID concerns it flags but doesn't act on — extending `planning/phase-6-inventory.md`'s now-stale picture. Docs only.
+3. Backend: extract the subprocess-management code `claude_code_runner.py` and `codex_runner.py` duplicate — process spawn (stdin/stdout/stderr pipes), the stdout-drain thread, the stderr-drain thread, the cancel/timeout poll loop, and the generic JSONL-line reader (`_parse_event_line`/`_events`) — into a shared module. Each runner keeps only what's genuinely its own: `build_args`, stream interpretation (`parse_stream`), and `auth_status`/`login`/`logout` (different CLI commands and output shapes). Tests: every existing test for both runners (cancel, timeout, a canned stdout fixture) continues to pass unchanged against the shared code.
+4. Backend: move `_block_text`, `_block_pattern`, `_normalize_for_match` out of `job_pipeline.py` and `job_revise_pipeline.py` into one shared module; both files import from it instead of keeping their own private copy. Tests: every existing parser test in both modules continues to pass against the shared implementation.
+5. Backend: generalize `revise_turns.py` and `job_revise_turns.py` — same four functions (`create_turn`, `_turn_from_row`, `turn_for_job`, `prior_messages`/`turns_for_kind`), differing only by which columns scope a turn — into one implementation, keeping each table's own call sites (`revise_pipeline.py`, `job_revise_pipeline.py`) unchanged. Tests: every existing test for both modules continues to pass against the generalized code.
+6. Backend checks: `scripts/check.py` output; personal-data scan.
+7. Frontend: move `parseCheckAnswer` out of `AddJobOverlay.tsx` and `GenerateListingOverlay.tsx` into one shared `lib/` function; both import it. Tests: existing vitest coverage for both components continues to pass against the shared function.
+8. Frontend: replace the four separate `TONE` color maps with one shared palette module, carrying over the exact hex values already in use today (some, like "processing"/"Screening", are already identical across files) so this is a pure refactor with no visible color change.
+9. Frontend checks: `scripts/check.py` output; screenshots of the table, the job page, the LLM history page, and a run trace, confirmed to show the same colors as before the consolidation.
 
 Done when
+- [ ] The Claude Code and Codex runners share one subprocess-management implementation; only CLI-specific parsing/flags/auth differ between them.
+- [ ] `job_pipeline.py` and `job_revise_pipeline.py` no longer each carry their own copy of `_block_text`/`_block_pattern`/`_normalize_for_match`.
+- [ ] `revise_turns.py` and `job_revise_turns.py` share one implementation.
+- [ ] `parseCheckAnswer` exists in exactly one place on the frontend.
+- [ ] The four status/queue color maps are one shared palette, with no visible color change (screenshot).
+- [ ] `python scripts/check.py` is green after every step above.
+
+Font/UI audit (original scope, step list appended here once the above is reviewed)
 - [ ] A written audit lists every font currently in use and where (screenshot evidence).
 - [ ] One consistent font choice is applied across the table and all four pages above (screenshot).
 - [ ] Each layout issue the audit found is either fixed or explicitly deferred with a reason.

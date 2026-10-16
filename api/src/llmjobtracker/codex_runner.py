@@ -24,16 +24,15 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from llmjobtracker.cli_runner import events_from_stdout, run_cli_process
 from llmjobtracker.runner import AuthStatus, RateLimitError, RunResult
 
-# Mirrors claude_code_runner.DEFAULT_TIMEOUT_S/POLL_INTERVAL_S - same reasoning (D-75).
+# Mirrors claude_code_runner.DEFAULT_TIMEOUT_S - same reasoning (D-75).
 DEFAULT_TIMEOUT_S = 15 * 60
-POLL_INTERVAL_S = 0.2
 # The model a run uses unless CodexRunner is given another (extended by the selectable-model
 # setting, D-206). Codex does not echo back which model it used (runner-notes.md), so whatever
 # model was actually requested is also what RunResult.model records - not a parsed value.
@@ -117,26 +116,6 @@ def build_args(executable: str, schema_path: Path | None = None, model: str = MO
     return args
 
 
-def _parse_event_line(line: str) -> dict[str, Any] | None:
-    stripped = line.strip()
-    if not stripped:
-        return None
-    try:
-        event: Any = json.loads(stripped)
-    except json.JSONDecodeError:
-        return None
-    return event if isinstance(event, dict) else None
-
-
-def _events(stdout: str) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
-    for line in stdout.splitlines():
-        event = _parse_event_line(line)
-        if event is not None:
-            events.append(event)
-    return events
-
-
 def _agent_text(events: list[dict[str, Any]]) -> str | None:
     """The last agent_message item's text - a turn can emit more than one item.completed event
     for intermediate reasoning, confirmed live (runner-notes.md)."""
@@ -202,7 +181,7 @@ def _turn_failure_message(events: list[dict[str, Any]]) -> str | None:
 def parse_stream(stdout: str, exit_code: int, duration_ms: int, model: str = MODEL) -> RunResult:
     """Read a codex exec --json run. Raises RateLimitError on a plan limit. `model` is the id
     actually requested for this run - Codex never echoes it back (see MODEL's own docstring)."""
-    events = _events(stdout)
+    events = events_from_stdout(stdout)
     failure = _turn_failure_message(events)
     if failure is not None:
         if any(marker in failure for marker in RATE_LIMIT_MARKERS):
@@ -268,62 +247,23 @@ class CodexRunner:
             with handle:
                 json.dump(json_schema, handle)
 
-        started = time.monotonic()
-        process = subprocess.Popen(
-            build_args(executable, schema_file, self.model),
-            cwd=self.workdir,
-            env=_cli_environment(),
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-        )
+        def parse(stdout: str, exit_code: int, duration_ms: int) -> RunResult:
+            return parse_stream(stdout, exit_code, duration_ms, self.model)
+
         try:
-            assert process.stdin is not None
-            try:
-                process.stdin.write(prompt)
-                process.stdin.close()
-            except BrokenPipeError:
-                pass  # the CLI stopped reading early; its output below says why
-
-            lines: list[str] = []
-
-            def read_stdout() -> None:
-                assert process.stdout is not None
-                for line in process.stdout:
-                    lines.append(line)
-
-            def drain_stderr() -> None:
-                assert process.stderr is not None
-                for _ in process.stderr:
-                    pass
-
-            stdout_thread = threading.Thread(target=read_stdout, daemon=True)
-            stderr_thread = threading.Thread(target=drain_stderr, daemon=True)
-            stdout_thread.start()
-            stderr_thread.start()
-
-            deadline = started + self.timeout_s
-            while process.poll() is None:
-                if cancel is not None and cancel.is_set():
-                    process.terminate()
-                    process.wait()
-                    stdout_thread.join(timeout=5.0)
-                    return RunResult(ok=False, error="Cancelled.")
-                if time.monotonic() > deadline:
-                    process.kill()
-                    process.wait()
-                    stdout_thread.join(timeout=5.0)
-                    return RunResult(
-                        ok=False, error=f"Codex did not finish in {self.timeout_s:.0f} s."
-                    )
-                time.sleep(POLL_INTERVAL_S)
-
-            stdout_thread.join(timeout=5.0)
-            stderr_thread.join(timeout=5.0)
-            duration_ms = int((time.monotonic() - started) * 1000)
-            return parse_stream("".join(lines), process.returncode, duration_ms, self.model)
+            return run_cli_process(
+                build_args(executable, schema_file, self.model),
+                cli_label="Codex",
+                workdir=self.workdir,
+                env=_cli_environment(),
+                prompt=prompt,
+                timeout_s=self.timeout_s,
+                cancel=cancel,
+                # Codex's own equivalent of --include-partial-messages is not confirmed live
+                # yet (module docstring), so on_text is accepted but never actually called.
+                on_line=None,
+                parse_stream=parse,
+            )
         finally:
             if schema_file is not None:
                 schema_file.unlink(missing_ok=True)
