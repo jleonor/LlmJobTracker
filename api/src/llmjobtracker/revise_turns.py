@@ -9,6 +9,8 @@ later turn's prompt can replay the earlier ones (Agent/specs/revise-steps.md).
 import sqlite3
 from dataclasses import dataclass
 
+from llmjobtracker.revise_turns_shared import TurnTable
+
 
 @dataclass(frozen=True)
 class ReviseTurn:
@@ -19,46 +21,30 @@ class ReviseTurn:
     created_at: str
 
 
+_TABLE: TurnTable[ReviseTurn] = TurnTable(
+    name="revise_turns",
+    select_columns=("id", "output_kind", "claude_job_id", "message", "created_at"),
+    scope_columns=("output_kind",),
+    build=lambda row: ReviseTurn(**dict(row)),
+)
+
+
 def create_turn(
     conn: sqlite3.Connection, output_kind: str, claude_job_id: int, message: str
 ) -> int:
-    with conn:
-        cursor = conn.execute(
-            "INSERT INTO revise_turns (output_kind, claude_job_id, message) VALUES (?, ?, ?)",
-            (output_kind, claude_job_id, message),
-        )
-    turn_id = cursor.lastrowid
-    if turn_id is None:
-        raise RuntimeError("SQLite did not return the new row id")
-    return turn_id
-
-
-def _turn_from_row(row: sqlite3.Row) -> ReviseTurn:
-    return ReviseTurn(**dict(row))
+    return _TABLE.create(
+        conn, ("output_kind", "claude_job_id", "message"), (output_kind, claude_job_id, message)
+    )
 
 
 def turn_for_job(conn: sqlite3.Connection, claude_job_id: int) -> ReviseTurn | None:
-    row = conn.execute(
-        "SELECT id, output_kind, claude_job_id, message, created_at FROM revise_turns "
-        "WHERE claude_job_id = ?",
-        (claude_job_id,),
-    ).fetchone()
-    return None if row is None else _turn_from_row(row)
+    return _TABLE.by_job(conn, claude_job_id)
 
 
 def prior_messages(conn: sqlite3.Connection, output_kind: str, before_turn_id: int) -> list[str]:
     """Earlier turns in this conversation, oldest first — not including `before_turn_id` itself."""
-    rows = conn.execute(
-        "SELECT message FROM revise_turns WHERE output_kind = ? AND id < ? ORDER BY id",
-        (output_kind, before_turn_id),
-    ).fetchall()
-    return [str(row["message"]) for row in rows]
+    return _TABLE.prior_messages(conn, (output_kind,), before_turn_id)
 
 
 def turns_for_kind(conn: sqlite3.Connection, output_kind: str) -> list[ReviseTurn]:
-    rows = conn.execute(
-        "SELECT id, output_kind, claude_job_id, message, created_at FROM revise_turns "
-        "WHERE output_kind = ? ORDER BY id",
-        (output_kind,),
-    ).fetchall()
-    return [_turn_from_row(row) for row in rows]
+    return _TABLE.list_for_scope(conn, (output_kind,))

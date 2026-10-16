@@ -11,6 +11,8 @@ section the turn is about, and in what order, so a later turn's prompt can repla
 import sqlite3
 from dataclasses import dataclass
 
+from llmjobtracker.revise_turns_shared import TurnTable
+
 
 @dataclass(frozen=True)
 class JobReviseTurn:
@@ -23,9 +25,19 @@ class JobReviseTurn:
     created_at: str
 
 
-_COLUMNS = (
-    "id, job_application_id, section_kind, claude_job_id, message, "
-    "attachment_job_file_id, created_at"
+_TABLE: TurnTable[JobReviseTurn] = TurnTable(
+    name="job_revise_turns",
+    select_columns=(
+        "id",
+        "job_application_id",
+        "section_kind",
+        "claude_job_id",
+        "message",
+        "attachment_job_file_id",
+        "created_at",
+    ),
+    scope_columns=("job_application_id", "section_kind"),
+    build=lambda row: JobReviseTurn(**dict(row)),
 )
 
 
@@ -37,49 +49,31 @@ def create_turn(
     message: str,
     attachment_job_file_id: int | None = None,
 ) -> int:
-    with conn:
-        cursor = conn.execute(
-            "INSERT INTO job_revise_turns "
-            "(job_application_id, section_kind, claude_job_id, message, attachment_job_file_id) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (job_application_id, section_kind, claude_job_id, message, attachment_job_file_id),
-        )
-    turn_id = cursor.lastrowid
-    if turn_id is None:
-        raise RuntimeError("SQLite did not return the new row id")
-    return turn_id
-
-
-def _turn_from_row(row: sqlite3.Row) -> JobReviseTurn:
-    return JobReviseTurn(**dict(row))
+    return _TABLE.create(
+        conn,
+        (
+            "job_application_id",
+            "section_kind",
+            "claude_job_id",
+            "message",
+            "attachment_job_file_id",
+        ),
+        (job_application_id, section_kind, claude_job_id, message, attachment_job_file_id),
+    )
 
 
 def turn_for_job(conn: sqlite3.Connection, claude_job_id: int) -> JobReviseTurn | None:
-    row = conn.execute(
-        f"SELECT {_COLUMNS} FROM job_revise_turns WHERE claude_job_id = ?",
-        (claude_job_id,),
-    ).fetchone()
-    return None if row is None else _turn_from_row(row)
+    return _TABLE.by_job(conn, claude_job_id)
 
 
 def prior_messages(
     conn: sqlite3.Connection, job_application_id: int, section_kind: str, before_turn_id: int
 ) -> list[str]:
     """Earlier turns in this conversation, oldest first — not including `before_turn_id` itself."""
-    rows = conn.execute(
-        "SELECT message FROM job_revise_turns "
-        "WHERE job_application_id = ? AND section_kind = ? AND id < ? ORDER BY id",
-        (job_application_id, section_kind, before_turn_id),
-    ).fetchall()
-    return [str(row["message"]) for row in rows]
+    return _TABLE.prior_messages(conn, (job_application_id, section_kind), before_turn_id)
 
 
 def turns_for_section(
     conn: sqlite3.Connection, job_application_id: int, section_kind: str
 ) -> list[JobReviseTurn]:
-    rows = conn.execute(
-        f"SELECT {_COLUMNS} FROM job_revise_turns "
-        "WHERE job_application_id = ? AND section_kind = ? ORDER BY id",
-        (job_application_id, section_kind),
-    ).fetchall()
-    return [_turn_from_row(row) for row in rows]
+    return _TABLE.list_for_scope(conn, (job_application_id, section_kind))
