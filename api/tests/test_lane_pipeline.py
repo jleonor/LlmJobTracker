@@ -110,19 +110,21 @@ def test_build_extract_lanes_prompt_includes_the_task_and_the_strategy(db_path: 
 
 
 def test_build_extract_lanes_prompt_instructs_to_include_every_lane_group(db_path: Path) -> None:
-    """D-220: the strategy document groups lanes into primary/secondary/avoid - a lane being one
-    to avoid as a primary target was being silently dropped from the catalog. The prompt now
-    says explicitly to include all three groups."""
+    """D-220/D-221: the strategy document groups lanes into main/secondary/tertiary - a tertiary
+    lane was being silently dropped from the catalog. The prompt now says explicitly to include
+    all three groups, and that tertiary lanes are not lanes to avoid."""
     write_strategy(db_path)
     conn = connect(db_path)
     try:
         prompt = build_extract_lanes_prompt(conn)
     finally:
         conn.close()
-    assert "primary lanes" in prompt
-    assert "secondary lanes" in prompt
-    assert "avoid as a primary target" in prompt
-    assert "Include every lane from all three groups" in prompt
+    normalized = " ".join(prompt.split())
+    assert "main lanes" in normalized
+    assert "secondary lanes" in normalized
+    assert "tertiary lanes" in normalized
+    assert "not lanes to avoid" in normalized
+    assert "Include every lane from all three groups" in normalized
 
 
 def test_build_extract_lanes_prompt_requires_a_strategy_document(db_path: Path) -> None:

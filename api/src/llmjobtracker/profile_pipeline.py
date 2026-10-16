@@ -84,12 +84,13 @@ INSTRUCTIONS: Final[dict[str, str]] = {
         "further nuance - industry, seniority, angle - in the lane's own paragraph, not in its "
         "name. If the material only supports one real direction, "
         "say so rather than inventing a second lane to pad the list. Cover: a differentiator, "
-        "one paragraph on what sets the person apart; the primary lanes to apply for first, and "
-        "secondary lanes to apply for selectively, each with a fit from 0.5 to 5 in steps of 0.5, "
-        "why it fits, and what makes it distinct from the other lanes; lanes to avoid as primary "
-        "targets, and why; geography; the pay level the material supports, or say if it is not "
-        "stated; how to split effort across the lanes; and what is still open. Do not write "
-        "positioning for a specific job."
+        "one paragraph on what sets the person apart; the main lanes to apply for first, "
+        "secondary lanes to apply for selectively, and tertiary lanes covering everything else "
+        "the material supports - not lanes to avoid, but ones worth naming, with any caveat or "
+        "thing to keep in mind; every lane with a fit from 0.5 to 5 in steps of 0.5, why it "
+        "fits, and what makes it distinct from the other lanes; geography; the pay level the "
+        "material supports, or say if it is not stated; how to split effort across the lanes; "
+        "and what is still open. Do not write positioning for a specific job."
     ),
 }
 

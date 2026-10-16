@@ -58,9 +58,10 @@ Code checks: the answer is not empty.
 Input: the questionnaire analysis, and the career history.
 
 Purpose: the positioning strategy. Its sections follow the strategy the user writes (D-73): a
-differentiator, primary and secondary lanes with a fit rating (0.5 to 5, in steps of 0.5) and why,
-roles to avoid, geography, a comp anchor, effort allocation, and open questions. The prompt asks for
-these as Markdown headings, not as separate structured fields.
+differentiator, main/secondary/tertiary lanes (D-221 — tertiary covers everything else the
+material supports, not roles to avoid) each with a fit rating (0.5 to 5, in steps of 0.5) and why,
+geography, a comp anchor, effort allocation, and open questions. The prompt asks for these as
+Markdown headings, not as separate structured fields.
 
 Code checks: the answer is not empty.
 

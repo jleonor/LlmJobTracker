@@ -416,3 +416,12 @@ def test_strategy_instructions_name_lanes_with_short_job_titles() -> None:
     nuance belongs in the lane's own paragraph, not crammed into its name."""
     assert "one or two closely related job titles" in INSTRUCTIONS["strategy"]
     assert "not in its name" in INSTRUCTIONS["strategy"]
+
+
+def test_strategy_instructions_use_main_secondary_tertiary_not_avoid() -> None:
+    """D-221: the third lane tier reads as lower priority with caveats, not as a warning against
+    applying - a lane the career history still supports shouldn't be framed as one to avoid."""
+    assert "main lanes" in INSTRUCTIONS["strategy"]
+    assert "secondary lanes" in INSTRUCTIONS["strategy"]
+    assert "tertiary lanes" in INSTRUCTIONS["strategy"]
+    assert "not lanes to avoid" in INSTRUCTIONS["strategy"]
