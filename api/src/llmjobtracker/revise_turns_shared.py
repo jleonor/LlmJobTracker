@@ -53,8 +53,7 @@ class TurnTable[T]:
     ) -> list[str]:
         """Earlier turns in this conversation, oldest first — not including `before_turn_id`."""
         rows = conn.execute(
-            f"SELECT message FROM {self.name} WHERE {self._scope_where()} AND id < ? "
-            "ORDER BY id",
+            f"SELECT message FROM {self.name} WHERE {self._scope_where()} AND id < ? ORDER BY id",
             (*scope_values, before_turn_id),
         ).fetchall()
         return [str(row["message"]) for row in rows]
