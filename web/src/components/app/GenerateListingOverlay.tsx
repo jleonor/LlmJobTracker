@@ -16,25 +16,12 @@ import {
   fetchPromptExchange,
   generateListing,
 } from '@/lib/api'
+import { type CheckAnswer, parseCheckAnswer } from '@/lib/parseCheckAnswer'
 import { useClaudeJobs } from '@/lib/useClaudeJobs'
 import type { JobApplicationFile, ListingExtraction } from '@/lib/types'
 
 type Method = ListingExtraction['method']
 type Stage = 'source' | 'review' | 'running'
-
-// Reads the sanity check's first line itself (job_pipeline.py's parse_check_answer, mirrored
-// client-side): the job only carries a character count, not the text, until the exchange is
-// fetched (D-105's trace is a count-and-status feed, not a text one).
-function parseCheckAnswer(text: string): { looksLikePosting: boolean; reason: string } {
-  const match = /LOOKS_LIKE_A_JOB_POSTING:\s*(yes|no)\b/i.exec(text)
-  const looksLikePosting = match !== null && match[1].toLowerCase() === 'yes'
-  const rest = match ? text.slice(match.index + match[0].length) : text
-  const reason = rest
-    .split('\n')
-    .map((line) => line.trim())
-    .find((line) => line.length > 0)
-  return { looksLikePosting, reason: reason ?? '' }
-}
 
 // The Listing's Generate (LLM) flow (D-121, job-llm-steps.md): pick a source, review the
 // code-extracted text (a sanity check runs alongside, informing but never blocking), then
@@ -62,9 +49,7 @@ export function GenerateListingOverlay({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checkJobId, setCheckJobId] = useState<number | null>(null)
-  const [checkAnswer, setCheckAnswer] = useState<{ looksLikePosting: boolean; reason: string } | null>(
-    null,
-  )
+  const [checkAnswer, setCheckAnswer] = useState<CheckAnswer | null>(null)
   const [generateJobId, setGenerateJobId] = useState<number | null>(null)
   const [currentText, setCurrentText] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)

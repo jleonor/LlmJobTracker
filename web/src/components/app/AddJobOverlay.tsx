@@ -22,6 +22,7 @@ import {
   intakeExtractFromUrl,
   intakeExtractIdentity,
 } from '@/lib/api'
+import { type CheckAnswer, parseCheckAnswer } from '@/lib/parseCheckAnswer'
 import { useClaudeJobs } from '@/lib/useClaudeJobs'
 import type {
   AddJobResult,
@@ -67,19 +68,6 @@ function portalNameFromUrl(url: string): string {
   }
 }
 
-// Mirrors GenerateListingOverlay's own parser (job_pipeline.py's parse_check_answer) - the job
-// only carries a character count, not the text, until the exchange is fetched.
-function parseCheckAnswer(text: string): { looksLikePosting: boolean; reason: string } {
-  const match = /LOOKS_LIKE_A_JOB_POSTING:\s*(yes|no)\b/i.exec(text)
-  const looksLikePosting = match !== null && match[1].toLowerCase() === 'yes'
-  const rest = match ? text.slice(match.index + match[0].length) : text
-  const reason = rest
-    .split('\n')
-    .map((line) => line.trim())
-    .find((line) => line.length > 0)
-  return { looksLikePosting, reason: reason ?? '' }
-}
-
 // Add Job (Agent/specs/intake-steps.md, D-143 to D-146): workflow + Master CV, then the same
 // source-picker/review wizard Listing's own Generate (LLM) uses, then confirming the identity
 // fields extract_job_identity suggests, then creating the row and showing the whole chosen
@@ -114,9 +102,7 @@ export function AddJobOverlay({
   const [extraction, setExtraction] = useState<ListingExtraction | null>(null)
   const [reviewText, setReviewText] = useState('')
   const [checkJobId, setCheckJobId] = useState<number | null>(null)
-  const [checkAnswer, setCheckAnswer] = useState<{ looksLikePosting: boolean; reason: string } | null>(
-    null,
-  )
+  const [checkAnswer, setCheckAnswer] = useState<CheckAnswer | null>(null)
   const [duplicateMatch, setDuplicateMatch] = useState<DuplicateListingMatch | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
