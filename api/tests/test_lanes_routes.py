@@ -142,3 +142,105 @@ def test_reassign_all_route_counts_queued_and_skipped(db_path: Path) -> None:
         response = client.post("/lanes/reassign-all")
         assert response.status_code == 200
         assert response.json() == {"queued": 2, "skipped": 1}
+
+
+def set_lane(db_path: Path, application_id: int, lane: str | None) -> None:
+    conn = connect(db_path)
+    try:
+        conn.execute("UPDATE job_applications SET lane = ? WHERE id = ?", (lane, application_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# --- Reassign missing lanes (D-222) -------------------------------------------------------------
+
+
+def test_reassign_missing_preview_and_post_agree_and_skip_apps_that_already_have_a_lane(
+    db_path: Path,
+) -> None:
+    ready_id = add_application(db_path, with_listing=True)
+    no_listing_id = add_application(db_path, with_listing=False)
+    already_set_id = add_application(db_path, with_listing=True)
+    set_lane(db_path, already_set_id, "Data Analytics")
+
+    with TestClient(create_app(TOKEN, db_path, FakeRunner(text="OK"))) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        preview = client.get("/lanes/reassign-missing")
+        assert preview.status_code == 200
+        assert preview.json() == {"queued": 1, "skipped": 1}
+
+        response = client.post("/lanes/reassign-missing")
+        assert response.status_code == 200
+        assert response.json() == {"queued": 1, "skipped": 1}
+
+        jobs = client.get("/claude-jobs").json()
+        assign_jobs = [job for job in jobs if job["kind"] == "assign_job_lane"]
+        assert [job["job_application_id"] for job in assign_jobs] == [ready_id]
+        # Confirms the preview changed nothing - still exactly one queued job afterward.
+        assert no_listing_id not in [job["job_application_id"] for job in assign_jobs]
+        assert already_set_id not in [job["job_application_id"] for job in assign_jobs]
+
+
+# --- Clear all lanes (D-222) ---------------------------------------------------------------------
+
+
+def test_clear_all_preview_changes_nothing(db_path: Path) -> None:
+    app_id = add_application(db_path, with_listing=False)
+    set_lane(db_path, app_id, "Data Analytics")
+
+    with TestClient(create_app(TOKEN, db_path, FakeRunner(text="OK"))) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        assert client.get("/lanes/clear-all").json() == {"cleared": 1}
+        assert client.get(f"/job-applications/{app_id}").json()["lane"] == "Data Analytics"
+
+
+def test_clear_all_route_clears_every_application_including_other(db_path: Path) -> None:
+    other_id = add_application(db_path, with_listing=False)
+    set_lane(db_path, other_id, "Other")
+    real_id = add_application(db_path, with_listing=False)
+    set_lane(db_path, real_id, "Data Analytics")
+    unset_id = add_application(db_path, with_listing=False)
+
+    with TestClient(create_app(TOKEN, db_path, FakeRunner(text="OK"))) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        response = client.post("/lanes/clear-all")
+        assert response.status_code == 200
+        assert response.json() == {"cleared": 2}
+        assert client.get(f"/job-applications/{other_id}").json()["lane"] is None
+        assert client.get(f"/job-applications/{real_id}").json()["lane"] is None
+        assert client.get(f"/job-applications/{unset_id}").json()["lane"] is None
+
+
+# --- Clear lanes not in the approved list (D-222) ------------------------------------------------
+
+
+def test_clear_not_in_list_preview_and_post_agree(db_path: Path) -> None:
+    stale_id = add_application(db_path, with_listing=False)
+    set_lane(db_path, stale_id, "Deleted Lane")
+    approved_id = add_application(db_path, with_listing=False)
+    set_lane(db_path, approved_id, "Other")
+
+    with TestClient(create_app(TOKEN, db_path, FakeRunner(text="OK"))) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        preview = client.get("/lanes/clear-not-in-list")
+        assert preview.status_code == 200
+        assert preview.json() == {"cleared": 1}
+
+        response = client.post("/lanes/clear-not-in-list")
+        assert response.status_code == 200
+        assert response.json() == {"cleared": 1}
+
+        assert client.get(f"/job-applications/{stale_id}").json()["lane"] is None
+        assert client.get(f"/job-applications/{approved_id}").json()["lane"] == "Other"
+
+
+def test_clear_not_in_list_matches_case_insensitively(db_path: Path) -> None:
+    app_id = add_application(db_path, with_listing=False)
+    set_lane(db_path, app_id, "other")  # lowercase - still matches the approved "Other"
+
+    with TestClient(create_app(TOKEN, db_path, FakeRunner(text="OK"))) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        response = client.post("/lanes/clear-not-in-list")
+        assert response.json() == {"cleared": 0}
+        assert client.get(f"/job-applications/{app_id}").json()["lane"] == "other"

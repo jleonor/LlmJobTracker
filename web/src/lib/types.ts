@@ -234,6 +234,18 @@ export type PositioningRescoreSummary = {
   skipped: number
 }
 
+// The Lanes section's "Reassign missing lanes" action (D-222). Same GET-previews/POST-runs
+// shape as PositioningRescoreSummary.
+export type LaneReassignmentSummary = {
+  queued: number
+  skipped: number
+}
+
+// The Lanes section's "Clear all lanes" and "Clear all not in list" actions (D-222).
+export type LaneClearSummary = {
+  cleared: number
+}
+
 // The newest version of one of the three generated profile documents (D-86), as /profile/outputs
 // lists it. kind is one of PROMPT_KINDS: full_cv_history, questionnaire_analysis, strategy.
 export type ProfileOutput = {

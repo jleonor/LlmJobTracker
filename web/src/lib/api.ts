@@ -12,6 +12,8 @@ import type {
   JobApplicationFile,
   JobIdentityAnswer,
   Lane,
+  LaneClearSummary,
+  LaneReassignmentSummary,
   ListingExtraction,
   LlmAppOpened,
   LlmAppStatus,
@@ -689,6 +691,37 @@ export async function deleteLane(id: number): Promise<void> {
 // since this can overwrite manual edits.
 export function syncLanesFromStrategy(): Promise<ClaudeJob> {
   return request<ClaudeJob>('/api/lanes/sync', { method: 'POST' })
+}
+
+// The Lanes section's "Reassign missing lanes" action (D-222): queues assign_job_lane only for
+// applications with no lane set yet. GET previews the counts read-only; POST runs it for real.
+export function fetchReassignMissingLanesPreview(): Promise<LaneReassignmentSummary> {
+  return request<LaneReassignmentSummary>('/api/lanes/reassign-missing')
+}
+
+export function reassignMissingLanes(): Promise<LaneReassignmentSummary> {
+  return request<LaneReassignmentSummary>('/api/lanes/reassign-missing', { method: 'POST' })
+}
+
+// The Lanes section's "Clear all lanes" action (D-222): clears every application's lane,
+// including one already set to Other. GET previews the count read-only; POST runs it for real.
+export function fetchClearAllLanesPreview(): Promise<LaneClearSummary> {
+  return request<LaneClearSummary>('/api/lanes/clear-all')
+}
+
+export function clearAllLanes(): Promise<LaneClearSummary> {
+  return request<LaneClearSummary>('/api/lanes/clear-all', { method: 'POST' })
+}
+
+// The Lanes section's "Clear all not in list" action (D-222): clears only the applications
+// whose stored lane doesn't match any approved name. GET previews the count read-only; POST
+// runs it for real.
+export function fetchClearLanesNotInListPreview(): Promise<LaneClearSummary> {
+  return request<LaneClearSummary>('/api/lanes/clear-not-in-list')
+}
+
+export function clearLanesNotInList(): Promise<LaneClearSummary> {
+  return request<LaneClearSummary>('/api/lanes/clear-not-in-list', { method: 'POST' })
 }
 
 // The newest version of each of the three generated documents, for the analysis overlay's

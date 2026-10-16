@@ -124,6 +124,48 @@ def ensure_other_lane(conn: sqlite3.Connection) -> None:
         )
 
 
+def count_applications_with_a_lane(conn: sqlite3.Connection) -> int:
+    """The "Clear all lanes" action's preview count (D-222)."""
+    row = conn.execute("SELECT COUNT(*) FROM job_applications WHERE lane IS NOT NULL").fetchone()
+    return int(row[0])
+
+
+def clear_all_lanes(conn: sqlite3.Connection) -> int:
+    """Clears `job_applications.lane` on every application, regardless of its current value -
+    including one already set to Other (D-222). Returns the number actually cleared."""
+    with conn:
+        cursor = conn.execute("UPDATE job_applications SET lane = NULL WHERE lane IS NOT NULL")
+    return cursor.rowcount
+
+
+def _stale_lane_application_ids(conn: sqlite3.Connection) -> list[int]:
+    """Applications whose stored `lane` doesn't match any approved name, case-insensitively -
+    the same matching convention `validate_lane_name` uses. Left over from before a lane was
+    renamed or removed from the catalog (D-222)."""
+    approved = {name.casefold() for name in lane_names(conn)}
+    rows = conn.execute("SELECT id, lane FROM job_applications WHERE lane IS NOT NULL").fetchall()
+    return [row["id"] for row in rows if row["lane"].casefold() not in approved]
+
+
+def count_lanes_not_in_list(conn: sqlite3.Connection) -> int:
+    """The "Clear all not in list" action's preview count (D-222)."""
+    return len(_stale_lane_application_ids(conn))
+
+
+def clear_lanes_not_in_list(conn: sqlite3.Connection) -> int:
+    """Clears `job_applications.lane` only where it doesn't match any approved name (D-222).
+    Returns the number actually cleared."""
+    stale_ids = _stale_lane_application_ids(conn)
+    if stale_ids:
+        placeholders = ", ".join("?" for _ in stale_ids)
+        with conn:
+            conn.execute(
+                f"UPDATE job_applications SET lane = NULL WHERE id IN ({placeholders})",
+                stale_ids,
+            )
+    return len(stale_ids)
+
+
 def replace_all_lanes(
     conn: sqlite3.Connection, lanes: list[tuple[str, str | None, str | None]]
 ) -> None:

@@ -12,13 +12,19 @@ import { ReviseOverlay } from '@/components/app/ReviseOverlay'
 import { RunTrace } from '@/components/app/RunTrace'
 import {
   ApiError,
+  clearAllLanes,
+  clearLanesNotInList,
   createLane,
   deleteLane,
   deleteProfileFile,
   downloadProfileFile,
+  fetchClearAllLanesPreview,
+  fetchClearLanesNotInListPreview,
   fetchLanes,
   fetchProfileFiles,
+  fetchReassignMissingLanesPreview,
   openProfileFile,
+  reassignMissingLanes,
   revealProfileFile,
   saveSettings,
   syncLanesFromStrategy,
@@ -26,7 +32,13 @@ import {
   uploadProfileFile,
 } from '@/lib/api'
 import { useClaudeJobs } from '@/lib/useClaudeJobs'
-import type { Lane, ProfileFile, ProfileFileKind } from '@/lib/types'
+import type {
+  Lane,
+  LaneClearSummary,
+  LaneReassignmentSummary,
+  ProfileFile,
+  ProfileFileKind,
+} from '@/lib/types'
 
 // The upload sections, in the order of the Profile page (D-58). Labels are the user's words.
 // collapsible is for sections that can hold many files (D-91); the single-file kinds (D-88,
@@ -616,6 +628,54 @@ function LanesSection({ refreshKey }: { refreshKey: number | null }) {
         </div>
       </div>
 
+      {/* These three act on every job application's own lane field, not the catalog above -
+          kept in their own row with a label, since they're a different kind of action (D-222). */}
+      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+        <span className="text-xs font-medium text-muted-foreground">Applications:</span>
+        <LaneMaintenanceAction<LaneReassignmentSummary>
+          label="Reassign missing lanes"
+          title="Reassign missing lanes?"
+          describePreview={(preview) =>
+            preview === null
+              ? 'Checking how many applications are missing a lane...'
+              : `This will queue the lane-matching step for ${preview.queued} job application${preview.queued === 1 ? '' : 's'} with no lane set (${preview.skipped} skipped - no listing file yet). It only ever picks from the approved list above.`
+          }
+          describeResult={(result) =>
+            `Queued ${result.queued}, skipped ${result.skipped} (no listing file yet).`
+          }
+          fetchPreview={fetchReassignMissingLanesPreview}
+          runAction={reassignMissingLanes}
+        />
+        <LaneMaintenanceAction<LaneClearSummary>
+          label="Clear all not in list"
+          title="Clear all not in list?"
+          describePreview={(preview) =>
+            preview === null
+              ? 'Checking how many applications have a stale lane...'
+              : `This will clear the lane on ${preview.cleared} job application${preview.cleared === 1 ? '' : 's'} whose current lane doesn't match any lane above.`
+          }
+          describeResult={(result) =>
+            `Cleared the lane on ${result.cleared} job application${result.cleared === 1 ? '' : 's'}.`
+          }
+          fetchPreview={fetchClearLanesNotInListPreview}
+          runAction={clearLanesNotInList}
+        />
+        <LaneMaintenanceAction<LaneClearSummary>
+          label="Clear all lanes"
+          title="Clear all lanes?"
+          describePreview={(preview) =>
+            preview === null
+              ? 'Checking how many applications have a lane set...'
+              : `This will clear the lane on ${preview.cleared} job application${preview.cleared === 1 ? '' : 's'}, including any set to Other.`
+          }
+          describeResult={(result) =>
+            `Cleared the lane on ${result.cleared} job application${result.cleared === 1 ? '' : 's'}.`
+          }
+          fetchPreview={fetchClearAllLanesPreview}
+          runAction={clearAllLanes}
+        />
+      </div>
+
       {state === 'loading' && <p className="text-xs text-muted-foreground">Loading lanes...</p>}
       {error && (
         <p role="alert" className="text-xs text-destructive">
@@ -700,6 +760,86 @@ function LanesSection({ refreshKey }: { refreshKey: number | null }) {
         </DialogContent>
       </Dialog>
     </section>
+  )
+}
+
+// A maintenance action on job applications' own lane field (D-222): a button that opens a
+// confirm dialog previewing a count (read-only GET), then runs the real action (POST) and shows
+// its result in place of the preview. Shared by Reassign missing lanes, Clear all not in list
+// and Clear all lanes, which all have this exact shape, differing only in wording and which
+// endpoint they call - no RunTrace, since Reassign missing lanes can queue several Claude Jobs
+// at once with no single run to trace (the same "Queued X, skipped Y" pattern Settings' Re-score
+// all positioning analyses already uses).
+function LaneMaintenanceAction<T>({
+  label,
+  title,
+  describePreview,
+  describeResult,
+  fetchPreview,
+  runAction,
+}: {
+  label: string
+  title: string
+  describePreview: (preview: T | null) => string
+  describeResult: (result: T) => string
+  fetchPreview: () => Promise<T>
+  runAction: () => Promise<T>
+}) {
+  const [open, setOpen] = useState(false)
+  const [preview, setPreview] = useState<T | null>(null)
+  const [result, setResult] = useState<T | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function openDialog() {
+    setError(null)
+    setResult(null)
+    setPreview(null)
+    setOpen(true)
+    fetchPreview()
+      .then(setPreview)
+      .catch(() => setPreview(null))
+  }
+
+  async function confirm() {
+    setBusy(true)
+    setError(null)
+    try {
+      setResult(await runAction())
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'This could not be run.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={openDialog}>
+        {label}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {result === null ? describePreview(preview) : describeResult(result)}
+          </p>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              {result === null ? 'Cancel' : 'Close'}
+            </Button>
+            {result === null && (
+              <Button disabled={busy || preview === null} onClick={() => void confirm()}>
+                {busy ? 'Running...' : label}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

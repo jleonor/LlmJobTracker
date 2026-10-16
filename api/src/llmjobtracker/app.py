@@ -100,10 +100,22 @@ from llmjobtracker.job_revise_turns import (
 from llmjobtracker.lane_pipeline import (
     LaneAssignmentNotReady,
     LaneSyncNotReady,
+    assign_lane_ready,
     submit_assign_job_lane,
     submit_extract_lanes,
 )
-from llmjobtracker.lanes import Lane, LaneEdit, create_lane, delete_lane, list_lanes, update_lane
+from llmjobtracker.lanes import (
+    Lane,
+    LaneEdit,
+    clear_all_lanes,
+    clear_lanes_not_in_list,
+    count_applications_with_a_lane,
+    count_lanes_not_in_list,
+    create_lane,
+    delete_lane,
+    list_lanes,
+    update_lane,
+)
 from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.listing_intake import (
     ListingExtraction,
@@ -233,6 +245,10 @@ class LaneCreate(BaseModel):
 class LaneReassignmentSummary(BaseModel):
     queued: int
     skipped: int
+
+
+class LaneClearSummary(BaseModel):
+    cleared: int
 
 
 class PositioningRescoreSummary(BaseModel):
@@ -1557,6 +1573,94 @@ def create_app(
             except LaneAssignmentNotReady:
                 skipped += 1
         return LaneReassignmentSummary(queued=queued, skipped=skipped)
+
+    def _missing_lane_candidates(conn: Connection) -> tuple[list[JobApplication], int]:
+        """Every application with no lane set, split into those with a listing file (ready to
+        queue) and those without (skipped, counted) - read-only, shared by the preview (GET) and
+        the actual run (POST) below, so the dialog's preview count can never drift from what
+        running it actually does (D-222)."""
+        ready: list[JobApplication] = []
+        skipped = 0
+        for application in list_job_applications(conn):
+            if application.lane is not None:
+                continue
+            if assign_lane_ready(conn, application.id):
+                ready.append(application)
+            else:
+                skipped += 1
+        return ready, skipped
+
+    @app.get(
+        "/lanes/reassign-missing",
+        response_model=LaneReassignmentSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def preview_reassign_missing_lanes(
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> LaneReassignmentSummary:
+        """The confirm dialog's preview count (D-222) - read-only, changes nothing."""
+        ready, skipped = _missing_lane_candidates(conn)
+        return LaneReassignmentSummary(queued=len(ready), skipped=skipped)
+
+    @app.post(
+        "/lanes/reassign-missing",
+        response_model=LaneReassignmentSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def reassign_missing_lanes(
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> LaneReassignmentSummary:
+        """The Lanes section's "Reassign missing lanes" button (D-222): queues assign_job_lane
+        only for applications with no lane set yet, unlike reassign-all above (D-217), which
+        touches every application. Still only ever picks from the approved catalog (D-215) -
+        never invents a name."""
+        ready, skipped = _missing_lane_candidates(conn)
+        for application in ready:
+            submit_assign_job_lane(conn, queue, application.id)
+        return LaneReassignmentSummary(queued=len(ready), skipped=skipped)
+
+    @app.get(
+        "/lanes/clear-all",
+        response_model=LaneClearSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def preview_clear_all_lanes(conn: Annotated[Connection, Depends(get_db)]) -> LaneClearSummary:
+        """The confirm dialog's preview count (D-222) - read-only, changes nothing."""
+        return LaneClearSummary(cleared=count_applications_with_a_lane(conn))
+
+    @app.post(
+        "/lanes/clear-all",
+        response_model=LaneClearSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def clear_all_lanes_route(conn: Annotated[Connection, Depends(get_db)]) -> LaneClearSummary:
+        """The Lanes section's "Clear all lanes" button (D-222): clears every application's
+        lane, including one already set to Other."""
+        return LaneClearSummary(cleared=clear_all_lanes(conn))
+
+    @app.get(
+        "/lanes/clear-not-in-list",
+        response_model=LaneClearSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def preview_clear_lanes_not_in_list(
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> LaneClearSummary:
+        """The confirm dialog's preview count (D-222) - read-only, changes nothing."""
+        return LaneClearSummary(cleared=count_lanes_not_in_list(conn))
+
+    @app.post(
+        "/lanes/clear-not-in-list",
+        response_model=LaneClearSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def clear_lanes_not_in_list_route(
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> LaneClearSummary:
+        """The Lanes section's "Clear all not in list" button (D-222): clears only the
+        applications whose stored lane doesn't match any approved name - left over from before a
+        lane was renamed or removed from the catalog."""
+        return LaneClearSummary(cleared=clear_lanes_not_in_list(conn))
 
     def _rescore_candidates(conn: Connection) -> tuple[list[JobApplication], int]:
         """Every application meeting positioning_ready, plus a count of the rest - shared by the
