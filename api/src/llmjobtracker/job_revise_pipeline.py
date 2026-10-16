@@ -60,6 +60,9 @@ from llmjobtracker.profile_pipeline import (
     MAX_PROMPT_CHARS,
     writing_rules_text,
 )
+from llmjobtracker.prompt_parsing import block_pattern as _block_pattern
+from llmjobtracker.prompt_parsing import block_text as _block_text
+from llmjobtracker.prompt_parsing import normalize_for_match as _normalize_for_match
 from llmjobtracker.runner import RunResult
 
 REVISE_PREFIX: Final = "revise_"
@@ -254,48 +257,6 @@ TEXT: <for EDIT or ADD only - copied verbatim from the listing text above>
 === END REQUIREMENT PATCH ===
 
 Give one REQUIREMENT PATCH block per changed requirement, in any order."""
-
-
-def _block_text(pattern: re.Pattern[str], text: str) -> str:
-    match = pattern.search(text)
-    return match.group(1).strip() if match else ""
-
-
-def _block_pattern(name: str) -> re.Pattern[str]:
-    """Same tolerant `=== NAME ===\\n...\\n=== END NAME ===` shape job_pipeline.py's own
-    `_block_pattern` uses (not imported from there — it's a private helper of that module)."""
-    return re.compile(rf"=== {name} ===\n(.*?)(?:=== END {name} ===|(?=\n=== )|\Z)", re.DOTALL)
-
-
-_TYPOGRAPHIC_EQUIVALENTS = str.maketrans(
-    {
-        "‘": "'",
-        "’": "'",  # curly apostrophe/single quotes
-        "“": '"',
-        "”": '"',  # curly double quotes
-        "–": "-",
-        "—": "-",  # en dash, em dash
-    }
-)
-
-
-_ACCENT_SPACING_ARTIFACT = re.compile(r"\s*([éèêëîïôöûüœæçÉÈÊËÎÏÔÖÛÜŒÆÇ])\s*")
-
-
-def _normalize_for_match(text: str) -> str:
-    """Same fix as job_pipeline.py's own `_normalize_for_match` (not imported from there, same
-    reason as this module's other small helpers) - a verbatim-match check must tolerate a listing
-    using curly quotes or an en dash where the model's faithful answer reasonably writes the plain
-    ASCII form, or it rejects a correct answer over typography, not wording. The next step also
-    closes a space left after a hyphen by a PDF's own line-wrapped word (e.g. "scikit- learn"
-    from "scikit-\\nlearn"), the same tolerance job_pipeline.py's copy has. The final step drops a
-    space immediately touching an accented letter that is never itself a one-letter French word
-    (a real PDF's font encoding inserted a stray space on both sides of letters like "é" and "î"
-    throughout a listing); "à" and "ù" are deliberately excluded since they are real standalone
-    words ("à", "où")."""
-    collapsed = re.sub(r"\s+", " ", text.translate(_TYPOGRAPHIC_EQUIVALENTS)).strip()
-    tightened = re.sub(r"-\s+", "-", collapsed)
-    return _ACCENT_SPACING_ARTIFACT.sub(r"\1", tightened)
 
 
 _DESCRIPTION_BLOCK = _block_pattern("DESCRIPTION")
