@@ -1,3 +1,4 @@
+import { Check, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { StatusBadge } from '@/components/app/StatusBadge'
@@ -130,7 +131,11 @@ function laneCell(app: JobApplication): ReactNode {
       <TooltipTrigger render={<span />} className="block max-w-full cursor-default">
         <Badge
           variant="outline"
-          className="max-w-full truncate rounded-sm font-mono text-[11px] font-normal"
+          // block overrides the Badge's own inline-flex/justify-center: with a flex container
+          // that centers an overflowing child, `truncate` clipped evenly from both ends, so a
+          // cut-off lane name showed its middle, not its start. A plain block element's
+          // text-overflow:ellipsis always clips from the end (right) instead.
+          className="block max-w-full truncate rounded-sm font-mono text-[11px] font-normal"
         >
           {app.lane}
         </Badge>
@@ -177,11 +182,9 @@ function statusFlagColumn(
     defaultWidth: 110,
     cell: (app) =>
       value(app) ? (
-        <Badge variant="outline" className="rounded-sm font-mono text-[11px] font-normal">
-          Done
-        </Badge>
+        <Check className="size-4 text-[#84e7b0]" aria-label="Done" />
       ) : (
-        <span className="text-muted-foreground">Not done</span>
+        <X className="size-4 text-muted-foreground" aria-label="Not done" />
       ),
     compare: (a, b, direction) => compareOrdered(DONE_ORDER, toLabel(a), toLabel(b), direction),
     filter: { kind: 'ordered', order: DONE_ORDER, value: toLabel },

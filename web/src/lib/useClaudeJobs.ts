@@ -56,17 +56,22 @@ export function queueLabel(jobs: ClaudeJob[]): string {
 }
 
 // The per-application queue badge (D-56's "beside the status tag", D-227's inline table
-// indicator): idle unless this application has a non-terminal Claude Job of its own, or one that
-// failed and still needs attention. A job this application once ran that is now done/cancelled
-// reads as idle too - nothing is pending and nothing needs a look, which is what the badge is
-// for (D-49 to D-52). `failed` is surfaced (narrows the comment this replaces, D-227): a failed
-// job used to read as idle here even though QueueStatusBadge's own tone map already had a
-// `failed` color waiting for a value that never reached it.
+// indicator): idle unless this application has a non-terminal Claude Job of its own, or its own
+// *most recently updated* job failed and still needs attention (D-231, narrows D-227: `paused`/
+// `failed` used to look at *any* job the application ever ran, so an old failure stayed visible
+// forever even after a later rerun of the same kind succeeded - only the last generated output's
+// own outcome matters now). A job this application once ran that is now done/cancelled reads as
+// idle too - nothing is pending and nothing needs a look, which is what the badge is for (D-49
+// to D-52).
 export function queueStatusFor(jobs: ClaudeJob[], applicationId: number): QueueStatus {
   const mine = jobs.filter((job) => job.job_application_id === applicationId)
   if (mine.some((job) => job.status === 'processing')) return 'processing'
-  if (mine.some((job) => job.status === 'paused')) return 'paused'
+  const mostRecent = mine.reduce<ClaudeJob | null>(
+    (latest, job) => (!latest || job.updated_at > latest.updated_at ? job : latest),
+    null
+  )
+  if (mostRecent?.status === 'paused') return 'paused'
   if (mine.some((job) => job.status === 'queued')) return 'queued'
-  if (mine.some((job) => job.status === 'failed')) return 'failed'
+  if (mostRecent?.status === 'failed') return 'failed'
   return 'idle'
 }

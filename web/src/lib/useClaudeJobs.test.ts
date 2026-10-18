@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest'
 import type { ClaudeJob } from './types'
 import { queueLabel, queueStatusFor } from './useClaudeJobs'
 
-function job(id: number, status: string, jobApplicationId: number | null = null): ClaudeJob {
+function job(
+  id: number,
+  status: string,
+  jobApplicationId: number | null = null,
+  updatedAt = '2026-10-06T09:00:00Z'
+): ClaudeJob {
   return {
     id,
     label: `job ${id}`,
@@ -11,8 +16,8 @@ function job(id: number, status: string, jobApplicationId: number | null = null)
     job_application_id: jobApplicationId,
     status,
     error: null,
-    created_at: '2026-10-06T09:00:00Z',
-    updated_at: '2026-10-06T09:00:00Z',
+    created_at: updatedAt,
+    updated_at: updatedAt,
     resume_at: null,
     retry_attempts: 0,
     prompts: [],
@@ -53,5 +58,23 @@ describe('queueStatusFor', () => {
     expect(queueStatusFor([job(1, 'queued', 1), job(2, 'failed', 1)], 1)).toBe('queued')
     expect(queueStatusFor([job(1, 'paused', 1), job(2, 'queued', 1)], 1)).toBe('paused')
     expect(queueStatusFor([job(1, 'processing', 1), job(2, 'paused', 1)], 1)).toBe('processing')
+  })
+
+  it('only looks at the most recently updated job for paused/failed (D-231) - an old failure superseded by a later success reads as idle', () => {
+    const oldFailed = job(1, 'failed', 1, '2026-10-01T09:00:00Z')
+    const newerDone = job(2, 'done', 1, '2026-10-05T09:00:00Z')
+    expect(queueStatusFor([oldFailed, newerDone], 1)).toBe('idle')
+  })
+
+  it('still surfaces failed when the most recently updated job is the one that failed', () => {
+    const olderDone = job(1, 'done', 1, '2026-10-01T09:00:00Z')
+    const newerFailed = job(2, 'failed', 1, '2026-10-05T09:00:00Z')
+    expect(queueStatusFor([olderDone, newerFailed], 1)).toBe('failed')
+  })
+
+  it('applies the same most-recent rule to paused', () => {
+    const oldPaused = job(1, 'paused', 1, '2026-10-01T09:00:00Z')
+    const newerDone = job(2, 'done', 1, '2026-10-05T09:00:00Z')
+    expect(queueStatusFor([oldPaused, newerDone], 1)).toBe('idle')
   })
 })
