@@ -1125,6 +1125,19 @@ MIGRATIONS: tuple[Migration, ...] = (
         ),
         down=("ALTER TABLE claude_jobs DROP COLUMN lane_id",),
     ),
+    Migration(
+        version=33,
+        name="add the lane_overview singleton for summarize_lanes (D-245)",
+        up=(
+            "CREATE TABLE lane_overview ("
+            "id INTEGER PRIMARY KEY CHECK (id = 1), "
+            "summary TEXT, "
+            "generated_at TEXT"
+            ")",
+            "INSERT INTO lane_overview (id) VALUES (1)",
+        ),
+        down=("DROP TABLE lane_overview",),
+    ),
 )
 
 _LEDGER = """
