@@ -158,21 +158,41 @@ describe('proportionByLane/Stage/MatchScoreBucket', () => {
 describe('foldToOther', () => {
   it('leaves the list untouched when it is already at or under the cap', () => {
     const entries = [{ label: 'A', count: 3 }, { label: 'B', count: 1 }]
-    expect(foldToOther(entries, 2)).toEqual(entries)
+    expect(foldToOther(entries, 2, 'Other lanes')).toEqual(entries)
   })
 
-  it('keeps the largest entries and folds the rest into one "Other" entry', () => {
+  it('keeps the largest entries and folds the rest into one entry under the given label', () => {
     const entries = [
       { label: 'A', count: 5 },
       { label: 'B', count: 4 },
       { label: 'C', count: 3 },
       { label: 'D', count: 2 },
     ]
-    expect(foldToOther(entries, 2)).toEqual([
+    expect(foldToOther(entries, 2, 'Other lanes')).toEqual([
       { label: 'A', count: 5 },
       { label: 'B', count: 4 },
-      { label: 'Other', count: 5 },
+      { label: 'Other lanes', count: 5 },
     ])
+  })
+
+  it('does not collide with a real entry that happens to be named "Other"', () => {
+    // The lanes catalog has its own fixed "Other" catch-all lane (D-219) - if it ranks in the
+    // kept set while other lanes overflow, the fold bucket must read as a distinct thing, not a
+    // second row with the same label.
+    const entries = [
+      { label: 'Data Analytics', count: 5 },
+      { label: 'Other', count: 4 },
+      { label: 'Product Analytics', count: 3 },
+      { label: 'Platform Engineering', count: 2 },
+    ]
+    const folded = foldToOther(entries, 2, 'Other lanes')
+    expect(folded).toEqual([
+      { label: 'Data Analytics', count: 5 },
+      { label: 'Other', count: 4 },
+      { label: 'Other lanes', count: 5 },
+    ])
+    const labels = folded.map((entry) => entry.label)
+    expect(new Set(labels).size).toBe(labels.length) // every label is unique
   })
 })
 

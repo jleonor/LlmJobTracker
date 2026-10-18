@@ -109,7 +109,10 @@ export function DashboardPage({ settings }: { settings: Settings }) {
   const laneOptions = useMemo(() => distinctLanes(allApplications), [allApplications])
   const locationOptions = useMemo(() => distinctLocations(allApplications), [allApplications])
 
-  const laneEntries = useMemo(() => foldToOther(proportionByLane(sliced), MAX_LANE_BARS), [sliced])
+  const laneEntries = useMemo(
+    () => foldToOther(proportionByLane(sliced), MAX_LANE_BARS, 'Other lanes'),
+    [sliced],
+  )
   const stageEntries = useMemo(() => proportionByStage(sliced), [sliced])
   const matchScoreEntries = useMemo(() => proportionByMatchScoreBucket(sliced), [sliced])
   const leadTimeDays = useMemo(() => averageDaysIdentifiedToApplied(sliced), [sliced])

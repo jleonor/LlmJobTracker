@@ -124,12 +124,16 @@ function sortedByCountDescending(counts: Map<string, number>): CountEntry[] {
 
 // Keeps the `max` largest entries as-is and folds the rest into one trailing "Other" entry
 // (the dataviz skill's series-count ladder: past ~7-8 categorical slots, fold the tail rather
-// than generate more hues). A no-op when there are `max` or fewer entries already.
-export function foldToOther(entries: CountEntry[], max: number): CountEntry[] {
+// than generate more hues). A no-op when there are `max` or fewer entries already. `otherLabel`
+// is a required, caller-chosen label (not a hardcoded "Other") precisely because the entries
+// being folded can themselves already contain something named "Other" - the lanes catalog's own
+// fixed catch-all lane (D-219) - and a second, unrelated row with that same label reads as a
+// duplicate rather than two different things.
+export function foldToOther(entries: CountEntry[], max: number, otherLabel: string): CountEntry[] {
   if (entries.length <= max) return entries
   const kept = entries.slice(0, max)
   const foldedCount = entries.slice(max).reduce((total, entry) => total + entry.count, 0)
-  return [...kept, { label: 'Other', count: foldedCount }]
+  return [...kept, { label: otherLabel, count: foldedCount }]
 }
 
 export function proportionByLane(applications: JobApplication[]): CountEntry[] {
