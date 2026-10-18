@@ -72,6 +72,19 @@ def write_strategy(db_path: Path, text: str = "Lead with data work.") -> None:
         conn.close()
 
 
+def write_career_history(db_path: Path, text: str = "Ten years in data analytics.") -> None:
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO profile_outputs (kind, version, document, input_sha256s) "
+            "VALUES ('full_cv_history', 1, ?, '[]')",
+            (text,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # --- ensure_other_lane (D-219) ---------------------------------------------------------------
 
 
@@ -556,6 +569,7 @@ def test_lane_analysis_ready_is_true_with_a_single_scored_application(db_path: P
 
 
 def test_build_analyze_lane_prompt_includes_every_scored_application(db_path: Path) -> None:
+    write_career_history(db_path, "Ten years in data analytics, SQL and Python focus.")
     conn = connect(db_path)
     try:
         lane = create_lane(conn, "Data Analytics", None, None)
@@ -573,11 +587,32 @@ def test_build_analyze_lane_prompt_includes_every_scored_application(db_path: Pa
     finally:
         conn.close()
     assert "TASK: analyze_lane" in prompt
+    assert "=== CAREER HISTORY ===" in prompt
+    assert "Ten years in data analytics, SQL and Python focus." in prompt
     assert "TITLE: Analyst I" in prompt
     assert "- Strong SQL" in prompt
     assert "- No Spark" in prompt
     assert "TITLE: Analyst II" in prompt
     assert "- Strong Python" in prompt
+
+
+def test_build_analyze_lane_prompt_requires_a_career_history_document(db_path: Path) -> None:
+    """D-242: the career history is read for context, like every other prompt that needs a
+    required document - missing entirely (not just empty) fails closed with a clear reason."""
+    conn = connect(db_path)
+    try:
+        lane = create_lane(conn, "Data Analytics", None, None)
+        conn.commit()
+    finally:
+        conn.close()
+    add_scored_application(db_path, "Data Analytics", "Analyst I", ["Strong SQL"], [], 80.0)
+
+    conn = connect(db_path)
+    try:
+        with pytest.raises(PromptRejected, match="CAREER HISTORY"):
+            build_analyze_lane_prompt(conn, lane.id)
+    finally:
+        conn.close()
 
 
 def test_build_analyze_lane_prompt_rejects_a_lane_with_no_scored_applications(
@@ -626,6 +661,7 @@ def test_submit_analyze_lane_requires_a_scored_application(db_path: Path) -> Non
 
 
 def test_analyze_lane_job_writes_the_fit_gap_summary(db_path: Path) -> None:
+    write_career_history(db_path)
     conn = connect(db_path)
     try:
         lane = create_lane(conn, "Data Analytics", None, None)
