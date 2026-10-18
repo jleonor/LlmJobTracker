@@ -13,6 +13,7 @@ import {
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { BACKEND_LABELS, MODEL_FIELD } from '@/lib/backends'
 import { CATEGORICAL_CHART_COLORS, MATCH_SCORE_RAMP, NOT_SCORED_COLOR } from '@/lib/chartPalette'
 import {
   applicationsSentHeatmap,
@@ -32,8 +33,25 @@ import {
   type CountEntry,
   type DashboardSlicers,
 } from '@/lib/dashboardStats'
-import { ApiError, analyzeLanes, fetchJobApplications, fetchLanes, fetchLaneAnalysisPreview } from '@/lib/api'
-import { STATUS_ORDER, type JobApplication, type Lane, type LaneAnalysisSummary } from '@/lib/types'
+import {
+  analyzeLanes,
+  ApiError,
+  fetchJobApplications,
+  fetchLaneAnalysisPreview,
+  fetchLanes,
+  fetchPositioningRescoreOpenPreview,
+  fetchPositioningRescorePreview,
+  runPositioningRescoreAll,
+  runPositioningRescoreOpen,
+} from '@/lib/api'
+import {
+  STATUS_ORDER,
+  type JobApplication,
+  type Lane,
+  type LaneAnalysisSummary,
+  type PositioningRescoreSummary,
+  type Settings,
+} from '@/lib/types'
 
 type State =
   | { kind: 'loading' }
@@ -44,7 +62,7 @@ type State =
 // fold the tail into "Other" rather than keep adding distinct hues.
 const MAX_LANE_BARS = 7
 
-export function DashboardPage() {
+export function DashboardPage({ settings }: { settings: Settings }) {
   const [state, setState] = useState<State>({ kind: 'loading' })
   const [slicers, setSlicers] = useState<DashboardSlicers>(EMPTY_SLICERS)
   const [lanes, setLanes] = useState<Lane[]>([])
@@ -167,6 +185,29 @@ export function DashboardPage() {
       </Card>
 
       <LaneSummarySection lanes={lanes} applications={allApplications} onAnalyzed={reloadLanes} />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <RescoreSection
+          title="Re-score all positioning analyses"
+          buttonLabel="Re-score all"
+          description="Clears and regenerates every job application's positioning analysis under the currently selected backend"
+          dialogDescription="This will clear and re-queue positioning analysis for"
+          skipReason="missing a Master CV, Job details or the profile documents"
+          settings={settings}
+          fetchPreview={fetchPositioningRescorePreview}
+          run={runPositioningRescoreAll}
+        />
+        <RescoreSection
+          title="Re-score open applications"
+          buttonLabel="Re-score open"
+          description="Same as above, limited to applications that haven't reached an end state (Rejected, Withdrawn, Expired)"
+          dialogDescription="This will clear and re-queue positioning analysis for"
+          skipReason="missing a Master CV, Job details, the profile documents, or already at an end state"
+          settings={settings}
+          fetchPreview={fetchPositioningRescoreOpenPreview}
+          run={runPositioningRescoreOpen}
+        />
+      </div>
     </div>
   )
 }
@@ -522,5 +563,107 @@ function AnalyzeLanesButton({ onAnalyzed }: { onAnalyzed: () => void }) {
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+// --- Re-score all / Re-score open positioning analyses (D-218, moved from Settings; D-237) -----
+
+function RescoreSection({
+  title,
+  buttonLabel,
+  description,
+  dialogDescription,
+  skipReason,
+  settings,
+  fetchPreview,
+  run,
+}: {
+  title: string
+  buttonLabel: string
+  description: string
+  dialogDescription: string
+  skipReason: string
+  settings: Settings
+  fetchPreview: () => Promise<PositioningRescoreSummary>
+  run: () => Promise<PositioningRescoreSummary>
+}) {
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [preview, setPreview] = useState<PositioningRescoreSummary | null>(null)
+  const [result, setResult] = useState<PositioningRescoreSummary | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function openConfirm() {
+    setError(null)
+    setResult(null)
+    setConfirmOpen(true)
+    fetchPreview()
+      .then(setPreview)
+      .catch(() => setPreview(null))
+  }
+
+  async function confirmAndRun() {
+    setBusy(true)
+    setError(null)
+    try {
+      const summary = await run()
+      setResult(summary)
+      setConfirmOpen(false)
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The re-score did not start.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const modelField = MODEL_FIELD[settings.backend]
+  const activeModel = settings[modelField]
+  const backendText = `${BACKEND_LABELS[settings.backend]} (${activeModel})`
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-xs text-muted-foreground">
+          {description}, under the currently selected backend ({backendText}).
+        </p>
+        <div>
+          <Button onClick={openConfirm}>{buttonLabel}</Button>
+        </div>
+        {result && (
+          <p className="text-xs text-muted-foreground">
+            Queued {result.queued}, skipped {result.skipped}.
+          </p>
+        )}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+      </CardContent>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{title}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {preview === null
+              ? 'Checking how many applications are ready...'
+              : `${dialogDescription} ${preview.queued} job application${preview.queued === 1 ? '' : 's'} (${preview.skipped} skipped - ${skipReason}).`}{' '}
+            It runs under {backendText}, can take a while, and uses real usage.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={busy || preview === null || preview.queued === 0}
+              onClick={() => void confirmAndRun()}
+            >
+              {busy ? 'Queuing...' : 'Re-score'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
   )
 }

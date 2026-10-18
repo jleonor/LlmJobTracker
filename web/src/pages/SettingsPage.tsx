@@ -15,7 +15,6 @@ import {
   fetchJobApplications,
   fetchLlmAppStatus,
   fetchModelPrices,
-  fetchPositioningRescorePreview,
   fetchPricesFromProvider,
   fetchPricesResult,
   fetchPricingUrls,
@@ -23,13 +22,13 @@ import {
   logoutBackend,
   openLlmApp,
   renameModelPrice,
-  runPositioningRescoreAll,
   saveBackendSettings,
   saveLlmExportPath,
   saveModelPrice,
   saveModelPrices,
   savePricingUrl,
 } from '@/lib/api'
+import { BACKEND_LABELS, BACKENDS, MODEL_FIELD } from '@/lib/backends'
 import type { QueueState } from '@/lib/useClaudeJobs'
 import type {
   AuthStatus,
@@ -37,30 +36,22 @@ import type {
   LlmAppStatus,
   ModelPrice,
   ParsedModelPrice,
-  PositioningRescoreSummary,
   RetryPolicy,
   Settings,
 } from '@/lib/types'
 
-const BACKEND_LABELS: Record<Backend, string> = { claude_code: 'Claude Code', codex: 'Codex' }
 // "Open LLM app" (D-202, D-210) launches the desktop *app*, not the reasoning-task CLI the
 // same setting otherwise names - "Claude Code" there would wrongly suggest the CLI.
 const LLM_APP_LABELS: Record<Backend, string> = {
   claude_code: 'Claude Desktop',
   codex: 'the ChatGPT desktop app',
 }
-const BACKENDS: Backend[] = ['claude_code', 'codex']
 const RETRY_POLICY_LABELS: Record<RetryPolicy, string> = {
   reset_time: 'Auto-resume at the reported reset time',
   fixed_interval: 'Retry on a fixed interval',
   manual_only: 'Always pause for manual Resume',
 }
 const RETRY_POLICIES: RetryPolicy[] = ['reset_time', 'fixed_interval', 'manual_only']
-// D-206: which Settings field holds each provider's selected model.
-const MODEL_FIELD: Record<Backend, 'claude_code_model' | 'codex_model'> = {
-  claude_code: 'claude_code_model',
-  codex: 'codex_model',
-}
 
 type Props = {
   settings: Settings
@@ -79,92 +70,7 @@ export function SettingsPage({ settings, onSettingsChanged, queue }: Props) {
       {BACKENDS.map((backend) => (
         <PriceSection key={backend} backend={backend} queue={queue} settings={settings} onSaved={onSettingsChanged} />
       ))}
-      <RescorePositioningSection settings={settings} />
     </div>
-  )
-}
-
-// --- Re-score all positioning analyses (D-218) -------------------------------------------------
-
-function RescorePositioningSection({ settings }: { settings: Settings }) {
-  const [confirmOpen, setConfirmOpen] = useState(false)
-  const [preview, setPreview] = useState<PositioningRescoreSummary | null>(null)
-  const [result, setResult] = useState<PositioningRescoreSummary | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  function openConfirm() {
-    setError(null)
-    setResult(null)
-    setConfirmOpen(true)
-    fetchPositioningRescorePreview()
-      .then(setPreview)
-      .catch(() => setPreview(null))
-  }
-
-  async function confirmAndRun() {
-    setBusy(true)
-    setError(null)
-    try {
-      const summary = await runPositioningRescoreAll()
-      setResult(summary)
-      setConfirmOpen(false)
-    } catch (failure) {
-      setError(failure instanceof ApiError ? failure.message : 'The re-score did not start.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const modelField = MODEL_FIELD[settings.backend]
-  const activeModel = settings[modelField]
-
-  return (
-    <section
-      aria-labelledby="rescore-positioning-heading"
-      className="flex flex-col gap-3 rounded border border-border bg-card p-4"
-    >
-      <h2 id="rescore-positioning-heading" className="text-sm font-semibold">
-        Re-score all positioning analyses
-      </h2>
-      <p className="text-xs text-muted-foreground">
-        Clears and regenerates every job application's positioning analysis under the currently
-        selected backend ({BACKEND_LABELS[settings.backend]}, {activeModel}). Applications missing
-        a Master CV, Job details or the profile documents are left untouched.
-      </p>
-      <div>
-        <Button onClick={openConfirm}>Re-score all</Button>
-      </div>
-      {result && (
-        <p className="text-xs text-muted-foreground">
-          Queued {result.queued}, skipped {result.skipped}.
-        </p>
-      )}
-      {error && <p className="text-sm text-destructive">{error}</p>}
-
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Re-score all positioning analyses?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {preview === null
-              ? 'Checking how many applications are ready...'
-              : `This will clear and re-queue positioning analysis for ${preview.queued} job application${preview.queued === 1 ? '' : 's'} (${preview.skipped} skipped - missing a Master CV, Job details or the profile documents).`}{' '}
-            It runs under {BACKEND_LABELS[settings.backend]} ({activeModel}), can take a while, and
-            uses real usage.
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
-              Cancel
-            </Button>
-            <Button disabled={busy || preview === null || preview.queued === 0} onClick={() => void confirmAndRun()}>
-              {busy ? 'Queuing...' : 'Re-score'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </section>
   )
 }
 
