@@ -1,6 +1,6 @@
 # LlmJobTracker: Development Plan
 
-**Current phase: 9.** Phases 0 through 8 are done; `main` is fast-forwarded past Phase 8's end to include D-223 (the Expired status), a small out-of-scope addition made on the same branch before it merged. Phase 9's step list is drafted (D-224/D-225), awaiting approval before any code (rule 7).
+**Current phase: 9, in progress.** Phases 0 through 8 are done. `main` is fast-forwarded through `phase-9-tech-audit`'s first two completed batches (D-234): the backend/frontend reuse audit (D-224/D-225) and the Job Applications table customization (D-227 to D-233). Phase 9 itself is not closed — the font/UI audit (its original scope) and `planning/phase-9-audit-notes.md` are still open, on the same kept branch.
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
