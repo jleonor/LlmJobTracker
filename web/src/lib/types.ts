@@ -1,4 +1,5 @@
-// One row of the Applications table (D-46). Field names match the API.
+// One row of the Applications table (D-227): every field any of its 26 selectable columns might
+// need. Field names match the API.
 export type JobApplication = {
   id: number
   company: string
@@ -8,6 +9,20 @@ export type JobApplication = {
   status: string
   last_updated: string
   match_score: number | null
+  portal_name: string | null
+  portal_url: string | null
+  work_mode: string
+  contract_type: string
+  notes: string | null
+  next_action: string | null
+  due_date: string | null
+  status_history: StatusHistoryEntry[]
+  has_listing: boolean
+  has_details: boolean
+  has_analysis: boolean
+  has_tailored_cv: boolean
+  has_cover_letter: boolean
+  has_interview_prep: boolean
 }
 
 export type StatusHistoryEntry = {

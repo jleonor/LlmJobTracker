@@ -27,7 +27,7 @@ def test_list_is_empty_on_a_new_database(client: TestClient) -> None:
     assert response.json() == []
 
 
-def test_list_returns_the_d46_fields(
+def test_list_returns_the_d227_fields(
     monkeypatch: pytest.MonkeyPatch, db_path: Path, client: TestClient
 ) -> None:
     seed_database(monkeypatch, db_path)
@@ -43,10 +43,74 @@ def test_list_returns_the_d46_fields(
         "status",
         "last_updated",
         "match_score",
+        "portal_name",
+        "portal_url",
+        "work_mode",
+        "contract_type",
+        "notes",
+        "next_action",
+        "due_date",
+        "status_history",
+        "has_listing",
+        "has_details",
+        "has_analysis",
+        "has_tailored_cv",
+        "has_cover_letter",
+        "has_interview_prep",
     }
     assert all(set(row) == expected_keys for row in rows)
-    # The table no longer returns next action or due date (D-46).
-    assert all("next_action" not in row and "due_date" not in row for row in rows)
+
+
+def test_list_status_history_matches_the_detail_endpoint(
+    monkeypatch: pytest.MonkeyPatch, db_path: Path, client: TestClient
+) -> None:
+    seed_database(monkeypatch, db_path)
+    rows = client.get("/job-applications").json()
+    fabrikam = next(r for r in rows if r["company"] == "Fabrikam Logistics")
+    detail = client.get(f"/job-applications/{fabrikam['id']}").json()
+    assert fabrikam["status_history"] == detail["status_history"]
+    assert len(fabrikam["status_history"]) > 1
+
+
+def test_list_has_flags_reflect_stored_data(
+    monkeypatch: pytest.MonkeyPatch, db_path: Path, client: TestClient
+) -> None:
+    seed_database(monkeypatch, db_path)
+    rows = client.get("/job-applications").json()
+    fabrikam = next(r for r in rows if r["company"] == "Fabrikam Logistics")
+    assert fabrikam["has_details"] is True
+    assert fabrikam["has_analysis"] is True
+    litware = next(r for r in rows if r["company"] == "Litware Finance")
+    assert litware["has_details"] is False
+    assert litware["has_analysis"] is False
+    assert all(not r["has_tailored_cv"] and not r["has_cover_letter"] for r in rows)
+    assert all(not r["has_interview_prep"] for r in rows)
+
+
+def test_list_has_tailored_cv_and_cover_letter_and_interview_prep(
+    db_path: Path, client: TestClient
+) -> None:
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(conn, {"company": "Solo Co", "role_title": "Analyst"})
+        insert_job_file(
+            conn, app_id, kind="tailored_cv", name="Tailored CV.docx", stored_path="cv.docx"
+        )
+        insert_job_file(
+            conn, app_id, kind="cover_letter", name="Cover letter.docx", stored_path="cl.docx"
+        )
+        conn.execute(
+            "UPDATE job_applications SET interview_prep = ? WHERE id = ?",
+            (json.dumps([{"question": "Why this role?", "answer": "...", "score": None}]), app_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    row = client.get("/job-applications").json()[0]
+    assert row["has_tailored_cv"] is True
+    assert row["has_cover_letter"] is True
+    assert row["has_interview_prep"] is True
 
 
 def test_last_updated_is_the_newest_history_row(

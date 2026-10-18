@@ -52,8 +52,19 @@ _EDITABLE_COLUMNS = frozenset(
 )
 
 
+class StatusHistoryEntry(BaseModel):
+    status: str
+    changed_at: str
+
+
 class JobApplication(BaseModel):
-    """One row of the Applications table, in the D-46 column order."""
+    """One row of the Applications table (D-227): every field any of its 26 selectable columns
+    might need, so the frontend's column registry can show, hide, and reorder them freely without
+    a second request per row. `status_history` backs the eight per-status-date columns, derived
+    client-side the same way the job page's own timeline already is. The six `has_*` booleans
+    match the semantics job_revise_pipeline.py's own `_job_details_has_data`/
+    `_positioning_has_data`/`_tailored_cv_has_data`/`_cover_letter_has_data`/
+    `_interview_prep_has_data` already use for the job page's flags (D-48)."""
 
     id: int
     company: str
@@ -63,11 +74,20 @@ class JobApplication(BaseModel):
     status: str
     last_updated: str
     match_score: float | None
-
-
-class StatusHistoryEntry(BaseModel):
-    status: str
-    changed_at: str
+    portal_name: str | None
+    portal_url: str | None
+    work_mode: str
+    contract_type: str
+    notes: str | None
+    next_action: str | None
+    due_date: str | None
+    status_history: list[StatusHistoryEntry]
+    has_listing: bool
+    has_details: bool
+    has_analysis: bool
+    has_tailored_cv: bool
+    has_cover_letter: bool
+    has_interview_prep: bool
 
 
 class InterviewPrepPair(BaseModel):
@@ -173,15 +193,85 @@ def list_job_applications(conn: sqlite3.Connection) -> list[JobApplication]:
         """
         SELECT
             a.id, a.company, a.role_title, a.lane, a.location, a.status, a.match_score,
+            a.portal_name, a.portal_url, a.work_mode, a.contract_type,
+            a.notes, a.next_action, a.due_date,
+            a.description, a.requirements, a.fit, a.gaps, a.strategy, a.unclear,
+            a.interview_prep,
             COALESCE(
                 (SELECT MAX(h.changed_at) FROM status_history h WHERE h.job_application_id = a.id),
                 a.created_at
-            ) AS last_updated
+            ) AS last_updated,
+            EXISTS(
+                SELECT 1 FROM job_files f WHERE f.job_application_id = a.id AND f.kind = 'listing'
+            ) AS has_listing,
+            EXISTS(
+                SELECT 1 FROM job_files f
+                WHERE f.job_application_id = a.id AND f.kind = 'tailored_cv'
+            ) AS has_tailored_cv,
+            EXISTS(
+                SELECT 1 FROM job_files f
+                WHERE f.job_application_id = a.id AND f.kind = 'cover_letter'
+            ) AS has_cover_letter
         FROM job_applications a
         ORDER BY last_updated DESC, a.id DESC
         """
     ).fetchall()
-    return [JobApplication(**dict(row)) for row in rows]
+    history_by_application = _status_history_by_application(conn)
+    return [_application_row(row, history_by_application.get(row["id"], [])) for row in rows]
+
+
+def _status_history_by_application(
+    conn: sqlite3.Connection,
+) -> dict[int, list[StatusHistoryEntry]]:
+    """Every application's status history, grouped by application id, in one query - not one
+    query per row (D-227's per-status-date columns need every row's full history)."""
+    rows = conn.execute(
+        "SELECT job_application_id, status, changed_at FROM status_history ORDER BY changed_at"
+    ).fetchall()
+    grouped: dict[int, list[StatusHistoryEntry]] = {}
+    for row in rows:
+        grouped.setdefault(row["job_application_id"], []).append(
+            StatusHistoryEntry(status=row["status"], changed_at=row["changed_at"])
+        )
+    return grouped
+
+
+def _application_row(row: sqlite3.Row, history: list[StatusHistoryEntry]) -> JobApplication:
+    """Builds one table row from `list_job_applications`'s query, deriving the Details/Analysis/
+    Interview preparation status booleans from already-fetched columns the same way
+    job_revise_pipeline.py's own `_job_details_has_data`/`_positioning_has_data`/
+    `_interview_prep_has_data` do, rather than three more subqueries."""
+    requirements = json.loads(row["requirements"])
+    return JobApplication(
+        id=row["id"],
+        company=row["company"],
+        role_title=row["role_title"],
+        lane=row["lane"],
+        location=row["location"],
+        status=row["status"],
+        last_updated=row["last_updated"],
+        match_score=row["match_score"],
+        portal_name=row["portal_name"],
+        portal_url=row["portal_url"],
+        work_mode=row["work_mode"],
+        contract_type=row["contract_type"],
+        notes=row["notes"],
+        next_action=row["next_action"],
+        due_date=row["due_date"],
+        status_history=history,
+        has_listing=bool(row["has_listing"]),
+        has_details=bool(row["description"]) and requirements != [],
+        has_analysis=(
+            row["match_score"] is not None
+            or json.loads(row["fit"]) != []
+            or json.loads(row["gaps"]) != []
+            or row["strategy"] is not None
+            or json.loads(row["unclear"]) != []
+        ),
+        has_tailored_cv=bool(row["has_tailored_cv"]),
+        has_cover_letter=bool(row["has_cover_letter"]),
+        has_interview_prep=json.loads(row["interview_prep"]) != [],
+    )
 
 
 def insert_job_application(
