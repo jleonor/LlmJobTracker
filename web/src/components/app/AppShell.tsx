@@ -1,14 +1,22 @@
-import { BriefcaseBusiness, GitBranch, ListOrdered, Settings, UserRound } from 'lucide-react'
+import {
+  BriefcaseBusiness,
+  GitBranch,
+  LayoutDashboard,
+  ListOrdered,
+  Settings,
+  UserRound,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
-export type Screen = 'jobs' | 'profile' | 'queue' | 'settings'
+export type Screen = 'jobs' | 'dashboard' | 'profile' | 'queue' | 'settings'
 
-// Jobs, Profile, LLM history and Settings have screens (Phase 7, D-195). Run Trace is still a
-// placeholder for a later phase.
+// Jobs, Dashboard, Profile, LLM history and Settings have screens (Phase 7, D-195; Phase 10
+// adds Dashboard). Run Trace is still a placeholder for a later phase.
 const NAV: { label: string; icon: typeof UserRound; screen: Screen | null }[] = [
   { label: 'Job Applications', icon: BriefcaseBusiness, screen: 'jobs' },
+  { label: 'Dashboard', icon: LayoutDashboard, screen: 'dashboard' },
   { label: 'Profile', icon: UserRound, screen: 'profile' },
   { label: 'LLM history', icon: ListOrdered, screen: 'queue' },
   { label: 'Settings', icon: Settings, screen: 'settings' },

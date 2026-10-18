@@ -7,6 +7,7 @@ import {
   averageDaysIdentifiedToApplied,
   distinctLanes,
   distinctLocations,
+  foldToOther,
   matchScoreBucket,
   proportionByLane,
   proportionByMatchScoreBucket,
@@ -149,6 +150,27 @@ describe('proportionByLane/Stage/MatchScoreBucket', () => {
       { label: 'Not scored', count: 1 },
       { label: '10-20%', count: 1 },
       { label: '80-90%', count: 1 },
+    ])
+  })
+})
+
+describe('foldToOther', () => {
+  it('leaves the list untouched when it is already at or under the cap', () => {
+    const entries = [{ label: 'A', count: 3 }, { label: 'B', count: 1 }]
+    expect(foldToOther(entries, 2)).toEqual(entries)
+  })
+
+  it('keeps the largest entries and folds the rest into one "Other" entry', () => {
+    const entries = [
+      { label: 'A', count: 5 },
+      { label: 'B', count: 4 },
+      { label: 'C', count: 3 },
+      { label: 'D', count: 2 },
+    ]
+    expect(foldToOther(entries, 2)).toEqual([
+      { label: 'A', count: 5 },
+      { label: 'B', count: 4 },
+      { label: 'Other', count: 5 },
     ])
   })
 })

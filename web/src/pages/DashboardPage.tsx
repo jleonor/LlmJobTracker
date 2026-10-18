@@ -1,0 +1,382 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from 'recharts'
+
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { CATEGORICAL_CHART_COLORS, MATCH_SCORE_RAMP, NOT_SCORED_COLOR } from '@/lib/chartPalette'
+import {
+  applicationsSentHeatmap,
+  applySlicers,
+  averageDaysIdentifiedToApplied,
+  distinctLanes,
+  distinctLocations,
+  EMPTY_SLICERS,
+  foldToOther,
+  MATCH_SCORE_BUCKETS,
+  NOT_SCORED_BUCKET,
+  proportionByLane,
+  proportionByMatchScoreBucket,
+  proportionByStage,
+  wholeHistoryRates,
+  type CountEntry,
+  type DashboardSlicers,
+} from '@/lib/dashboardStats'
+import { ApiError, fetchJobApplications } from '@/lib/api'
+import { STATUS_ORDER, type JobApplication } from '@/lib/types'
+
+type State =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ready'; applications: JobApplication[] }
+
+// A bar chart's own series cap (the dataviz skill's series-count ladder): past this many bars,
+// fold the tail into "Other" rather than keep adding distinct hues.
+const MAX_LANE_BARS = 7
+
+export function DashboardPage() {
+  const [state, setState] = useState<State>({ kind: 'loading' })
+  const [slicers, setSlicers] = useState<DashboardSlicers>(EMPTY_SLICERS)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchJobApplications()
+      .then((applications) => {
+        if (!cancelled) setState({ kind: 'ready', applications })
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        const message = error instanceof ApiError ? error.message : 'Could not load applications.'
+        setState({ kind: 'error', message })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const allApplications = useMemo(
+    () => (state.kind === 'ready' ? state.applications : []),
+    [state],
+  )
+  // The whole-history rate stats always read the full, unsliced list (D-241) - every other
+  // chart below reads `sliced`.
+  const sliced = useMemo(() => applySlicers(allApplications, slicers), [allApplications, slicers])
+
+  const laneOptions = useMemo(() => distinctLanes(allApplications), [allApplications])
+  const locationOptions = useMemo(() => distinctLocations(allApplications), [allApplications])
+
+  const laneEntries = useMemo(() => foldToOther(proportionByLane(sliced), MAX_LANE_BARS), [sliced])
+  const stageEntries = useMemo(() => proportionByStage(sliced), [sliced])
+  const matchScoreEntries = useMemo(() => proportionByMatchScoreBucket(sliced), [sliced])
+  const leadTimeDays = useMemo(() => averageDaysIdentifiedToApplied(sliced), [sliced])
+  const rates = useMemo(() => wholeHistoryRates(allApplications), [allApplications])
+  const heatmap = useMemo(() => applicationsSentHeatmap(sliced), [sliced])
+
+  if (state.kind === 'loading') {
+    return <p className="text-sm text-muted-foreground">Loading…</p>
+  }
+  if (state.kind === 'error') {
+    return <p className="text-sm text-destructive">{state.message}</p>
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <h1 className="text-xl font-semibold">Dashboard</h1>
+
+      <SlicerBar
+        slicers={slicers}
+        onChange={setSlicers}
+        laneOptions={laneOptions}
+        locationOptions={locationOptions}
+      />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatTile
+          label="Identified → Applied"
+          value={leadTimeDays === null ? '—' : `${leadTimeDays.toFixed(1)} days`}
+          secondary="average, applications with both dates"
+        />
+        <StatTile
+          label="Applications identified"
+          value={rates === null ? '—' : `${rates.identifiedPerDay.toFixed(2)} / day`}
+          secondary={rates === null ? undefined : `${rates.identifiedPerWeek.toFixed(1)} / week`}
+        />
+        <StatTile
+          label="Applications sent"
+          value={rates === null ? '—' : `${rates.appliedPerDay.toFixed(2)} / day`}
+          secondary={rates === null ? undefined : `${rates.appliedPerWeek.toFixed(1)} / week`}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <ProportionCard
+          title="Proportion by lane"
+          entries={laneEntries}
+          colorFor={(_label, index) => CATEGORICAL_CHART_COLORS[index % CATEGORICAL_CHART_COLORS.length]}
+        />
+        <ProportionCard
+          title="Proportion by stage"
+          entries={stageEntries}
+          colorFor={(label) => {
+            const index = STATUS_ORDER.indexOf(label as (typeof STATUS_ORDER)[number])
+            return CATEGORICAL_CHART_COLORS[(index === -1 ? 0 : index) % CATEGORICAL_CHART_COLORS.length]
+          }}
+        />
+        <ProportionCard
+          title="Proportion by match score"
+          entries={matchScoreEntries}
+          colorFor={(label) => {
+            if (label === NOT_SCORED_BUCKET) return NOT_SCORED_COLOR
+            const index = MATCH_SCORE_BUCKETS.indexOf(label)
+            // index 0 is "Not scored" itself, so the ramp starts one slot later.
+            return MATCH_SCORE_RAMP[index - 1] ?? NOT_SCORED_COLOR
+          }}
+        />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Applications sent</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ApplicationsSentHeatmap days={heatmap} />
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// --- Slicers (D-241: these filter every chart above except the whole-history rate stats) -------
+
+const ALL_VALUE = '__all__'
+
+function SlicerBar({
+  slicers,
+  onChange,
+  laneOptions,
+  locationOptions,
+}: {
+  slicers: DashboardSlicers
+  onChange: (next: DashboardSlicers) => void
+  laneOptions: string[]
+  locationOptions: string[]
+}) {
+  return (
+    <div className="flex flex-wrap items-end gap-4">
+      <SlicerSelect
+        label="Lane"
+        value={slicers.lane}
+        options={laneOptions}
+        onChange={(lane) => onChange({ ...slicers, lane })}
+      />
+      <SlicerSelect
+        label="Stage"
+        value={slicers.stage}
+        options={[...STATUS_ORDER]}
+        onChange={(stage) => onChange({ ...slicers, stage })}
+      />
+      <SlicerSelect
+        label="Match score"
+        value={slicers.matchScoreBucket}
+        options={[...MATCH_SCORE_BUCKETS]}
+        onChange={(matchScoreBucket) => onChange({ ...slicers, matchScoreBucket })}
+      />
+      <SlicerSelect
+        label="Location"
+        value={slicers.location}
+        options={locationOptions}
+        onChange={(location) => onChange({ ...slicers, location })}
+      />
+    </div>
+  )
+}
+
+function SlicerSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string | null
+  options: string[]
+  onChange: (next: string | null) => void
+}) {
+  const items = useMemo(
+    () => Object.fromEntries([[ALL_VALUE, 'All'], ...options.map((option) => [option, option])]),
+    [options],
+  )
+  return (
+    <div className="flex flex-col gap-1">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Select
+        items={items}
+        value={value ?? ALL_VALUE}
+        onValueChange={(next) => onChange(next === ALL_VALUE ? null : next)}
+      >
+        <SelectTrigger className="w-44">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_VALUE}>All</SelectItem>
+          {options.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+// --- Stat tiles -----------------------------------------------------------------------------
+
+function StatTile({
+  label,
+  value,
+  secondary,
+}: {
+  label: string
+  value: string
+  secondary?: string
+}) {
+  return (
+    <Card size="sm">
+      <CardContent className="flex flex-col gap-1">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="text-2xl font-semibold text-foreground">{value}</span>
+        {secondary && <span className="text-xs text-muted-foreground">{secondary}</span>}
+      </CardContent>
+    </Card>
+  )
+}
+
+// --- Proportion charts (part-to-whole, categorical identity) -------------------------------
+
+function ProportionCard({
+  title,
+  entries,
+  colorFor,
+}: {
+  title: string
+  entries: CountEntry[]
+  colorFor: (label: string, index: number) => string
+}) {
+  const data = useMemo(
+    () => entries.map((entry, index) => ({ ...entry, fill: colorFor(entry.label, index) })),
+    [entries, colorFor],
+  )
+  const config = useMemo<ChartConfig>(
+    () =>
+      Object.fromEntries(
+        data.map((entry) => [entry.label, { label: entry.label, color: entry.fill }]),
+      ),
+    [data],
+  )
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {data.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No applications match the current filters.</p>
+        ) : (
+          <ChartContainer
+            config={config}
+            className="aspect-auto"
+            style={{ height: Math.max(140, data.length * 36) }}
+          >
+            <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
+              <CartesianGrid horizontal={false} stroke="var(--border)" />
+              <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} />
+              <YAxis
+                type="category"
+                dataKey="label"
+                width={110}
+                tickLine={false}
+                axisLine={false}
+                tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
+              />
+              <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+              <Bar dataKey="count" radius={4} barSize={20}>
+                {data.map((entry) => (
+                  <Cell key={entry.label} fill={entry.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ChartContainer>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// --- Calendar heatmap (sequential magnitude, trailing 12 months, D-239) ------------------------
+
+function heatmapColor(count: number, max: number): string {
+  if (count === 0) return 'var(--muted)'
+  if (max <= 0) return 'var(--muted)'
+  const steps = MATCH_SCORE_RAMP.length
+  // Lightest-to-highest-contrast step carries the highest count, same direction the sequential
+  // ramp already uses for match-score buckets.
+  const step = Math.min(steps - 1, Math.floor((count / max) * (steps - 1)))
+  return MATCH_SCORE_RAMP[steps - 1 - step]
+}
+
+function ApplicationsSentHeatmap({ days }: { days: { date: string; count: number }[] }) {
+  const max = useMemo(() => days.reduce((m, day) => Math.max(m, day.count), 0), [days])
+  // Pad the front so the grid starts on a Sunday column, GitHub-style.
+  const firstDay = days.length > 0 ? new Date(`${days[0].date}T00:00:00Z`).getUTCDay() : 0
+  const padded = [...Array(firstDay).fill(null), ...days]
+  const weeks: ({ date: string; count: number } | null)[][] = []
+  for (let i = 0; i < padded.length; i += 7) {
+    weeks.push(padded.slice(i, i + 7))
+  }
+
+  if (days.length === 0) {
+    return <p className="text-sm text-muted-foreground">No applications sent yet.</p>
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-1 overflow-x-auto pb-1">
+        {weeks.map((week, weekIndex) => (
+          <div key={weekIndex} className="flex flex-col gap-1">
+            {week.map((day, dayIndex) =>
+              day === null ? (
+                <div key={dayIndex} className="size-3" />
+              ) : (
+                <div
+                  key={day.date}
+                  title={`${day.date}: ${day.count} application${day.count === 1 ? '' : 's'} sent`}
+                  className="size-3 rounded-sm"
+                  style={{ backgroundColor: heatmapColor(day.count, max) }}
+                />
+              ),
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <span>Less</span>
+        {[0, ...MATCH_SCORE_RAMP.slice().reverse()].map((step, index) => (
+          <div
+            key={index}
+            className="size-3 rounded-sm"
+            style={{ backgroundColor: index === 0 ? 'var(--muted)' : (step as string) }}
+          />
+        ))}
+        <span>More</span>
+      </div>
+    </div>
+  )
+}

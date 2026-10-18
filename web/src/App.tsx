@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { AppShell, type Screen } from '@/components/app/AppShell'
+import { DashboardPage } from '@/pages/DashboardPage'
 import { JobApplicationsPage } from '@/pages/JobApplicationsPage'
 import { LlmHistoryPage } from '@/pages/LlmHistoryPage'
 import { ProfilePage } from '@/pages/ProfilePage'
@@ -31,6 +32,7 @@ function App() {
       userName={settings.user_name}
     >
       {screen === 'jobs' && <JobApplicationsPage queue={queue} resetSignal={jobsResetSignal} />}
+      {screen === 'dashboard' && <DashboardPage />}
       {screen === 'profile' && (
         <ProfilePage userName={settings.user_name} onNameChanged={reloadSettings} />
       )}

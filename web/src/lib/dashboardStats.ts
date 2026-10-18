@@ -116,9 +116,25 @@ function sortedEntries(counts: Map<string, number>, order?: readonly string[]): 
   return labels.map((label) => ({ label, count: counts.get(label) ?? 0 }))
 }
 
+function sortedByCountDescending(counts: Map<string, number>): CountEntry[] {
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+}
+
+// Keeps the `max` largest entries as-is and folds the rest into one trailing "Other" entry
+// (the dataviz skill's series-count ladder: past ~7-8 categorical slots, fold the tail rather
+// than generate more hues). A no-op when there are `max` or fewer entries already.
+export function foldToOther(entries: CountEntry[], max: number): CountEntry[] {
+  if (entries.length <= max) return entries
+  const kept = entries.slice(0, max)
+  const foldedCount = entries.slice(max).reduce((total, entry) => total + entry.count, 0)
+  return [...kept, { label: 'Other', count: foldedCount }]
+}
+
 export function proportionByLane(applications: JobApplication[]): CountEntry[] {
   const counts = countBy(applications, (application) => application.lane ?? NO_LANE_LABEL)
-  return sortedEntries(counts)
+  return sortedByCountDescending(counts)
 }
 
 export function proportionByStage(applications: JobApplication[]): CountEntry[] {
