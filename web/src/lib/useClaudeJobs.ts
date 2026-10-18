@@ -55,14 +55,18 @@ export function queueLabel(jobs: ClaudeJob[]): string {
   return 'LLM: idle'
 }
 
-// The per-application queue badge (D-56's "beside the status tag", the table's own Queue
-// column): idle unless this application has a non-terminal Claude Job of its own. A job this
-// application once ran that is now done/failed/cancelled reads as idle too - nothing is
-// currently pending, which is what the badge is for (D-49 to D-52).
+// The per-application queue badge (D-56's "beside the status tag", D-227's inline table
+// indicator): idle unless this application has a non-terminal Claude Job of its own, or one that
+// failed and still needs attention. A job this application once ran that is now done/cancelled
+// reads as idle too - nothing is pending and nothing needs a look, which is what the badge is
+// for (D-49 to D-52). `failed` is surfaced (narrows the comment this replaces, D-227): a failed
+// job used to read as idle here even though QueueStatusBadge's own tone map already had a
+// `failed` color waiting for a value that never reached it.
 export function queueStatusFor(jobs: ClaudeJob[], applicationId: number): QueueStatus {
   const mine = jobs.filter((job) => job.job_application_id === applicationId)
   if (mine.some((job) => job.status === 'processing')) return 'processing'
   if (mine.some((job) => job.status === 'paused')) return 'paused'
   if (mine.some((job) => job.status === 'queued')) return 'queued'
+  if (mine.some((job) => job.status === 'failed')) return 'failed'
   return 'idle'
 }
