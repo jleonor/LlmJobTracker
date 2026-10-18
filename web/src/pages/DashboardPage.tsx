@@ -1,3 +1,4 @@
+import { ChevronRight } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from 'recharts'
 
@@ -10,6 +11,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from '@/components/ui/chart'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -52,6 +54,7 @@ import {
   type PositioningRescoreSummary,
   type Settings,
 } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
 type State =
   | { kind: 'loading' }
@@ -149,8 +152,13 @@ export function DashboardPage({ settings }: { settings: Settings }) {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {/* 3 columns x 2 rows: lane spans both rows in column 1; stage and match score fill row 1's
+          remaining two columns; applications sent spans both of those columns in row 2. Relies on
+          CSS grid auto-placement (the row-span-2 item first, the col-span-2 item last) rather than
+          explicit coordinates (D-243). */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:grid-rows-2">
         <ProportionCard
+          className="lg:row-span-2"
           title="Proportion by lane"
           entries={laneEntries}
           colorFor={(_label, index) => CATEGORICAL_CHART_COLORS[index % CATEGORICAL_CHART_COLORS.length]}
@@ -173,16 +181,15 @@ export function DashboardPage({ settings }: { settings: Settings }) {
             return MATCH_SCORE_RAMP[index - 1] ?? NOT_SCORED_COLOR
           }}
         />
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Applications sent</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ApplicationsSentHeatmap days={heatmap} />
+          </CardContent>
+        </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Applications sent</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ApplicationsSentHeatmap days={heatmap} />
-        </CardContent>
-      </Card>
 
       <LaneSummarySection lanes={lanes} applications={allApplications} onAnalyzed={reloadLanes} />
 
@@ -324,10 +331,12 @@ function ProportionCard({
   title,
   entries,
   colorFor,
+  className,
 }: {
   title: string
   entries: CountEntry[]
   colorFor: (label: string, index: number) => string
+  className?: string
 }) {
   const data = useMemo(
     () => entries.map((entry, index) => ({ ...entry, fill: colorFor(entry.label, index) })),
@@ -342,7 +351,7 @@ function ProportionCard({
   )
 
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
@@ -470,36 +479,66 @@ function LaneSummarySection({
         {lanes.length === 0 ? (
           <p className="text-sm text-muted-foreground">No lanes yet.</p>
         ) : (
-          lanes.map((lane) => {
-            const averageMatchScore = averageMatchScoreForLane(applications, lane.name)
-            return (
-              <div key={lane.id} className="flex flex-col gap-1 border-b border-border pb-4 last:border-b-0 last:pb-0">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{lane.name}</span>
-                  <span className="text-sm text-muted-foreground">
-                    {averageMatchScore === null ? 'No scored applications' : `${averageMatchScore.toFixed(1)}% average match`}
-                  </span>
-                </div>
-                {lane.fit_gap_summary === null ? (
-                  <p className="text-xs text-muted-foreground">
-                    Not analyzed yet - run "Analyze lanes" once it has a scored application.
-                  </p>
-                ) : (
-                  <>
-                    <MarkdownDocument text={lane.fit_gap_summary} />
-                    {lane.fit_gap_summary_generated_at && (
-                      <p className="text-xs text-muted-foreground">
-                        Generated {new Date(lane.fit_gap_summary_generated_at).toLocaleString()}
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-            )
-          })
+          lanes.map((lane) => (
+            <LaneSummaryRow
+              key={lane.id}
+              lane={lane}
+              averageMatchScore={averageMatchScoreForLane(applications, lane.name)}
+            />
+          ))
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function LaneSummaryRow({
+  lane,
+  averageMatchScore,
+}: {
+  lane: Lane
+  averageMatchScore: number | null
+}) {
+  const [open, setOpen] = useState(false)
+  const matchScoreText =
+    averageMatchScore === null ? 'No scored applications' : `${averageMatchScore.toFixed(1)}% average match`
+
+  if (lane.fit_gap_summary === null) {
+    return (
+      <div className="flex flex-col gap-1 border-b border-border pb-4 last:border-b-0 last:pb-0">
+        <div className="flex items-center justify-between">
+          <span className="font-medium">{lane.name}</span>
+          <span className="text-sm text-muted-foreground">{matchScoreText}</span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Not analyzed yet - run "Analyze lanes" once it has a scored application.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="border-b border-border pb-4 last:border-b-0 last:pb-0"
+    >
+      <CollapsibleTrigger className="flex w-full items-center justify-between text-left">
+        <span className="flex items-center gap-1 font-medium">
+          <ChevronRight className={cn('size-4 transition-transform', open && 'rotate-90')} />
+          {lane.name}
+        </span>
+        <span className="text-sm text-muted-foreground">{matchScoreText}</span>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-1 pt-2 pl-5">
+        <MarkdownDocument text={lane.fit_gap_summary} />
+        {lane.fit_gap_summary_generated_at && (
+          <p className="text-xs text-muted-foreground">
+            Generated {new Date(lane.fit_gap_summary_generated_at).toLocaleString()}
+          </p>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 

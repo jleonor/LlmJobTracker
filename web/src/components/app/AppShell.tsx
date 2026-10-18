@@ -1,11 +1,4 @@
-import {
-  BriefcaseBusiness,
-  GitBranch,
-  LayoutDashboard,
-  ListOrdered,
-  Settings,
-  UserRound,
-} from 'lucide-react'
+import { BriefcaseBusiness, LayoutDashboard, ListOrdered, Settings, UserRound } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -13,14 +6,13 @@ import { cn } from '@/lib/utils'
 export type Screen = 'jobs' | 'dashboard' | 'profile' | 'queue' | 'settings'
 
 // Jobs, Dashboard, Profile, LLM history and Settings have screens (Phase 7, D-195; Phase 10
-// adds Dashboard). Run Trace is still a placeholder for a later phase.
-const NAV: { label: string; icon: typeof UserRound; screen: Screen | null }[] = [
+// adds Dashboard).
+const NAV: { label: string; icon: typeof UserRound; screen: Screen }[] = [
   { label: 'Job Applications', icon: BriefcaseBusiness, screen: 'jobs' },
   { label: 'Dashboard', icon: LayoutDashboard, screen: 'dashboard' },
   { label: 'Profile', icon: UserRound, screen: 'profile' },
   { label: 'LLM history', icon: ListOrdered, screen: 'queue' },
   { label: 'Settings', icon: Settings, screen: 'settings' },
-  { label: 'Run Trace', icon: GitBranch, screen: null },
 ]
 
 type Props = {
@@ -40,22 +32,18 @@ export function AppShell({ children, current, onNavigate, queueText, userName }:
         </div>
         <nav className="flex flex-col gap-0.5 p-2" aria-label="Main">
           {NAV.map(({ label, icon: Icon, screen }) => {
-            const active = screen !== null && screen === current
+            const active = screen === current
             return (
               <button
                 key={label}
                 type="button"
-                disabled={screen === null}
-                onClick={screen === null ? undefined : () => onNavigate(screen)}
+                onClick={() => onNavigate(screen)}
                 aria-current={active ? 'page' : undefined}
-                title={screen === null ? 'Not in this phase yet' : undefined}
                 className={cn(
                   'flex items-center gap-2 rounded px-3 py-2 text-left text-sm transition-colors',
                   active
                     ? 'border-l-2 border-primary bg-secondary pl-[10px] font-semibold text-foreground'
-                    : screen === null
-                      ? 'cursor-not-allowed text-muted-foreground opacity-60'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 )}
               >
                 <Icon className="size-4" aria-hidden="true" />
