@@ -100,22 +100,26 @@ from llmjobtracker.job_revise_turns import (
 )
 from llmjobtracker.lane_pipeline import (
     LaneAssignmentNotReady,
+    LaneOverviewNotReady,
     LaneSyncNotReady,
     assign_lane_ready,
     lane_analysis_ready,
     submit_analyze_lane,
     submit_assign_job_lane,
     submit_extract_lanes,
+    submit_summarize_lanes,
 )
 from llmjobtracker.lanes import (
     Lane,
     LaneEdit,
+    LaneOverview,
     clear_all_lanes,
     clear_lanes_not_in_list,
     count_applications_with_a_lane,
     count_lanes_not_in_list,
     create_lane,
     delete_lane,
+    get_lane_overview,
     list_lanes,
     update_lane,
 )
@@ -1709,6 +1713,32 @@ def create_app(
         for lane in ready:
             submit_analyze_lane(conn, queue, lane.id)
         return LaneAnalysisSummary(queued=len(ready), skipped=skipped)
+
+    @app.get(
+        "/lanes/overview", response_model=LaneOverview, dependencies=[Depends(require_token)]
+    )
+    def read_lane_overview(conn: Annotated[Connection, Depends(get_db)]) -> LaneOverview:
+        """The Dashboard's cross-lane overview report (D-245), or both fields null if
+        "Summarize lanes" has never run."""
+        return get_lane_overview(conn)
+
+    @app.post(
+        "/lanes/overview/analyze",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def analyze_lane_overview(conn: Annotated[Connection, Depends(get_db)]) -> ClaudeJob:
+        """The Dashboard's "Summarize lanes" button (D-245): one job, not a batch - a
+        confirm-then-trace dialog like "Sync from strategy" (D-220), not the queued/skipped
+        preview shape "Analyze lanes" uses."""
+        try:
+            job_id = submit_summarize_lanes(conn, queue)
+        except LaneOverviewNotReady as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        return _job_or_404(conn, job_id)
 
     def _rescore_candidates(conn: Connection) -> tuple[list[JobApplication], int]:
         """Every application meeting positioning_ready, plus a count of the rest - shared by the

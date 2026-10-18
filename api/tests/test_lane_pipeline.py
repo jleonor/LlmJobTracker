@@ -17,21 +17,33 @@ from llmjobtracker.lane_pipeline import (
     JOB_KIND_ANALYZE_LANE,
     JOB_KIND_ASSIGN_LANE,
     JOB_KIND_EXTRACT_LANES,
+    JOB_KIND_SUMMARIZE_LANES,
     LaneAnalysisNotReady,
     LaneAssignmentNotReady,
+    LaneOverviewNotReady,
     LaneSyncNotReady,
     build_analyze_lane_prompt,
     build_assign_lane_prompt,
     build_extract_lanes_prompt,
+    build_summarize_lanes_prompt,
     lane_analysis_ready,
+    lane_overview_ready,
     parse_analyze_lane_answer,
     parse_lanes_answer,
+    parse_summarize_lanes_answer,
     scored_applications_for_lane,
     submit_analyze_lane,
     submit_assign_job_lane,
     submit_extract_lanes,
+    submit_summarize_lanes,
 )
-from llmjobtracker.lanes import create_lane, ensure_other_lane, get_lane, list_lanes
+from llmjobtracker.lanes import (
+    create_lane,
+    ensure_other_lane,
+    get_lane,
+    get_lane_overview,
+    list_lanes,
+)
 from llmjobtracker.langgraph_runner import LangGraphRunner
 from llmjobtracker.runner import FakeRunner
 from llmjobtracker.storage import connect
@@ -486,7 +498,13 @@ Limited exposure to large-scale distributed systems.
 
 
 def add_scored_application(
-    db_path: Path, lane: str, role_title: str, fit: list[str], gaps: list[str], match_score: float
+    db_path: Path,
+    lane: str,
+    role_title: str,
+    fit: list[str],
+    gaps: list[str],
+    match_score: float,
+    listing_text: str | None = None,
 ) -> int:
     conn = connect(db_path)
     try:
@@ -497,6 +515,15 @@ def add_scored_application(
             "UPDATE job_applications SET fit = ?, gaps = ?, match_score = ? WHERE id = ?",
             (json.dumps(fit), json.dumps(gaps), match_score, app_id),
         )
+        if listing_text is not None:
+            insert_job_file(
+                conn,
+                app_id,
+                kind="listing",
+                name="Job Listing.md",
+                stored_path=f"Acme Inc/{role_title}/Job Listing.md",
+                extracted_text=listing_text,
+            )
         conn.commit()
     finally:
         conn.close()
@@ -577,7 +604,13 @@ def test_build_analyze_lane_prompt_includes_every_scored_application(db_path: Pa
     finally:
         conn.close()
     add_scored_application(
-        db_path, "Data Analytics", "Analyst I", ["Strong SQL"], ["No Spark"], 80.0
+        db_path,
+        "Data Analytics",
+        "Analyst I",
+        ["Strong SQL"],
+        ["No Spark"],
+        80.0,
+        listing_text="Senior Data Analyst, must know SQL and dashboarding.",
     )
     add_scored_application(db_path, "Data Analytics", "Analyst II", ["Strong Python"], [], 60.0)
 
@@ -590,10 +623,58 @@ def test_build_analyze_lane_prompt_includes_every_scored_application(db_path: Pa
     assert "=== CAREER HISTORY ===" in prompt
     assert "Ten years in data analytics, SQL and Python focus." in prompt
     assert "TITLE: Analyst I" in prompt
+    assert "LISTING:\nSenior Data Analyst, must know SQL and dashboarding." in prompt
     assert "- Strong SQL" in prompt
     assert "- No Spark" in prompt
     assert "TITLE: Analyst II" in prompt
     assert "- Strong Python" in prompt
+    # D-244: an application with no listing on file gets a placeholder, not a blank/missing field.
+    assert "(no listing text available)" in prompt
+
+
+def test_build_analyze_lane_prompt_asks_for_structured_markdown(db_path: Path) -> None:
+    write_career_history(db_path)
+    conn = connect(db_path)
+    try:
+        lane = create_lane(conn, "Data Analytics", None, None)
+        conn.commit()
+    finally:
+        conn.close()
+    add_scored_application(db_path, "Data Analytics", "Analyst I", ["Strong SQL"], [], 80.0)
+
+    conn = connect(db_path)
+    try:
+        prompt = build_analyze_lane_prompt(conn, lane.id)
+    finally:
+        conn.close()
+    normalized = " ".join(prompt.split())
+    assert "### Recurring strengths" in normalized
+    assert "### Where this shows up in the listings" in normalized
+    assert "### Recurring gaps" in normalized
+    assert "### What the listings ask for that isn't covered" in normalized
+
+
+def test_build_analyze_lane_prompt_rejects_an_oversized_prompt(
+    db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import llmjobtracker.lane_pipeline as lane_pipeline_module
+
+    monkeypatch.setattr(lane_pipeline_module, "MAX_PROMPT_CHARS", 100)
+    write_career_history(db_path, "A" * 500)
+    conn = connect(db_path)
+    try:
+        lane = create_lane(conn, "Data Analytics", None, None)
+        conn.commit()
+    finally:
+        conn.close()
+    add_scored_application(db_path, "Data Analytics", "Analyst I", ["Strong SQL"], [], 80.0)
+
+    conn = connect(db_path)
+    try:
+        with pytest.raises(PromptRejected, match="too large"):
+            build_analyze_lane_prompt(conn, lane.id)
+    finally:
+        conn.close()
 
 
 def test_build_analyze_lane_prompt_requires_a_career_history_document(db_path: Path) -> None:
@@ -696,3 +777,155 @@ def test_analyze_lane_job_writes_the_fit_gap_summary(db_path: Path) -> None:
     assert "Consistently strong on SQL and dashboarding work." in updated.fit_gap_summary
     assert "Limited exposure to large-scale distributed systems." in updated.fit_gap_summary
     assert updated.fit_gap_summary_generated_at is not None
+
+
+# --- summarize_lanes (Phase 10's cross-lane overview report, D-245) ----------------------------
+
+GOOD_SUMMARIZE_LANES_ANSWER = """=== OVERALL FIT ===
+Consistently strong across data-facing roles.
+=== END OVERALL FIT ===
+
+=== OVERALL GAPS ===
+Large-scale distributed systems experience is the recurring gap.
+=== END OVERALL GAPS ==="""
+
+
+def analyze_a_lane(db_path: Path, lane_name: str, summary: str) -> None:
+    """Sets a lane's fit_gap_summary directly, as if "Analyze lanes" had already run for it -
+    summarize_lanes reads this, not the applications behind it."""
+    conn = connect(db_path)
+    try:
+        lane_id = conn.execute("SELECT id FROM lanes WHERE name = ?", (lane_name,)).fetchone()["id"]
+        conn.execute("UPDATE lanes SET fit_gap_summary = ? WHERE id = ?", (summary, lane_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_lane_overview_ready_is_false_with_no_lane_analyzed(db_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        create_lane(conn, "Data Analytics", None, None)
+        conn.commit()
+        ready = lane_overview_ready(conn)
+    finally:
+        conn.close()
+    assert ready is False
+
+
+def test_lane_overview_ready_is_true_once_one_lane_is_analyzed(db_path: Path) -> None:
+    conn = connect(db_path)
+    try:
+        create_lane(conn, "Data Analytics", None, None)
+        conn.commit()
+    finally:
+        conn.close()
+    analyze_a_lane(db_path, "Data Analytics", "**Fit**\n\nStrong.\n\n**Gaps**\n\nNone.")
+
+    conn = connect(db_path)
+    try:
+        ready = lane_overview_ready(conn)
+    finally:
+        conn.close()
+    assert ready is True
+
+
+def test_build_summarize_lanes_prompt_includes_history_strategy_and_analyzed_lanes_only(
+    db_path: Path,
+) -> None:
+    write_career_history(db_path, "Ten years in data analytics.")
+    write_strategy(db_path, "Lead with data analytics roles.")
+    conn = connect(db_path)
+    try:
+        create_lane(conn, "Data Analytics", None, None)
+        create_lane(conn, "Product Analytics", None, None)
+        conn.commit()
+    finally:
+        conn.close()
+    analyze_a_lane(db_path, "Data Analytics", "**Fit**\n\nStrong SQL.\n\n**Gaps**\n\nNo Spark.")
+    # "Product Analytics" is left with no fit_gap_summary - not analyzed yet.
+
+    conn = connect(db_path)
+    try:
+        prompt = build_summarize_lanes_prompt(conn)
+    finally:
+        conn.close()
+    assert "TASK: summarize_lanes" in prompt
+    assert "Ten years in data analytics." in prompt
+    assert "Lead with data analytics roles." in prompt
+    assert "NAME: Data Analytics" in prompt
+    assert "Strong SQL." in prompt
+    assert "Product Analytics" not in prompt
+
+
+def test_build_summarize_lanes_prompt_rejects_when_no_lane_has_been_analyzed(
+    db_path: Path,
+) -> None:
+    write_career_history(db_path)
+    write_strategy(db_path)
+    conn = connect(db_path)
+    try:
+        create_lane(conn, "Data Analytics", None, None)
+        conn.commit()
+        with pytest.raises(PromptRejected, match="No lane has been analyzed"):
+            build_summarize_lanes_prompt(conn)
+    finally:
+        conn.close()
+
+
+def test_parse_summarize_lanes_answer_reads_both_sections() -> None:
+    answer = parse_summarize_lanes_answer(GOOD_SUMMARIZE_LANES_ANSWER)
+    assert answer.overall_fit == "Consistently strong across data-facing roles."
+    assert answer.overall_gaps == "Large-scale distributed systems experience is the recurring gap."
+
+
+def test_parse_summarize_lanes_answer_rejects_when_both_sections_are_empty() -> None:
+    with pytest.raises(PromptRejected, match="OVERALL FIT or OVERALL GAPS"):
+        parse_summarize_lanes_answer("I have nothing to say about this job search.")
+
+
+def test_submit_summarize_lanes_requires_a_lane_to_be_analyzed(db_path: Path) -> None:
+    queue = make_queue(db_path, FakeRunner(text="unused"))
+    conn = connect(db_path)
+    try:
+        with pytest.raises(LaneOverviewNotReady):
+            submit_summarize_lanes(conn, queue)
+    finally:
+        conn.close()
+
+
+def test_summarize_lanes_job_writes_the_lane_overview(db_path: Path) -> None:
+    write_career_history(db_path)
+    write_strategy(db_path)
+    conn = connect(db_path)
+    try:
+        create_lane(conn, "Data Analytics", None, None)
+        conn.commit()
+    finally:
+        conn.close()
+    analyze_a_lane(db_path, "Data Analytics", "**Fit**\n\nStrong SQL.\n\n**Gaps**\n\nNo Spark.")
+
+    runner = FakeRunner(text=GOOD_SUMMARIZE_LANES_ANSWER)
+    queue = make_queue(db_path, runner)
+    conn = connect(db_path)
+    try:
+        job_id = submit_summarize_lanes(conn, queue)
+    finally:
+        conn.close()
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+        assert job is not None
+        assert job.status == "done"
+        assert job.lane_id is None
+        assert job.job_application_id is None
+        assert job.prompts[0].prompt_kind == JOB_KIND_SUMMARIZE_LANES
+        overview = get_lane_overview(conn)
+    finally:
+        conn.close()
+    assert overview.summary is not None
+    assert "Consistently strong across data-facing roles." in overview.summary
+    assert "Large-scale distributed systems experience is the recurring gap." in overview.summary
+    assert overview.generated_at is not None

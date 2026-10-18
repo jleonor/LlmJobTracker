@@ -29,6 +29,19 @@ def write_strategy(db_path: Path, text: str = "Lead with data work.") -> None:
         conn.close()
 
 
+def write_career_history(db_path: Path, text: str = "Ten years in data analytics.") -> None:
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO profile_outputs (kind, version, document, input_sha256s) "
+            "VALUES ('full_cv_history', 1, ?, '[]')",
+            (text,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def add_application(db_path: Path, *, with_listing: bool) -> int:
     conn = connect(db_path)
     try:
@@ -317,3 +330,52 @@ def test_analyze_lanes_preview_matches_the_post_route_and_changes_nothing(db_pat
         assert preview.status_code == 200
         assert preview.json() == {"queued": 1, "skipped": 1}
         assert client.get("/claude-jobs").json() == []
+
+
+# --- Lane overview (summarize_lanes, D-245) -----------------------------------------------------
+
+GOOD_SUMMARIZE_LANES_ANSWER = """=== OVERALL FIT ===
+Consistently strong across data-facing roles.
+=== END OVERALL FIT ===
+
+=== OVERALL GAPS ===
+Large-scale distributed systems experience is the recurring gap.
+=== END OVERALL GAPS ==="""
+
+
+def test_lane_overview_starts_empty(client: TestClient) -> None:
+    overview = client.get("/lanes/overview").json()
+    assert overview == {"summary": None, "generated_at": None}
+
+
+def test_analyze_lane_overview_requires_a_lane_to_be_analyzed(client: TestClient) -> None:
+    response = client.post("/lanes/overview/analyze")
+    assert response.status_code == 400
+
+
+def test_analyze_lane_overview_route_queues_the_job(db_path: Path) -> None:
+    write_career_history(db_path)
+    write_strategy(db_path)
+    runner = FakeRunner(text=GOOD_SUMMARIZE_LANES_ANSWER)
+    with TestClient(create_app(TOKEN, db_path, runner)) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        lane_id = client.post("/lanes", json={"name": "Data Analytics"}).json()["id"]
+        conn = connect(db_path)
+        try:
+            conn.execute(
+                "UPDATE lanes SET fit_gap_summary = ? WHERE id = ?",
+                ("**Fit**\n\nStrong SQL.\n\n**Gaps**\n\nNo Spark.", lane_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        response = client.post("/lanes/overview/analyze")
+        assert response.status_code == 201
+        assert response.json()["kind"] == "summarize_lanes"
+
+        jobs = client.get("/claude-jobs").json()
+        overview_jobs = [job for job in jobs if job["kind"] == "summarize_lanes"]
+        assert len(overview_jobs) == 1
+        assert overview_jobs[0]["lane_id"] is None
+        assert overview_jobs[0]["job_application_id"] is None

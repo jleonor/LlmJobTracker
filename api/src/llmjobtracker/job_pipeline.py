@@ -52,13 +52,16 @@ from llmjobtracker.lane_pipeline import (
     JOB_KIND_ANALYZE_LANE,
     JOB_KIND_ASSIGN_LANE,
     JOB_KIND_EXTRACT_LANES,
+    JOB_KIND_SUMMARIZE_LANES,
     build_analyze_lane_prompt,
     build_assign_lane_prompt,
     build_extract_lanes_prompt,
+    build_summarize_lanes_prompt,
     lanes_block,
     store_analyze_lane_result,
     store_assign_lane_result,
     store_extract_lanes_result,
+    store_summarize_lanes_result,
     validate_lane_name,
 )
 from llmjobtracker.lanes import lane_names
@@ -1975,6 +1978,8 @@ def make_pipeline(
         if prompt.prompt_kind == JOB_KIND_ANALYZE_LANE:
             lane_id = _lane_id_for(conn, prompt.claude_job_id)
             return RenderedPrompt(text=build_analyze_lane_prompt(conn, lane_id))
+        if prompt.prompt_kind == JOB_KIND_SUMMARIZE_LANES:
+            return RenderedPrompt(text=build_summarize_lanes_prompt(conn))
         return revise_render(conn, prompt)
 
     def on_result(conn: sqlite3.Connection, prompt: PromptRow, result: RunResult) -> None:
@@ -2029,6 +2034,9 @@ def make_pipeline(
         if prompt.prompt_kind == JOB_KIND_ANALYZE_LANE:
             lane_id = _lane_id_for(conn, prompt.claude_job_id)
             store_analyze_lane_result(conn, lane_id, result.text)
+            return
+        if prompt.prompt_kind == JOB_KIND_SUMMARIZE_LANES:
+            store_summarize_lanes_result(conn, result.text)
             return
         # JOB_KIND_CHECK and JOB_KIND_IDENTITY have nothing to store (D-146, intake-steps.md: the
         # identity answer is read back and parsed on demand, since the row it belongs to may not

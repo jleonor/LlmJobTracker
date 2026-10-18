@@ -201,3 +201,31 @@ def replace_all_lanes(
             ],
         )
     ensure_other_lane(conn)
+
+
+## Lane overview (summarize_lanes, Phase 10, D-245) #############################################
+# A single cross-lane report, not per-lane - stored in its own singleton table (the same
+# `id INTEGER PRIMARY KEY CHECK (id = 1)` pattern `settings` already uses), since it isn't a
+# per-row lane field.
+
+
+class LaneOverview(BaseModel):
+    summary: str | None
+    generated_at: str | None
+
+
+def get_lane_overview(conn: sqlite3.Connection) -> LaneOverview:
+    row = conn.execute("SELECT summary, generated_at FROM lane_overview WHERE id = 1").fetchone()
+    return LaneOverview(**dict(row))
+
+
+def set_lane_overview(conn: sqlite3.Connection, summary: str) -> None:
+    """summarize_lanes's own write (D-245): a later run replaces the stored report outright -
+    there is no history of past overviews kept, the same "at most one current version"
+    convention `lanes.fit_gap_summary` (D-238) already uses."""
+    with conn:
+        conn.execute(
+            "UPDATE lane_overview SET summary = ?, "
+            "generated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = 1",
+            (summary,),
+        )
