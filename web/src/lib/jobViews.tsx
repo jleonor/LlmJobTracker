@@ -29,6 +29,13 @@ function statusFilter(statuses: string[]): Filters {
   return { status: { kind: 'text', selected: new Set(statuses) } }
 }
 
+// "Has a next action date" has no dedicated filter kind - expressed as a date-range filter whose
+// `from` sits before any real date, so every actual value passes while a null one still doesn't
+// (applicationMatchesFilters' date branch rejects a null day whenever `from` is set).
+const HAS_NEXT_ACTION_DATE: Filters = {
+  next_action_date: { kind: 'date', from: '1970-01-01', to: null },
+}
+
 export const JOB_VIEWS: readonly JobView[] = [
   {
     id: 'default',
@@ -42,7 +49,7 @@ export const JOB_VIEWS: readonly JobView[] = [
     id: 'to_apply_to',
     label: 'To apply to',
     icon: Send,
-    columns: ['company', 'role_title', 'lane', 'location', 'match_score'],
+    columns: ['company', 'role_title', 'lane', 'status', 'location', 'match_score'],
     sort: { column: 'match_score', direction: 'desc' },
     filters: statusFilter(['Identified']),
   },
@@ -50,7 +57,7 @@ export const JOB_VIEWS: readonly JobView[] = [
     id: 'active_applications',
     label: 'Active applications',
     icon: Activity,
-    columns: ['company', 'role_title', 'lane', 'location', 'match_score'],
+    columns: ['company', 'role_title', 'lane', 'status', 'location', 'match_score'],
     sort: { column: 'match_score', direction: 'desc' },
     filters: statusFilter(['Applied', 'Screening', 'Interview', 'Offer']),
   },
@@ -58,7 +65,7 @@ export const JOB_VIEWS: readonly JobView[] = [
     id: 'dead_applications',
     label: 'Dead applications',
     icon: Archive,
-    columns: ['company', 'role_title', 'lane', 'match_score', 'notes'],
+    columns: ['company', 'role_title', 'lane', 'status', 'match_score', 'notes'],
     sort: { column: 'match_score', direction: 'desc' },
     filters: statusFilter(['Rejected', 'Withdrawn', 'Expired']),
   },
@@ -66,9 +73,20 @@ export const JOB_VIEWS: readonly JobView[] = [
     id: 'upcoming_actions',
     label: 'Upcoming actions',
     icon: CalendarClock,
-    columns: ['company', 'role_title', 'lane', 'next_action_date', 'next_action', 'match_score'],
+    columns: [
+      'company',
+      'role_title',
+      'lane',
+      'status',
+      'next_action_date',
+      'next_action',
+      'match_score',
+    ],
     sort: { column: 'next_action_date', direction: 'asc' },
-    filters: {},
+    // Applied through Offer (D-44's forward order, excluding Identified and the three end
+    // states) with a next action actually set - the user's own narrowing of the original
+    // "no filter" definition.
+    filters: { ...statusFilter(['Applied', 'Screening', 'Interview', 'Offer']), ...HAS_NEXT_ACTION_DATE },
   },
   {
     id: 'processing_status',
