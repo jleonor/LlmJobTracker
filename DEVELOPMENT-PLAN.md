@@ -812,7 +812,7 @@ phase since it is further UI work on the same branch, following this plan's esta
 of appending reviewed batches (D-104) rather than reopening earlier steps.
 
 1. Backend: extend `list_job_applications`'s query and the `JobApplication` model with every
-   field the 26-column registry needs that the row doesn't already carry: `portal_name`,
+   field the 27-column registry needs that the row doesn't already carry: `portal_name`,
    `portal_url`, `work_mode`, `contract_type`, `notes`, `next_action`, `due_date`,
    `status_history` (for the eight per-status-date columns, derived client-side the same way the
    job page's own timeline already is), and six booleans — `has_listing`, `has_details`,
@@ -824,7 +824,7 @@ of appending reviewed batches (D-104) rather than reopening earlier steps.
    boolean and a multi-status `status_history`.
 2. Frontend: add `components/ui/tooltip.tsx`, wrapping `@base-ui/react`'s Tooltip the same way
    every other `ui/` primitive wraps it.
-3. Frontend: `lib/jobColumns.ts` — the full 26-column registry (id, header label, cell renderer,
+3. Frontend: `lib/jobColumns.ts` — the full 27-column registry (id, header label, cell renderer,
    default width, and where it applies a filter type and sort comparator), covering every column
    named in this batch's design discussion (Company, Title, Lane, Location, Match score, Status,
    Last updated, Job portal, Contract type, Work mode, the six status columns, the eight
@@ -857,7 +857,7 @@ of appending reviewed batches (D-104) rather than reopening earlier steps.
     indicators against a real queued and a real paused Claude Job.
 
 Done when
-- [ ] Every one of the 26 columns is available through "Select columns", each rendering the
+- [ ] Every one of the 27 columns is available through "Select columns", each rendering the
   right data (screenshot).
 - [ ] A column can be reordered by drag and resized by drag, and the result is reflected
   immediately (screenshot).
