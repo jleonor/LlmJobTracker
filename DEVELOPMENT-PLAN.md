@@ -992,6 +992,47 @@ Done when
   longer shows anything "Re-score" (confirmed with a live page search). Not clicked through to a
   real completed run, since that spends real usage — left for the user to trigger.
 
+Step list, continued (added 2026-10-18, D-244, D-245): richer context and structure for
+`analyze_lane`'s own answer, and a new cross-lane overview report at the top of "Per-lane
+strengths and weaknesses" — appended here rather than reopening the original 11 steps, following
+this plan's established pattern (D-104).
+
+12. Backend: `scored_applications_for_lane` (`lane_pipeline.py`) also reads each application's
+    listing text (`latest_job_file_of_kind`, the same accessor `assign_job_lane` already uses),
+    falling back to a placeholder when none is on file. `_ANALYZE_LANE_PROMPT` is rewritten:
+    each `=== APPLICATION ===` block gains a `LISTING` field, and the closing instructions ask
+    for a structured Markdown answer (`###` subheadings, bullets) instead of free paragraphs —
+    "Recurring strengths" / "Where this shows up in the listings" under `FIT SUMMARY`, the
+    mirrored pair under `GAPS SUMMARY`. `build_analyze_lane_prompt` gains the same
+    `MAX_PROMPT_CHARS` guard every other prompt builder already has (a pre-existing gap, not
+    previously hit since a lane's own bullets were short). No new code-level parsing — the
+    sub-structure is Markdown inside the same two top-level blocks already parsed, rendered as
+    before. Tests updated for the new prompt shape.
+13. Migration: `lane_overview` (singleton, `id INTEGER PRIMARY KEY CHECK (id = 1)`, matching the
+    `settings` table's own singleton pattern) — `summary TEXT`, `generated_at TEXT`, seeded with
+    one empty row. Tests: applies and rolls back.
+14. Backend: a new Claude Job, `summarize_lanes` (`lane_pipeline.py`) — one prompt, not per-lane:
+    reads the career history and positioning strategy documents plus every lane's own
+    `fit_gap_summary` (skipping a lane with none), and asks for the same structured-Markdown
+    shape as `analyze_lane`'s own answer, scaled to the whole job search (`OVERALL FIT`/
+    `OVERALL GAPS`, each with two subheadings). Gate: at least one lane has a `fit_gap_summary`
+    already. Rendered into one Markdown document and stored to `lane_overview` (replacing
+    whatever was there, same "at most one current version" convention). Wired into
+    `job_pipeline.py`'s render/on_result dispatch alongside the other lane kinds. Tests with
+    `FakeRunner`: a good answer, the no-lanes-analyzed-yet gate failure, a degenerate
+    both-sections-empty answer (rejected).
+15. Backend: `GET /lanes/overview` (the stored summary/generated_at, or both null) and
+    `POST /lanes/overview/analyze` (queues `summarize_lanes`, 400 if the gate isn't met).
+16. Frontend: `LaneOverviewSection` at the top of the Dashboard's "Per-lane strengths and
+    weaknesses" card, above the per-lane list — the stored overview rendered through
+    `MarkdownDocument`, or a "not generated yet" note. A "Summarize lanes" button beside
+    "Analyze lanes" in the card header opens a confirm-then-trace dialog (`Sync from strategy`'s
+    own shape, D-220 — a single job, not a batch, so no queued/skipped preview), gated client-side
+    to match the backend (disabled with a tooltip when no lane has been analyzed yet).
+    `DashboardPage` takes a `queue: QueueState` prop for the first time, to drive the trace.
+17. Checks: `scripts/check.py` output; personal-data scan; screenshots of a real `analyze_lane`
+    answer showing the listing-derived subheadings, and the overview section/dialog.
+
 ---
 
 ## Phase 11: Shell, hardening, and in-app LLM + browser
