@@ -1104,6 +1104,27 @@ MIGRATIONS: tuple[Migration, ...] = (
             "CREATE INDEX status_history_by_job ON status_history (job_application_id, changed_at)",
         ),
     ),
+    Migration(
+        version=31,
+        name="add lanes.fit_gap_summary for analyze_lane (D-238)",
+        up=(
+            "ALTER TABLE lanes ADD COLUMN fit_gap_summary TEXT",
+            "ALTER TABLE lanes ADD COLUMN fit_gap_summary_generated_at TEXT",
+        ),
+        down=(
+            "ALTER TABLE lanes DROP COLUMN fit_gap_summary_generated_at",
+            "ALTER TABLE lanes DROP COLUMN fit_gap_summary",
+        ),
+    ),
+    Migration(
+        version=32,
+        name="add claude_jobs.lane_id for analyze_lane (D-238)",
+        up=(
+            "ALTER TABLE claude_jobs ADD COLUMN lane_id INTEGER "
+            "REFERENCES lanes(id) ON DELETE CASCADE",
+        ),
+        down=("ALTER TABLE claude_jobs DROP COLUMN lane_id",),
+    ),
 )
 
 _LEDGER = """
