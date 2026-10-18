@@ -1,6 +1,6 @@
 # LlmJobTracker: Development Plan
 
-**Current phase: 9, in progress.** Phases 0 through 8 are done. `main` is fast-forwarded through `phase-9-tech-audit`'s first two completed batches (D-234): the backend/frontend reuse audit (D-224/D-225) and the Job Applications table customization (D-227 to D-233). Phase 9 itself is not closed — the font/UI audit (its original scope) and `planning/phase-9-audit-notes.md` are still open, on the same kept branch.
+**Current phase: 10.** Phases 0 through 9 are done; `main` is fast-forwarded through `phase-9-tech-audit`'s two batches (D-234): the backend/frontend reuse audit (D-224/D-225) and the Job Applications table customization (D-227 to D-233). Phase 9's font/UI audit moved to Parked rather than being built (D-235), on the user's explicit choice when closing the phase; `planning/phase-9-audit-notes.md` was never written, its information captured in `DECISIONS.md` instead. Phase 10's step list is not yet drafted; no product code for it until one is approved (rule 7).
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -25,11 +25,11 @@ This plan says what gets built, in what order, and how we know a phase is done. 
 | 6 | Technical debt audit | Key functionality and components reviewed for SOLID structure; LangChain/LangGraph decided |
 | 7 | Multi-LLM support | Codex selectable in Settings; "Open LLM app" opens a read-only context bundle |
 | 8 | Lanes | Profile page gets a named, described Lanes section, sourced from the positioning strategy |
-| 9 | Tech debt audit (backend/frontend reuse) and font/UI audit | Concrete reuse fixes from an updated backend/frontend audit, then one consistent font and a reviewed, modern layout across the table and main pages |
+| 9 | Tech debt audit (backend/frontend reuse) and Job Applications table customization | Concrete reuse fixes from an updated backend/frontend audit, then a fully configurable tracker table (27 columns, saved views) |
 | 10 | Memory function | A revise chat that surfaces a new background fact proposes a profile-document update |
 | 11 | Dashboard | Slicer-driven charts, a calendar heatmap, and per-lane strengths/weaknesses |
 | 12 | Shell and hardening | Electron shell, backups, run log, and an in-app LLM + browser pane |
-| Parked | Not scheduled | Job workspace's revision-chain model, Emails and chat, Question memory, board view, browser assist, managed agent loop, form filling, the real spreadsheet dry-run/apply import (D-142, D-179, D-185) |
+| Parked | Not scheduled | Job workspace's revision-chain model, Emails and chat, Question memory, board view, browser assist, managed agent loop, form filling, the real spreadsheet dry-run/apply import, the font/UI audit (D-142, D-179, D-185, D-235) |
 
 Phases 5 to 12 were reordered on 2026-10-13 (D-179), from a planning discussion with the user about what to build after Phase 4. The previous Phase 5 (Job workspace's remaining scope), Phase 6 (Emails and chat), Phase 7 (Question memory) and part of the old Phase 8 (board view) are not dropped — they move to Parked, to be rescheduled once Phase 6's technical debt audit decides where each resumes (D-185). "Public release" (updating `README.md` and making the GitHub repo public) is a checklist item after Phase 9, not a numbered phase, matching how the user wants it sequenced.
 
@@ -768,21 +768,22 @@ Done when
 
 ---
 
-## Phase 9: Technical debt remediation and font/UI audit
+## Phase 9: Technical debt remediation and Job Applications table customization
 
-**Goal:** concrete reuse fixes land first, from an updated backend/frontend audit (Phase 6's own inventory is now stale after Phases 7-8's real code — the Codex runner, lanes, pricing, and the Open LLM app export all landed since `planning/phase-6-inventory.md` was written). The original font/UI audit (consistent typography and a reviewed, modern layout across the Job Applications table, the Job Application page, the Profile page and the LLM history page) is kept in this phase's scope but appended as its own step list once this remediation batch is reviewed (D-224).
+**Done (2026-10-18, D-235).** Originally scoped to also include a font/UI audit (D-224); the user chose to close the phase with that audit moved to Parked instead (see "Parked" below) rather than appended here, once the two batches below were reviewed and merged.
+
+**Goal:** concrete reuse fixes land first, from an updated backend/frontend audit (Phase 6's own inventory is now stale after Phases 7-8's real code — the Codex runner, lanes, pricing, and the Open LLM app export all landed since `planning/phase-6-inventory.md` was written).
 
 Scope
 - A fresh backend + frontend investigation (done in chat 2026-10-16) found five concrete, low-risk duplications and three larger SOLID "concentration of responsibility" concerns. This batch fixes the five duplications; the three larger items are noted, not acted on (D-225), the same way Phase 6's own audit flagged issues it didn't require itself to fix.
 - Backend: collapse `claude_code_runner.py`'s and `codex_runner.py`'s duplicated subprocess-management code into one shared module. Collapse `job_pipeline.py`'s and `job_revise_pipeline.py`'s duplicated `_block_text`/`_block_pattern`/`_normalize_for_match` helpers (byte-for-byte identical today, by each file's own admission in comments) into one shared module. Generalize `revise_turns.py`/`job_revise_turns.py`'s near-identical shape into one implementation.
 - Frontend: collapse the two copies of `parseCheckAnswer` (`AddJobOverlay.tsx`, `GenerateListingOverlay.tsx`) into one shared function. Collapse the four separate status/queue-badge `TONE` color maps (`StatusBadge.tsx`, `QueueStatusBadge.tsx`, `LlmHistoryPage.tsx`, `RunTrace.tsx`) into one shared palette.
 - Not in this batch (D-225): splitting `job_pipeline.py` (2075 lines) and `job_revise_pipeline.py` (1454 lines) per section, splitting `app.py`'s ~75 inline routes into per-domain `APIRouter`s, and splitting `JobApplicationDetailPage.tsx` (2321 lines). Each is a real SOLID concern the audit found, left for a later, separately-scoped pass.
-- The font/UI audit itself (one consistent font; a layout review of the table, job page, Profile page, LLM history page) is unchanged from its original scope, just deferred to an appended step list.
 
 Step list (drafted 2026-10-16, awaiting approval; backend first, then frontend, per the investigation this builds on)
 
 1. Cut `phase-9-tech-audit` from `main` (D-61).
-2. Write `planning/phase-9-audit-notes.md`: today's backend and frontend findings — the five duplications this batch fixes, plus the three large-file SOLID concerns it flags but doesn't act on — extending `planning/phase-6-inventory.md`'s now-stale picture. Docs only. (Not done this round, 2026-10-16: the user asked to go straight to steps 3-6, then 7-9. Still worth writing before the font/UI audit step list is drafted.)
+2. Write `planning/phase-9-audit-notes.md`: today's backend and frontend findings — the five duplications this batch fixes, plus the three large-file SOLID concerns it flags but doesn't act on — extending `planning/phase-6-inventory.md`'s now-stale picture. Docs only. (Not done, 2026-10-16: the user asked to go straight to steps 3-6, then 7-9. Not written retroactively when Phase 9 closed either (D-235) — this inventory's findings are already captured in `DECISIONS.md`, D-224 onward.)
 3. Backend: extract the subprocess-management code `claude_code_runner.py` and `codex_runner.py` duplicate — process spawn (stdin/stdout/stderr pipes), the stdout-drain thread, the stderr-drain thread, the cancel/timeout poll loop, and the generic JSONL-line reader (`_parse_event_line`/`_events`) — into a shared module. Each runner keeps only what's genuinely its own: `build_args`, stream interpretation (`parse_stream`), and `auth_status`/`login`/`logout` (different CLI commands and output shapes). Tests: every existing test for both runners (cancel, timeout, a canned stdout fixture) continues to pass unchanged against the shared code.
 4. Backend: move `_block_text`, `_block_pattern`, `_normalize_for_match` out of `job_pipeline.py` and `job_revise_pipeline.py` into one shared module; both files import from it instead of keeping their own private copy. Tests: every existing parser test in both modules continues to pass against the shared implementation.
 5. Backend: generalize `revise_turns.py` and `job_revise_turns.py` — same four functions (`create_turn`, `_turn_from_row`, `turn_for_job`, `prior_messages`/`turns_for_kind`), differing only by which columns scope a turn — into one implementation, keeping each table's own call sites (`revise_pipeline.py`, `job_revise_pipeline.py`) unchanged. Tests: every existing test for both modules continues to pass against the generalized code.
@@ -799,17 +800,13 @@ Done when
 - [x] The four status/queue color maps are one shared palette, with no visible color change except the one discovered fix (screenshot). (2026-10-16: `lib/tone.ts`. Live-verified in the browser: the Jobs table's status badges (Identified/Interview/Applied/Rejected) and the job page's "LLM: idle" badge render with the same colors as before; a run trace's "done"/info lines render correctly through the shared `LOG_TONE`. No active queued/processing/paused job existed in dev data to screenshot `LlmHistoryPage`'s corrected colors directly, but it now reads from the exact same constants already confirmed correct elsewhere.)
 - [x] `python scripts/check.py` is green after every step above. (2026-10-16: 7/7 steps — 698 API tests, 17 web tests, lint/format/types clean on both sides. Personal-data scan of the branch's diff and commit log: no matches.)
 
-Font/UI audit (original scope, step list appended here once the above is reviewed)
-- [ ] A written audit lists every font currently in use and where (screenshot evidence).
-- [ ] One consistent font choice is applied across the table and all four pages above (screenshot).
-- [ ] Each layout issue the audit found is either fixed or explicitly deferred with a reason.
-
 Step list, continued (added 2026-10-18, D-227 to D-229): the Job Applications table becomes
 fully configurable — reorderable, resizable, column-selectable, with five saved views (Default
 plus four predefined) — and the per-row queue badge/column is replaced by an inline indicator
-beside the company name. Not part of the original font/UI scope; appended here rather than a new
-phase since it is further UI work on the same branch, following this plan's established pattern
-of appending reviewed batches (D-104) rather than reopening earlier steps.
+beside the company name. Not part of the original font/UI scope (which moved to Parked, D-235,
+rather than being built here); appended here rather than a new phase since it is further UI work
+on the same branch, following this plan's established pattern of appending reviewed batches
+(D-104) rather than reopening earlier steps.
 
 1. Backend: extend `list_job_applications`'s query and the `JobApplication` model with every
    field the 27-column registry needs that the row doesn't already carry: `portal_name`,
@@ -954,7 +951,7 @@ Done when
 
 ## Public release
 
-Not a numbered phase — a checklist revisited once the user judges the above is far enough along (at minimum, Phase 5's rename and Phase 9's UI audit).
+Not a numbered phase — a checklist revisited once the user judges the above is far enough along (at minimum, Phase 5's rename; the font/UI audit itself is Parked, D-235, not a gate on this).
 
 - [ ] `README.md` is rewritten for the new name and current state.
 - [ ] The GitHub repo is switched from private to public.
@@ -970,3 +967,4 @@ Not a numbered phase — a checklist revisited once the user judges the above is
 - **Apply with AI** (browser beside a job, D-14): the narrower, read-only version is now scheduled as Phase 7's "Open LLM app"; the fuller in-app version is Phase 12's "Open LLM with browser" (D-184).
 - **Managed agent loop** (replacing one step with our own loop, to compare). A learning goal, worth another look once Phase 7's second runner exists. Optional, with its own design note.
 - **Form filling and auto-submission.** Out of scope.
+- **Font/UI audit** (Phase 9's original scope, D-235): one consistent font and a reviewed, modern layout across the Job Applications table, the Job Application page, the Profile page and the LLM history page. Never started. Done when: a written audit lists every font currently in use and where; one consistent font choice is applied across the table and all four pages; each layout issue the audit found is either fixed or explicitly deferred with a reason.
