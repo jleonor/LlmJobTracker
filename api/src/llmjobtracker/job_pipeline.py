@@ -49,11 +49,14 @@ from llmjobtracker.job_files import (
     write_generated_job_file,
 )
 from llmjobtracker.lane_pipeline import (
+    JOB_KIND_ANALYZE_LANE,
     JOB_KIND_ASSIGN_LANE,
     JOB_KIND_EXTRACT_LANES,
+    build_analyze_lane_prompt,
     build_assign_lane_prompt,
     build_extract_lanes_prompt,
     lanes_block,
+    store_analyze_lane_result,
     store_assign_lane_result,
     store_extract_lanes_result,
     validate_lane_name,
@@ -1677,6 +1680,15 @@ def _application_id_for(conn: sqlite3.Connection, claude_job_id: int | None) -> 
     return int(row["job_application_id"])
 
 
+def _lane_id_for(conn: sqlite3.Connection, claude_job_id: int | None) -> int:
+    if claude_job_id is None:
+        raise PromptRejected("This job has no lane to run against.")
+    row = conn.execute("SELECT lane_id FROM claude_jobs WHERE id = ?", (claude_job_id,)).fetchone()
+    if row is None or row["lane_id"] is None:
+        raise PromptRejected("This job has no lane to run against.")
+    return int(row["lane_id"])
+
+
 def job_identity(conn: sqlite3.Connection, application_id: int) -> list[str]:
     """The company and role title an application's own writing may legitimately quote verbatim
     (check_cover_letter_style's `exempt`) - empty strings dropped, since masking an empty string
@@ -1960,6 +1972,9 @@ def make_pipeline(
         if prompt.prompt_kind == JOB_KIND_ASSIGN_LANE:
             application_id = _application_id_for(conn, prompt.claude_job_id)
             return RenderedPrompt(text=build_assign_lane_prompt(conn, application_id))
+        if prompt.prompt_kind == JOB_KIND_ANALYZE_LANE:
+            lane_id = _lane_id_for(conn, prompt.claude_job_id)
+            return RenderedPrompt(text=build_analyze_lane_prompt(conn, lane_id))
         return revise_render(conn, prompt)
 
     def on_result(conn: sqlite3.Connection, prompt: PromptRow, result: RunResult) -> None:
@@ -2010,6 +2025,10 @@ def make_pipeline(
         if prompt.prompt_kind == JOB_KIND_ASSIGN_LANE:
             application_id = _application_id_for(conn, prompt.claude_job_id)
             store_assign_lane_result(conn, application_id, result.text)
+            return
+        if prompt.prompt_kind == JOB_KIND_ANALYZE_LANE:
+            lane_id = _lane_id_for(conn, prompt.claude_job_id)
+            store_analyze_lane_result(conn, lane_id, result.text)
             return
         # JOB_KIND_CHECK and JOB_KIND_IDENTITY have nothing to store (D-146, intake-steps.md: the
         # identity answer is read back and parsed on demand, since the row it belongs to may not

@@ -9,7 +9,9 @@ from typing import Final
 
 from pydantic import BaseModel
 
-_COLUMNS = "id, name, description, reasoning, position"
+_COLUMNS = (
+    "id, name, description, reasoning, position, fit_gap_summary, fit_gap_summary_generated_at"
+)
 
 # The code-guaranteed catch-all lane (D-219): seeded by migration 29 so it exists from the
 # start, and re-added by replace_all_lanes below whenever Sync from strategy wipes the table.
@@ -25,6 +27,10 @@ class Lane(BaseModel):
     description: str | None
     reasoning: str | None
     position: int
+    # The Dashboard's per-lane strengths/weaknesses summary (D-238, Agent/specs/lane-steps.md
+    # §3) - null until "Analyze lanes" has run for this lane at least once.
+    fit_gap_summary: str | None
+    fit_gap_summary_generated_at: str | None
 
 
 class LaneEdit(BaseModel):
@@ -97,6 +103,18 @@ def update_lane(conn: sqlite3.Connection, lane_id: int, edit: LaneEdit) -> Lane 
         if cursor.rowcount == 0:
             return None
     return get_lane(conn, lane_id)
+
+
+def set_fit_gap_summary(conn: sqlite3.Connection, lane_id: int, summary: str) -> None:
+    """analyze_lane's own write (D-238, Agent/specs/lane-steps.md §3): a later run replaces both
+    columns outright - there is no history of past summaries kept, the same "at most one current
+    version" convention `positioning_breakdown` already uses."""
+    with conn:
+        conn.execute(
+            "UPDATE lanes SET fit_gap_summary = ?, "
+            "fit_gap_summary_generated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
+            (summary, lane_id),
+        )
 
 
 def delete_lane(conn: sqlite3.Connection, lane_id: int) -> bool:

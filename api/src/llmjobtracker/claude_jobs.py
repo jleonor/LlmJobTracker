@@ -38,6 +38,7 @@ class ClaudeJob(BaseModel):
     label: str
     kind: str
     job_application_id: int | None
+    lane_id: int | None
     status: str
     error: str | None
     created_at: str
@@ -71,6 +72,7 @@ def create_claude_job(
     kind: str,
     prompts: Sequence[tuple[str, str]],
     job_application_id: int | None = None,
+    lane_id: int | None = None,
 ) -> int:
     """Queue a Claude Job. `prompts` is a list of (prompt_kind, prompt_text), in run order."""
     if not prompts:
@@ -80,10 +82,10 @@ def create_claude_job(
         cursor = conn.execute(
             """
             INSERT INTO claude_jobs
-                (label, kind, job_application_id, status, created_at, updated_at)
-            VALUES (?, ?, ?, 'queued', ?, ?)
+                (label, kind, job_application_id, lane_id, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'queued', ?, ?)
             """,
-            (label, kind, job_application_id, now, now),
+            (label, kind, job_application_id, lane_id, now, now),
         )
         job_id = cursor.lastrowid
         if job_id is None:
@@ -123,6 +125,7 @@ def _job_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> ClaudeJob:
         label=row["label"],
         kind=row["kind"],
         job_application_id=row["job_application_id"],
+        lane_id=row["lane_id"],
         status=row["status"],
         error=row["error"],
         created_at=row["created_at"],
