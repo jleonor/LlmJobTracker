@@ -966,10 +966,31 @@ Step list (drafted 2026-10-18, awaiting approval)
     applications" both working from the Dashboard with neither button left on Settings.
 
 Done when
-- [ ] Every chart responds to each slicer, alone and combined.
-- [ ] The calendar heatmap matches the real application dates in the tracker.
-- [ ] "Analyze lanes" generates a fit/gap summary for at least one lane with a positioning-scored application, built only from that lane's own jobs' titles, fit and gaps (no new score), and the user judges its quality (CLAUDE.md rule 4).
-- [ ] "Re-score all" and "Re-score open applications" both work from the Dashboard, each queuing the right set of applications, and neither button remains on the Settings page.
+- [x] Every chart responds to each slicer, alone and combined. (2026-10-18: verified live against
+  the real dev-seed data — Stage=Applied alone correctly narrowed the stage/match-score charts and
+  the Identified→Applied stat while leaving the whole-history rates unchanged (D-241); Lane="No
+  lane" and Match score="70-80%" combined correctly AND'd down to the single matching application
+  across all three proportion charts at once.)
+- [x] The calendar heatmap matches the real application dates in the tracker. (2026-10-18: the dev
+  database's real `status_history` has four "Applied" rows — 2026-09-12, 2026-09-22, and two on
+  2026-10-01 — and the heatmap showed exactly three lit cells at those dates once a live bug was
+  fixed: the grid runs oldest→newest left to right, so it opened scrolled to a year-old, empty
+  start with the real recent activity scrolled out of view. Now scrolls to the most recent days on
+  load.)
+- [ ] "Analyze lanes" generates a fit/gap summary for at least one lane with a positioning-scored
+  application, built only from that lane's own jobs' titles, fit and gaps (no new score), and the
+  user judges its quality (CLAUDE.md rule 4). Not run live: the dev-seed applications have no lane
+  assigned, so no lane is currently eligible (confirmed live — the confirm dialog correctly read
+  "0 queued, 5 skipped" from the real backend and disabled Analyze). The prompt/parsing/storage
+  path itself is covered by `test_lane_pipeline.py`'s `FakeRunner` tests. A real run, and the
+  quality judgment, need the user's own lane-assigned, positioning-scored data.
+- [ ] "Re-score all" and "Re-score open applications" both work from the Dashboard, each queuing
+  the right set of applications, and neither button remains on the Settings page. Queuing itself
+  is covered end-to-end by `test_positioning_rescore.py`'s route tests (an open application is
+  queued, an end-state one is skipped and counted) and confirmed live — both confirm dialogs read
+  real counts from the backend (e.g. rescore-open: "1 job application, 6 skipped"), and Settings no
+  longer shows anything "Re-score" (confirmed with a live page search). Not clicked through to a
+  real completed run, since that spends real usage — left for the user to trigger.
 
 ---
 
