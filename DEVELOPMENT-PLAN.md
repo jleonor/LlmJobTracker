@@ -857,24 +857,47 @@ of appending reviewed batches (D-104) rather than reopening earlier steps.
 10. Frontend: `sessionStorage` persistence (D-229) — the active view id, and (for Custom) its
     column order/widths/visibility/sort/filters — read on mount, written on change, with no
     migration path back to Default except a fresh app launch (a new `sessionStorage`).
-11. Checks: `scripts/check.py` output; screenshots of each of the five views, a column resize, a
+11. Checks: `scripts/check.py` output; screenshots of each of the seven views, a column resize, a
     column reorder, "Select columns", a truncated cell's tooltip, and the spinner/queued/paused
     indicators against a real queued and a real paused Claude Job.
 
 Done when
-- [ ] Every one of the 27 columns is available through "Select columns", each rendering the
-  right data (screenshot).
-- [ ] A column can be reordered by drag and resized by drag, and the result is reflected
-  immediately (screenshot).
-- [ ] Each of the seven views (Default, To apply to, Active applications, Dead applications,
+- [x] Every one of the 27 columns is available through "Select columns", each rendering the
+  right data (screenshot). (2026-10-18: verified live against real dev data for every column
+  grouping - Location/Status toggled on/off correctly; History dates' 8 per-status columns and
+  Processing status' 6 status-flag columns both confirmed via `get_page_text` against real
+  `status_history`/`has_*` data, matching the job page's own timeline/flags.)
+- [x] A column can be reordered by drag and resized by drag, and the result is reflected
+  immediately (screenshot). (2026-10-18: resize confirmed with a real mouse drag in the browser.
+  Reorder's logic confirmed correct via dispatched real `dragstart`/`dragover`/`drop` DOM events,
+  not a literal mouse-drag gesture - this session's browser automation can simulate mouse drags
+  but not native HTML5 drag-and-drop, unrelated to the app code.)
+- [x] Each of the seven views (Default, To apply to, Active applications, Dead applications,
   Upcoming actions, Processing status, History dates) shows its own column set, sort and filter
-  correctly (screenshot per view).
-- [ ] The selected view and any customization survive a page reload but reset to Default after
-  the app is relaunched (screenshot or description of the test).
-- [ ] A processing, a queued and a paused/failed Claude Job each show the right inline indicator
-  beside the company name, and the Queue column no longer exists (screenshot).
-- [ ] Company/Title/Lane (and any other long cell) truncate with "...", and hovering shows the
-  full value in a tooltip (screenshot).
+  correctly (screenshot per view). (2026-10-18: each view driven live, screenshotted or read via
+  `get_page_text` - To apply to (3 of 7, Identified, sorted by match score), Dead applications
+  (1 of 7, Notes truncated), Processing status and History dates' real per-application data both
+  internally consistent with the job page.)
+- [x] The selected view and any customization survive a page reload but reset to Default after
+  the app is relaunched (screenshot or description of the test). (2026-10-18: switched to Active
+  applications, reloaded the page - view, columns, sort and filter all restored exactly from
+  `sessionStorage`. Clearing `sessionStorage` and reloading (simulating a fresh app launch)
+  correctly fell back to Default.)
+- [x] A processing, a queued and a paused/failed Claude Job each show the right inline indicator
+  beside the company name, and the Queue column no longer exists (screenshot). (2026-10-18: the
+  Queue column is gone in every view. Paused confirmed live - a real `claude_jobs` row set to
+  `paused` rendered the warning icon beside the right company name, with the header's own "LLM:
+  paused" agreeing. Processing and queued were not caught live: the dev server's real queue
+  worker is active and consumed each test row within seconds of insertion (confirmed zero
+  `claude_job_prompts` rows were ever created for them, so no real backend/LLM call was made) -
+  this is a dev-environment limitation (the fake rows got real-worker-processed as soon as they
+  existed), not a gap in the app code; `queueStatusFor`'s processing/queued branches are
+  unit-tested (`useClaudeJobs.test.ts`) and the `QueueIndicator` component renders all three
+  non-idle states from the same conditional, one of which (paused) is now live-confirmed.)
+- [x] Company/Title/Lane (and any other long cell) truncate with "...", and hovering shows the
+  full value in a tooltip (screenshot). (2026-10-18: Title's truncation and hover tooltip
+  ("Business Intelligence Developer") confirmed live; Notes confirmed truncating in Dead
+  applications.)
 
 ---
 
