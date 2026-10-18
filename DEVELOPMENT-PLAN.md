@@ -1,6 +1,6 @@
 # LlmJobTracker: Development Plan
 
-**Current phase: 10.** Phases 0 through 9 are done; `main` is fast-forwarded through `phase-9-tech-audit`'s two batches (D-234): the backend/frontend reuse audit (D-224/D-225) and the Job Applications table customization (D-227 to D-233). Phase 9's font/UI audit moved to Parked rather than being built (D-235), on the user's explicit choice when closing the phase; `planning/phase-9-audit-notes.md` was never written, its information captured in `DECISIONS.md` instead. Phase 10's step list is not yet drafted; no product code for it until one is approved (rule 7).
+**Current phase: 10 (Dashboard).** Phases 0 through 9 are done; `main` is fast-forwarded through `phase-9-tech-audit`'s two batches (D-234): the backend/frontend reuse audit (D-224/D-225) and the Job Applications table customization (D-227 to D-233). Phase 9's font/UI audit moved to Parked rather than being built (D-235), on the user's explicit choice when closing the phase; `planning/phase-9-audit-notes.md` was never written, its information captured in `DECISIONS.md` instead. The Memory function, previously Phase 10, moved to Parked alongside a new "Add story" idea, pending a future agent-based system (D-236); Dashboard and Shell/hardening each moved up one number as a result. Phase 10's step list is not yet drafted; no product code for it until one is approved (rule 7).
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -26,12 +26,11 @@ This plan says what gets built, in what order, and how we know a phase is done. 
 | 7 | Multi-LLM support | Codex selectable in Settings; "Open LLM app" opens a read-only context bundle |
 | 8 | Lanes | Profile page gets a named, described Lanes section, sourced from the positioning strategy |
 | 9 | Tech debt audit (backend/frontend reuse) and Job Applications table customization | Concrete reuse fixes from an updated backend/frontend audit, then a fully configurable tracker table (27 columns, saved views) |
-| 10 | Memory function | A revise chat that surfaces a new background fact proposes a profile-document update |
-| 11 | Dashboard | Slicer-driven charts, a calendar heatmap, and per-lane strengths/weaknesses |
-| 12 | Shell and hardening | Electron shell, backups, run log, and an in-app LLM + browser pane |
-| Parked | Not scheduled | Job workspace's revision-chain model, Emails and chat, Question memory, board view, browser assist, managed agent loop, form filling, the real spreadsheet dry-run/apply import, the font/UI audit (D-142, D-179, D-185, D-235) |
+| 10 | Dashboard | Slicer-driven charts, a calendar heatmap, per-lane strengths/weaknesses, and the re-score actions moved from Settings |
+| 11 | Shell and hardening | Electron shell, backups, run log, and an in-app LLM + browser pane |
+| Parked | Not scheduled | Job workspace's revision-chain model, Emails and chat, Question memory, board view, browser assist, managed agent loop, form filling, the real spreadsheet dry-run/apply import, the font/UI audit, the Memory function, "Add story" (D-142, D-179, D-185, D-235, D-236) |
 
-Phases 5 to 12 were reordered on 2026-10-13 (D-179), from a planning discussion with the user about what to build after Phase 4. The previous Phase 5 (Job workspace's remaining scope), Phase 6 (Emails and chat), Phase 7 (Question memory) and part of the old Phase 8 (board view) are not dropped — they move to Parked, to be rescheduled once Phase 6's technical debt audit decides where each resumes (D-185). "Public release" (updating `README.md` and making the GitHub repo public) is a checklist item after Phase 9, not a numbered phase, matching how the user wants it sequenced.
+Phases 5 to 12 were reordered on 2026-10-13 (D-179), from a planning discussion with the user about what to build after Phase 4. The previous Phase 5 (Job workspace's remaining scope), Phase 6 (Emails and chat), Phase 7 (Question memory) and part of the old Phase 8 (board view) are not dropped — they move to Parked, to be rescheduled once Phase 6's technical debt audit decides where each resumes (D-185). "Public release" (updating `README.md` and making the GitHub repo public) is a checklist item after Phase 9, not a numbered phase, matching how the user wants it sequenced. Phase 10 (Memory function) was dropped to Parked on 2026-10-18 (D-236), alongside a new "Add story" idea, both pending a future agent-based system; Dashboard moved up from 11 to 10, and Shell/hardening moved up from 12 to 11.
 
 ---
 
@@ -898,40 +897,26 @@ Done when
 
 ---
 
-## Phase 10: Memory function
+## Phase 10: Dashboard
 
-**Goal:** a revise chat on positioning or interview preparation that surfaces a new fact about the user's background proposes a profile-document update, instead of leaving the profile stale.
-
-Scope
-- Detect, during a Revise (LLM) chat turn on Positioning analysis or Interview preparation, when the user's message supplies new factual information about their career history, not just a stylistic or strategy change.
-- Propose an update to the relevant profile document (career history, questionnaire analysis, or strategy) from that new information, shown as a preview the user must confirm before anything in the profile changes (CLAUDE.md's existing product rules — nothing is saved as final without approval).
-- Decide the trigger: every revise turn is checked, or only turns a lightweight classification step flags.
-
-Done when
-- [ ] A chat turn on Positioning analysis or Interview preparation stating a new background fact produces a proposed profile-document update, shown as a preview.
-- [ ] Declining the preview changes nothing in the profile files.
-- [ ] Confirming the preview updates the right document, visible in LLM history like any other profile revise turn.
-
----
-
-## Phase 11: Dashboard
-
-**Goal:** a dashboard answers questions about the job search as a whole, not just one application at a time.
+**Goal:** a dashboard answers questions about the job search as a whole, not just one application at a time, and hosts the positioning re-score actions moved here from Settings.
 
 Scope
 - Dashboard page with slicers — lane, stage, match-score bucket (10% buckets), location — filtering every chart on the page at once.
 - Charts: proportion of jobs by lane, by stage, by match-score bucket; average time between Identified and Applied; average jobs identified and applications sent per working day and per week; a calendar heatmap of applications sent (GitHub-commits style).
 - Strengths and weaknesses per lane: a new LLM-generated field analysing the fit/gap patterns across every job in a lane, shown as a summary table next to each lane's average match score.
+- "Re-score all positioning analyses" (D-218) moves here from Settings, unchanged. A new "Re-score open applications" button sits beside it: the same confirm-preview-then-queue mechanic, filtered to applications whose status is not an end state (D-223) — Identified, Applied, Screening, Interview, Offer only (D-237). Both buttons are removed from the Settings page.
 - This is a distinct idea from the still-parked Kanban board (D-02) — an analytics view, not a replacement for the table.
 
 Done when
 - [ ] Every chart responds to each slicer, alone and combined.
 - [ ] The calendar heatmap matches the real application dates in the tracker.
 - [ ] The strengths/weaknesses table is generated for at least one lane with enough jobs, and the user judges its quality (CLAUDE.md rule 4).
+- [ ] "Re-score all" and "Re-score open applications" both work from the Dashboard, each queuing the right set of applications, and neither button remains on the Settings page.
 
 ---
 
-## Phase 12: Shell, hardening, and in-app LLM + browser
+## Phase 11: Shell, hardening, and in-app LLM + browser
 
 **Goal:** the app runs as its own desktop window, is safe for daily use, and a job page can open a split chat/browser pane for help applying to a listing directly.
 
@@ -963,8 +948,9 @@ Not a numbered phase — a checklist revisited once the user judges the above is
 - **Job workspace's revision-chain model**: the comment-based, kept-version revision model originally planned for Phase 5, the "Prepare all" button, and clarifying-question storage (what shipped instead: a one-shot regenerate per output, D-131). Still wanted; revisit scheduling during Phase 6's technical debt audit (D-185).
 - **Emails and chat**: the "Add email" button, parsed `.eml`/`.msg` filed to a job, Claude proposing status/next-action changes from an email with Confirm, and a general chat panel. Still wanted — CLAUDE.md's own description of the app includes "the record of emails." Revisit scheduling during Phase 6 (D-185).
 - **Question memory**: SQLite keyword search (and FAISS if needed) so an answered clarifying question is found again instead of asked twice. Still wanted. Revisit scheduling during Phase 6 (D-185).
-- **Board view** (Kanban, D-02): a kanban alternative to the table. Distinct from the Dashboard (Phase 11), which is an analytics view, not a table replacement.
-- **Apply with AI** (browser beside a job, D-14): the narrower, read-only version is now scheduled as Phase 7's "Open LLM app"; the fuller in-app version is Phase 12's "Open LLM with browser" (D-184).
+- **Board view** (Kanban, D-02): a kanban alternative to the table. Distinct from the Dashboard (Phase 10), which is an analytics view, not a table replacement.
+- **Apply with AI** (browser beside a job, D-14): the narrower, read-only version is now scheduled as Phase 7's "Open LLM app"; the fuller in-app version is Phase 11's "Open LLM with browser" (D-184).
 - **Managed agent loop** (replacing one step with our own loop, to compare). A learning goal, worth another look once Phase 7's second runner exists. Optional, with its own design note.
 - **Form filling and auto-submission.** Out of scope.
 - **Font/UI audit** (Phase 9's original scope, D-235): one consistent font and a reviewed, modern layout across the Job Applications table, the Job Application page, the Profile page and the LLM history page. Never started. Done when: a written audit lists every font currently in use and where; one consistent font choice is applied across the table and all four pages; each layout issue the audit found is either fixed or explicitly deferred with a reason.
+- **Memory function and "Add story"** (D-236): automatic detection of a new background fact during a Positioning analysis or Interview preparation revise chat, proposing a profile-document update with a preview to confirm before anything changes; and a manual "Add story" button for the user to add a background fact directly and have it update the relevant profile document. Originally scheduled as Phase 10. Moved to Parked pending a future agent-based system able to judge which document a fact affects and reconcile it with what the document already says — a different shape from the current one-prompt-per-Claude-Job pattern every other step in this app uses. Revise (LLM) on the profile documents already lets the user make the same update by hand today.
