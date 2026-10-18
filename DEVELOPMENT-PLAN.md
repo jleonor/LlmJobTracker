@@ -841,14 +841,19 @@ of appending reviewed batches (D-104) rather than reopening earlier steps.
    HTML5 drag-and-drop on header cells), both backed by TanStack's `columnSizing`/`columnOrder`.
 8. Frontend: a right-aligned "Select columns" button opening a checklist popover (the same shape
    `TextFilterPopover` already uses) toggling `columnVisibility`.
-9. Frontend: the four predefined views plus Default, as left-aligned icon buttons (Default gets a
+9. Frontend: the six predefined views plus Default, as left-aligned icon buttons (Default gets a
    home icon) — To apply to (Company/Title/Lane/Location/Match score, sorted by Match score
    descending, filtered to Identified); Active applications (same columns, filtered to
    Applied/Screening/Interview/Offer); Dead applications (Company/Title/Lane/Match score/Notes,
    filtered to Rejected/Withdrawn/Expired); Upcoming actions (Company/Title/Lane/Next action
-   date/Next action/Match score, sorted by Next action date ascending). Switching a view replaces
-   columns/order/sort/filter atomically; resizing, reordering or opening "Select columns" while on
-   a predefined view forks into an implicit Custom view rather than mutating the predefined one.
+   date/Next action/Match score, sorted by Next action date ascending); Processing status
+   (Company/Title/Lane/Status/Match score/Listing status/Details status/Analysis status/CV
+   status/Cover letter status/Interview preparation status, no sort or filter - added
+   2026-10-18); History dates (Company/Title/Lane/Status/Match score/Identified date/Applied
+   date/Screening date/Interview date/Offer date/Rejected date/Withdrawn date/Expired date, no
+   sort or filter - added 2026-10-18). Switching a view replaces columns/order/sort/filter
+   atomically; resizing, reordering or opening "Select columns" while on a predefined view forks
+   into an implicit Custom view rather than mutating the predefined one.
 10. Frontend: `sessionStorage` persistence (D-229) — the active view id, and (for Custom) its
     column order/widths/visibility/sort/filters — read on mount, written on change, with no
     migration path back to Default except a fresh app launch (a new `sessionStorage`).
@@ -861,8 +866,9 @@ Done when
   right data (screenshot).
 - [ ] A column can be reordered by drag and resized by drag, and the result is reflected
   immediately (screenshot).
-- [ ] Each of the five views (Default, To apply to, Active applications, Dead applications,
-  Upcoming actions) shows its own column set, sort and filter correctly (screenshot per view).
+- [ ] Each of the seven views (Default, To apply to, Active applications, Dead applications,
+  Upcoming actions, Processing status, History dates) shows its own column set, sort and filter
+  correctly (screenshot per view).
 - [ ] The selected view and any customization survive a page reload but reset to Default after
   the app is relaunched (screenshot or description of the test).
 - [ ] A processing, a queued and a paused/failed Claude Job each show the right inline indicator
