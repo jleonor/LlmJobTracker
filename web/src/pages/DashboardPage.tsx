@@ -355,14 +355,14 @@ function ProportionCard({
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-1 flex-col">
         {data.length === 0 ? (
           <p className="text-sm text-muted-foreground">No applications match the current filters.</p>
         ) : (
           <ChartContainer
             config={config}
-            className="aspect-auto"
-            style={{ height: Math.max(140, data.length * 36) }}
+            className="aspect-auto h-full"
+            style={{ minHeight: Math.max(140, data.length * 36) }}
           >
             <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
               <CartesianGrid horizontal={false} stroke="var(--border)" />
