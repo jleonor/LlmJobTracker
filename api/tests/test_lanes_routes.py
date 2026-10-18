@@ -2,6 +2,7 @@
 catalog, plus the "Sync from strategy" action.
 """
 
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -244,3 +245,75 @@ def test_clear_not_in_list_matches_case_insensitively(db_path: Path) -> None:
         response = client.post("/lanes/clear-not-in-list")
         assert response.json() == {"cleared": 0}
         assert client.get(f"/job-applications/{app_id}").json()["lane"] == "other"
+
+
+# --- Analyze lanes (Phase 10's per-lane fit/gap summary, D-238) ---------------------------------
+
+GOOD_ANALYZE_LANE_ANSWER = """=== FIT SUMMARY ===
+Consistently strong on SQL and dashboarding work.
+=== END FIT SUMMARY ===
+
+=== GAPS SUMMARY ===
+Limited exposure to large-scale distributed systems.
+=== END GAPS SUMMARY ==="""
+
+
+def add_scored_application(
+    db_path: Path, lane: str, fit: list[str], gaps: list[str], match_score: float
+) -> int:
+    conn = connect(db_path)
+    try:
+        app_id = insert_job_application(
+            conn, {"company": "Acme Inc", "role_title": "Analyst", "lane": lane}
+        )
+        conn.execute(
+            "UPDATE job_applications SET fit = ?, gaps = ?, match_score = ? WHERE id = ?",
+            (json.dumps(fit), json.dumps(gaps), match_score, app_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return app_id
+
+
+def test_analyze_lanes_preview_skips_every_lane_with_no_scored_application(
+    client: TestClient,
+) -> None:
+    client.post("/lanes", json={"name": "Data Analytics"})
+    # "Other" (seeded) and "Data Analytics" both have zero scored applications.
+    preview = client.get("/lanes/analyze")
+    assert preview.status_code == 200
+    assert preview.json() == {"queued": 0, "skipped": 2}
+
+
+def test_analyze_lanes_route_queues_one_job_per_eligible_lane(db_path: Path) -> None:
+    runner = FakeRunner(text=GOOD_ANALYZE_LANE_ANSWER)
+    with TestClient(create_app(TOKEN, db_path, runner)) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        lane_id = client.post("/lanes", json={"name": "Data Analytics"}).json()["id"]
+        add_scored_application(db_path, "Data Analytics", ["Strong SQL"], [], 80.0)
+
+        response = client.post("/lanes/analyze")
+        assert response.status_code == 200
+        assert response.json() == {"queued": 1, "skipped": 1}  # "Other" still has none
+
+        # Queuing only - whether the job actually completes and writes fit_gap_summary is
+        # covered at the queue level in test_lane_pipeline.py's own analyze_lane test, the same
+        # division every other route test in this module/file already follows.
+        jobs = client.get("/claude-jobs").json()
+        analyze_jobs = [job for job in jobs if job["kind"] == "analyze_lane"]
+        assert len(analyze_jobs) == 1
+        assert analyze_jobs[0]["lane_id"] == lane_id
+
+
+def test_analyze_lanes_preview_matches_the_post_route_and_changes_nothing(db_path: Path) -> None:
+    runner = FakeRunner(text=GOOD_ANALYZE_LANE_ANSWER)
+    with TestClient(create_app(TOKEN, db_path, runner)) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        client.post("/lanes", json={"name": "Data Analytics"})
+        add_scored_application(db_path, "Data Analytics", ["Strong SQL"], [], 80.0)
+
+        preview = client.get("/lanes/analyze")
+        assert preview.status_code == 200
+        assert preview.json() == {"queued": 1, "skipped": 1}
+        assert client.get("/claude-jobs").json() == []

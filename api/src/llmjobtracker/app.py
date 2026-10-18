@@ -39,6 +39,7 @@ from llmjobtracker.export_llm_bundle import (
 )
 from llmjobtracker.file_preview import UnsupportedPreview, preview_for
 from llmjobtracker.job_applications import (
+    END_STATUSES,
     InvalidRoleTitle,
     JobApplication,
     JobApplicationDetail,
@@ -101,6 +102,8 @@ from llmjobtracker.lane_pipeline import (
     LaneAssignmentNotReady,
     LaneSyncNotReady,
     assign_lane_ready,
+    lane_analysis_ready,
+    submit_analyze_lane,
     submit_assign_job_lane,
     submit_extract_lanes,
 )
@@ -252,6 +255,11 @@ class LaneClearSummary(BaseModel):
 
 
 class PositioningRescoreSummary(BaseModel):
+    queued: int
+    skipped: int
+
+
+class LaneAnalysisSummary(BaseModel):
     queued: int
     skipped: int
 
@@ -1662,6 +1670,46 @@ def create_app(
         lane was renamed or removed from the catalog."""
         return LaneClearSummary(cleared=clear_lanes_not_in_list(conn))
 
+    def _lane_analysis_candidates(conn: Connection) -> tuple[list[Lane], int]:
+        """Every lane with at least one positioning-scored application, plus a count of the
+        rest - shared by the preview (GET) and the actual run (POST) below, so the Dashboard's
+        confirm dialog's preview count can never drift from what running it actually does
+        (D-238, mirrors _rescore_candidates below)."""
+        ready: list[Lane] = []
+        skipped = 0
+        for lane in list_lanes(conn):
+            if lane_analysis_ready(conn, lane.id):
+                ready.append(lane)
+            else:
+                skipped += 1
+        return ready, skipped
+
+    @app.get(
+        "/lanes/analyze",
+        response_model=LaneAnalysisSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def preview_analyze_lanes(conn: Annotated[Connection, Depends(get_db)]) -> LaneAnalysisSummary:
+        """The Dashboard's "Analyze lanes" confirm dialog's preview count (D-238) - read-only,
+        changes nothing."""
+        ready, skipped = _lane_analysis_candidates(conn)
+        return LaneAnalysisSummary(queued=len(ready), skipped=skipped)
+
+    @app.post(
+        "/lanes/analyze",
+        response_model=LaneAnalysisSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def analyze_lanes(conn: Annotated[Connection, Depends(get_db)]) -> LaneAnalysisSummary:
+        """The Dashboard's "Analyze lanes" button (D-238): queues one analyze_lane Claude Job per
+        lane with at least one positioning-scored application. A lane with none is skipped and
+        counted, not treated as an error. Reuses the existing Claude Jobs queue (D-50) - no new
+        queue mechanic."""
+        ready, skipped = _lane_analysis_candidates(conn)
+        for lane in ready:
+            submit_analyze_lane(conn, queue, lane.id)
+        return LaneAnalysisSummary(queued=len(ready), skipped=skipped)
+
     def _rescore_candidates(conn: Connection) -> tuple[list[JobApplication], int]:
         """Every application meeting positioning_ready, plus a count of the rest - shared by the
         preview (GET) and the actual run (POST) below, so the dialog's preview count can never
@@ -1695,12 +1743,49 @@ def create_app(
     def rescore_all_positioning(
         conn: Annotated[Connection, Depends(get_db)],
     ) -> PositioningRescoreSummary:
-        """Settings' "Re-score all positioning analyses" action (D-218): clears and requeues
-        Positioning analysis for every application meeting positioning_ready, under whichever
-        backend is currently selected (D-195/D-206). Applications failing the gate are skipped
-        and counted, not treated as an error. Reuses the existing Claude Jobs queue (D-50) - no
-        new queue mechanic."""
+        """The Dashboard's "Re-score all positioning analyses" action (D-218, moved from Settings
+        by D-237): clears and requeues Positioning analysis for every application meeting
+        positioning_ready, under whichever backend is currently selected (D-195/D-206).
+        Applications failing the gate are skipped and counted, not treated as an error. Reuses
+        the existing Claude Jobs queue (D-50) - no new queue mechanic."""
         ready, skipped = _rescore_candidates(conn)
+        for application in ready:
+            clear_positioning(conn, files_root, application.id)
+            submit_generate_positioning(conn, queue, application.id)
+        return PositioningRescoreSummary(queued=len(ready), skipped=skipped)
+
+    def _rescore_open_candidates(conn: Connection) -> tuple[list[JobApplication], int]:
+        """Same as _rescore_candidates, additionally filtered to applications whose status is
+        not an end state (D-223, D-237) - Identified, Applied, Screening, Interview, Offer only."""
+        ready, skipped = _rescore_candidates(conn)
+        open_ready = [
+            application for application in ready if application.status not in END_STATUSES
+        ]
+        return open_ready, skipped + (len(ready) - len(open_ready))
+
+    @app.get(
+        "/positioning/rescore-open",
+        response_model=PositioningRescoreSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def preview_rescore_open_positioning(
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> PositioningRescoreSummary:
+        """The confirm dialog's preview count (D-237) - read-only, changes nothing."""
+        ready, skipped = _rescore_open_candidates(conn)
+        return PositioningRescoreSummary(queued=len(ready), skipped=skipped)
+
+    @app.post(
+        "/positioning/rescore-open",
+        response_model=PositioningRescoreSummary,
+        dependencies=[Depends(require_token)],
+    )
+    def rescore_open_positioning(
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> PositioningRescoreSummary:
+        """The Dashboard's "Re-score open applications" action (D-237): the same mechanic as
+        "Re-score all" above, filtered to applications that haven't reached an end state."""
+        ready, skipped = _rescore_open_candidates(conn)
         for application in ready:
             clear_positioning(conn, files_root, application.id)
             submit_generate_positioning(conn, queue, application.id)

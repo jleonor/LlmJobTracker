@@ -130,3 +130,55 @@ def test_rescore_all_route_counts_ready_and_not_ready_applications_together(
         response = client.post("/positioning/rescore-all")
         assert response.status_code == 200
         assert response.json() == {"queued": 1, "skipped": 1}
+
+
+# --- /positioning/rescore-open (D-237): the same action, limited to non-end-state applications --
+
+
+def test_rescore_open_route_skips_a_ready_application_that_has_reached_an_end_state(
+    db_path: Path,
+) -> None:
+    app_id = make_positioning_ready(db_path)
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO status_history (job_application_id, status, changed_at) "
+            "VALUES (?, 'Rejected', '2026-10-18T09:00:00Z')",
+            (app_id,),
+        )
+        conn.execute("UPDATE job_applications SET status = 'Rejected' WHERE id = ?", (app_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    with TestClient(create_app(TOKEN, db_path, FakeRunner(text="OK"))) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        response = client.post("/positioning/rescore-open")
+        assert response.status_code == 200
+        assert response.json() == {"queued": 0, "skipped": 1}
+        # Read-only on the ready-but-not-open application's own positioning result.
+        detail = client.get(f"/job-applications/{app_id}").json()
+        assert detail["match_score"] == 42.0
+
+
+def test_rescore_open_route_queues_a_ready_application_still_open(db_path: Path) -> None:
+    app_id = make_positioning_ready(db_path)  # starts as Identified - not an end state
+
+    with TestClient(create_app(TOKEN, db_path, FakeRunner(text="OK"))) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        response = client.post("/positioning/rescore-open")
+        assert response.status_code == 200
+        assert response.json() == {"queued": 1, "skipped": 0}
+        detail = client.get(f"/job-applications/{app_id}").json()
+        assert detail["match_score"] is None
+
+
+def test_rescore_open_preview_matches_the_post_route_and_changes_nothing(db_path: Path) -> None:
+    make_positioning_ready(db_path)
+
+    with TestClient(create_app(TOKEN, db_path, FakeRunner(text="OK"))) as client:
+        client.headers[TOKEN_HEADER] = TOKEN
+        preview = client.get("/positioning/rescore-open")
+        assert preview.status_code == 200
+        assert preview.json() == {"queued": 1, "skipped": 0}
+        assert client.get("/claude-jobs").json() == []
