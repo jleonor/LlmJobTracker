@@ -804,6 +804,72 @@ Font/UI audit (original scope, step list appended here once the above is reviewe
 - [ ] One consistent font choice is applied across the table and all four pages above (screenshot).
 - [ ] Each layout issue the audit found is either fixed or explicitly deferred with a reason.
 
+Step list, continued (added 2026-10-18, D-227 to D-229): the Job Applications table becomes
+fully configurable — reorderable, resizable, column-selectable, with five saved views (Default
+plus four predefined) — and the per-row queue badge/column is replaced by an inline indicator
+beside the company name. Not part of the original font/UI scope; appended here rather than a new
+phase since it is further UI work on the same branch, following this plan's established pattern
+of appending reviewed batches (D-104) rather than reopening earlier steps.
+
+1. Backend: extend `list_job_applications`'s query and the `JobApplication` model with every
+   field the 26-column registry needs that the row doesn't already carry: `portal_name`,
+   `portal_url`, `work_mode`, `contract_type`, `notes`, `next_action`, `due_date`,
+   `status_history` (for the eight per-status-date columns, derived client-side the same way the
+   job page's own timeline already is), and six booleans — `has_listing`, `has_details`,
+   `has_analysis`, `has_tailored_cv`, `has_cover_letter`, `has_interview_prep` — matching the
+   semantics `job_revise_pipeline.py`'s existing `_job_details_has_data`/`_positioning_has_data`/
+   `_tailored_cv_has_data`/`_cover_letter_has_data`/`_interview_prep_has_data` already use
+   elsewhere, written as SQL subqueries in the one list query rather than per-row Python calls.
+   Supersedes D-46's fixed column list (D-227). Tests against synthetic fixtures covering each
+   boolean and a multi-status `status_history`.
+2. Frontend: add `components/ui/tooltip.tsx`, wrapping `@base-ui/react`'s Tooltip the same way
+   every other `ui/` primitive wraps it.
+3. Frontend: `lib/jobColumns.ts` — the full 26-column registry (id, header label, cell renderer,
+   default width, and where it applies a filter type and sort comparator), covering every column
+   named in this batch's design discussion (Company, Title, Lane, Location, Match score, Status,
+   Last updated, Job portal, Contract type, Work mode, the six status columns, the eight
+   per-status dates, Next action date, Next action, Notes).
+4. Add `@tanstack/react-table` (D-228); rewrite `JobApplicationsPage.tsx`'s table to be
+   registry-driven through it (column order, sizing, visibility, sorting state), preserving every
+   filter/sort behavior the current hardcoded columns already have.
+5. Frontend: an inline queue indicator beside the company name — a spinner for `processing`, a
+   "Queued" badge for `queued`, a small warning icon for `paused`/`failed`, nothing for
+   `idle`/`done`/`cancelled`. The Queue column, its filter and its sort are removed.
+6. Frontend: truncation with an ellipsis plus a hover tooltip showing the full value, for Company,
+   Title, Lane and any other long text cell (Notes, Job portal).
+7. Frontend: column resize (a drag handle on each header's trailing edge) and reorder (native
+   HTML5 drag-and-drop on header cells), both backed by TanStack's `columnSizing`/`columnOrder`.
+8. Frontend: a right-aligned "Select columns" button opening a checklist popover (the same shape
+   `TextFilterPopover` already uses) toggling `columnVisibility`.
+9. Frontend: the four predefined views plus Default, as left-aligned icon buttons (Default gets a
+   home icon) — To apply to (Company/Title/Lane/Location/Match score, sorted by Match score
+   descending, filtered to Identified); Active applications (same columns, filtered to
+   Applied/Screening/Interview/Offer); Dead applications (Company/Title/Lane/Match score/Notes,
+   filtered to Rejected/Withdrawn/Expired); Upcoming actions (Company/Title/Lane/Next action
+   date/Next action/Match score, sorted by Next action date ascending). Switching a view replaces
+   columns/order/sort/filter atomically; resizing, reordering or opening "Select columns" while on
+   a predefined view forks into an implicit Custom view rather than mutating the predefined one.
+10. Frontend: `sessionStorage` persistence (D-229) — the active view id, and (for Custom) its
+    column order/widths/visibility/sort/filters — read on mount, written on change, with no
+    migration path back to Default except a fresh app launch (a new `sessionStorage`).
+11. Checks: `scripts/check.py` output; screenshots of each of the five views, a column resize, a
+    column reorder, "Select columns", a truncated cell's tooltip, and the spinner/queued/paused
+    indicators against a real queued and a real paused Claude Job.
+
+Done when
+- [ ] Every one of the 26 columns is available through "Select columns", each rendering the
+  right data (screenshot).
+- [ ] A column can be reordered by drag and resized by drag, and the result is reflected
+  immediately (screenshot).
+- [ ] Each of the five views (Default, To apply to, Active applications, Dead applications,
+  Upcoming actions) shows its own column set, sort and filter correctly (screenshot per view).
+- [ ] The selected view and any customization survive a page reload but reset to Default after
+  the app is relaunched (screenshot or description of the test).
+- [ ] A processing, a queued and a paused/failed Claude Job each show the right inline indicator
+  beside the company name, and the Queue column no longer exists (screenshot).
+- [ ] Company/Title/Lane (and any other long cell) truncate with "...", and hovering shows the
+  full value in a tooltip (screenshot).
+
 ---
 
 ## Phase 10: Memory function
