@@ -1,30 +1,33 @@
-import { Plus } from 'lucide-react'
+import {
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+  type ColumnDef,
+  type VisibilityState,
+} from '@tanstack/react-table'
+import { Loader2, Plus, TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { AddJobOverlay } from '@/components/app/AddJobOverlay'
 import {
+  ColumnFilterPopover,
   DEFAULT_FILTERS,
-  DateRangeFilterPopover,
-  MatchScoreFilterPopover,
   SortableHeader,
-  TextFilterPopover,
   applicationMatchesFilters,
   compareApplications,
   cycleSort,
   filtersAreActive,
-  orderedOptions,
-  textOptions,
   type Filters,
   type SortState,
 } from '@/components/app/JobsTableFilters'
-import { QueueStatusBadge } from '@/components/app/QueueStatusBadge'
-import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ApiError, fetchJobApplicationDetail, fetchJobApplications } from '@/lib/api'
+import { COLUMN_BY_ID, DEFAULT_COLUMN_IDS, JOB_COLUMNS, type ColumnId } from '@/lib/jobColumns'
+import type { JobApplication, JobApplicationDetailData, QueueStatus } from '@/lib/types'
 import { queueStatusFor, type QueueState } from '@/lib/useClaudeJobs'
-import { STATUS_ORDER, QUEUE_STATUS_ORDER, type JobApplication, type JobApplicationDetailData } from '@/lib/types'
 import { JobApplicationDetailPage } from '@/pages/JobApplicationDetailPage'
 
 type State =
@@ -41,6 +44,75 @@ type DetailState =
   | { kind: 'ready'; id: number; detail: JobApplicationDetailData }
 
 const HEAD = 'font-mono text-[10px] uppercase tracking-wider'
+
+// D-227: the per-row Claude Job indicator beside the company name, replacing the old Queue
+// column entirely. Nothing renders for idle/done/cancelled - only a state that needs attention
+// (processing, queued) or a stuck job (paused/failed) shows anything here.
+function QueueIndicator({ status }: { status: QueueStatus }) {
+  if (status === 'processing') {
+    return (
+      <Tooltip>
+        <TooltipTrigger render={<span />} className="inline-flex shrink-0 cursor-default">
+          <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label="Processing" />
+        </TooltipTrigger>
+        <TooltipContent>Processing</TooltipContent>
+      </Tooltip>
+    )
+  }
+  if (status === 'queued') {
+    return (
+      <Badge
+        variant="outline"
+        className="shrink-0 rounded-sm font-mono text-[10px] font-normal text-muted-foreground"
+      >
+        Queued
+      </Badge>
+    )
+  }
+  if (status === 'paused' || status === 'failed') {
+    return (
+      <Tooltip>
+        <TooltipTrigger render={<span />} className="inline-flex shrink-0 cursor-default">
+          <TriangleAlert
+            className="size-3.5 text-[#ffca85]"
+            aria-label={status === 'paused' ? 'Paused' : 'Failed'}
+          />
+        </TooltipTrigger>
+        <TooltipContent>{status === 'paused' ? 'Paused - needs Resume' : 'Failed'}</TooltipContent>
+      </Tooltip>
+    )
+  }
+  return null
+}
+
+function companyCell(app: JobApplication, status: QueueStatus) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <QueueIndicator status={status} />
+      <div className="min-w-0 flex-1">{COLUMN_BY_ID.company.cell(app)}</div>
+    </div>
+  )
+}
+
+function buildTanstackColumns(queueJobs: QueueState['jobs']): ColumnDef<JobApplication>[] {
+  return JOB_COLUMNS.map((column) => ({
+    id: column.id,
+    accessorFn: () => null,
+    header: column.label,
+    size: column.defaultWidth,
+    minSize: 60,
+    cell: ({ row }) =>
+      column.id === 'company'
+        ? companyCell(row.original, queueStatusFor(queueJobs, row.original.id))
+        : column.cell(row.original),
+  }))
+}
+
+function visibilityFor(visible: readonly ColumnId[]): VisibilityState {
+  const state: VisibilityState = {}
+  for (const column of JOB_COLUMNS) state[column.id] = visible.includes(column.id)
+  return state
+}
 
 export function JobApplicationsPage({
   queue,
@@ -59,38 +131,31 @@ export function JobApplicationsPage({
   const [addJobOpen, setAddJobOpen] = useState(false)
   const [sort, setSort] = useState<SortState>(null)
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
+  const [columnOrder] = useState<ColumnId[]>(() => JOB_COLUMNS.map((column) => column.id))
+  const [columnVisibility] = useState<VisibilityState>(() => visibilityFor(DEFAULT_COLUMN_IDS))
+  const [columnSizing] = useState({})
 
   const applications = useMemo<JobApplication[]>(
     () => (state.kind === 'ready' ? state.applications : []),
     [state]
   )
-  // Each row's live queue status, computed once per render alongside the application it belongs
-  // to, so sorting/filtering by Queue and the table's own badge always agree.
-  const rows = useMemo(
-    () => applications.map((app) => ({ app, queue: queueStatusFor(queue.jobs, app.id) })),
-    [applications, queue.jobs]
-  )
-  const visibleRows = useMemo(
+  const visibleApplications = useMemo(
     () =>
-      rows
-        .filter((row) => applicationMatchesFilters(row.app, row.queue, filters))
+      applications
+        .filter((app) => applicationMatchesFilters(app, filters))
         .sort((a, b) => compareApplications(a, b, sort)),
-    [rows, filters, sort]
+    [applications, filters, sort]
   )
-  // Option lists reflect the full, unfiltered set, not just what the other filters currently
-  // allow through - simpler, and stays stable while a filter popover is open.
-  const companyOptions = useMemo(() => textOptions(applications.map((app) => app.company)), [applications])
-  const titleOptions = useMemo(() => textOptions(applications.map((app) => app.role_title)), [applications])
-  const laneOptions = useMemo(() => textOptions(applications.map((app) => app.lane)), [applications])
-  const locationOptions = useMemo(() => textOptions(applications.map((app) => app.location)), [applications])
-  const statusOptions = useMemo(
-    () => orderedOptions(STATUS_ORDER, applications.map((app) => app.status)),
-    [applications]
-  )
-  const queueOptions = useMemo(
-    () => orderedOptions(QUEUE_STATUS_ORDER, rows.map((row) => row.queue)),
-    [rows]
-  )
+
+  const tanstackColumns = useMemo(() => buildTanstackColumns(queue.jobs), [queue.jobs])
+  const table = useReactTable({
+    data: visibleApplications,
+    columns: tanstackColumns,
+    state: { columnOrder, columnVisibility, columnSizing },
+    getRowId: (app) => String(app.id),
+    getCoreRowModel: getCoreRowModel(),
+  })
+  const visibleColumnIds = table.getVisibleLeafColumns().map((column) => column.id as ColumnId)
 
   function reloadApplications() {
     fetchJobApplications()
@@ -196,7 +261,7 @@ export function JobApplicationsPage({
             <span className="font-mono text-xs text-muted-foreground">
               {filtersAreActive(filters) ? (
                 <>
-                  {visibleRows.length} of {applications.length}
+                  {visibleApplications.length} of {applications.length}
                 </>
               ) : (
                 <>
@@ -247,156 +312,61 @@ export function JobApplicationsPage({
 
       {state.kind === 'ready' && applications.length > 0 && (
         <div className="overflow-x-auto rounded border border-border bg-card">
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className={HEAD}>
-                  <div className="flex items-center gap-1">
-                    <SortableHeader column="company" label="Company" sort={sort} onSort={(c) => setSort(cycleSort(sort, c))} />
-                    <TextFilterPopover
-                      label="Company"
-                      options={companyOptions}
-                      selected={filters.company}
-                      onChange={(next) => setFilters((f) => ({ ...f, company: next }))}
-                    />
-                  </div>
-                </TableHead>
-                <TableHead className={HEAD}>
-                  <div className="flex items-center gap-1">
-                    <SortableHeader column="role_title" label="Title" sort={sort} onSort={(c) => setSort(cycleSort(sort, c))} />
-                    <TextFilterPopover
-                      label="Title"
-                      options={titleOptions}
-                      selected={filters.role_title}
-                      onChange={(next) => setFilters((f) => ({ ...f, role_title: next }))}
-                    />
-                  </div>
-                </TableHead>
-                <TableHead className={HEAD}>
-                  <div className="flex items-center gap-1">
-                    <SortableHeader column="lane" label="Lane" sort={sort} onSort={(c) => setSort(cycleSort(sort, c))} />
-                    <TextFilterPopover
-                      label="Lane"
-                      options={laneOptions}
-                      selected={filters.lane}
-                      onChange={(next) => setFilters((f) => ({ ...f, lane: next }))}
-                    />
-                  </div>
-                </TableHead>
-                <TableHead className={HEAD}>
-                  <div className="flex items-center gap-1">
-                    <SortableHeader column="location" label="Location" sort={sort} onSort={(c) => setSort(cycleSort(sort, c))} />
-                    <TextFilterPopover
-                      label="Location"
-                      options={locationOptions}
-                      selected={filters.location}
-                      onChange={(next) => setFilters((f) => ({ ...f, location: next }))}
-                    />
-                  </div>
-                </TableHead>
-                <TableHead className={HEAD}>
-                  <div className="flex items-center gap-1">
-                    <SortableHeader column="status" label="Status" sort={sort} onSort={(c) => setSort(cycleSort(sort, c))} />
-                    <TextFilterPopover
-                      label="Status"
-                      options={statusOptions}
-                      selected={filters.status}
-                      onChange={(next) => setFilters((f) => ({ ...f, status: next }))}
-                    />
-                  </div>
-                </TableHead>
-                <TableHead className={HEAD}>
-                  <div className="flex items-center gap-1">
-                    <SortableHeader
-                      column="last_updated"
-                      label="Last updated"
-                      sort={sort}
-                      onSort={(c) => setSort(cycleSort(sort, c))}
-                    />
-                    <DateRangeFilterPopover
-                      label="Last updated"
-                      from={filters.lastUpdatedFrom}
-                      to={filters.lastUpdatedTo}
-                      onChange={(from, to) =>
-                        setFilters((f) => ({ ...f, lastUpdatedFrom: from, lastUpdatedTo: to }))
-                      }
-                    />
-                  </div>
-                </TableHead>
-                <TableHead className={HEAD}>
-                  <div className="flex items-center gap-1">
-                    <SortableHeader
-                      column="match_score"
-                      label="Match score"
-                      sort={sort}
-                      onSort={(c) => setSort(cycleSort(sort, c))}
-                    />
-                    <MatchScoreFilterPopover
-                      label="Match score"
-                      min={filters.matchScoreMin}
-                      max={filters.matchScoreMax}
-                      includeUnscored={filters.includeUnscored}
-                      onChange={(min, max, includeUnscored) =>
-                        setFilters((f) => ({ ...f, matchScoreMin: min, matchScoreMax: max, includeUnscored }))
-                      }
-                    />
-                  </div>
-                </TableHead>
-                <TableHead className={HEAD}>
-                  <div className="flex items-center gap-1">
-                    <SortableHeader column="queue" label="Queue" sort={sort} onSort={(c) => setSort(cycleSort(sort, c))} />
-                    <TextFilterPopover
-                      label="Queue"
-                      options={queueOptions}
-                      selected={filters.queue}
-                      onChange={(next) =>
-                        setFilters((f) => ({ ...f, queue: next as Filters['queue'] }))
-                      }
-                    />
-                  </div>
-                </TableHead>
-              </TableRow>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id} className="hover:bg-transparent">
+                  {headerGroup.headers.map((header) => {
+                    const columnId = header.column.id as ColumnId
+                    return (
+                      <TableHead
+                        key={header.id}
+                        className={HEAD}
+                        style={{ width: header.getSize() }}
+                      >
+                        <div className="flex items-center gap-1 overflow-hidden">
+                          <SortableHeader
+                            column={columnId}
+                            label={COLUMN_BY_ID[columnId].label}
+                            sort={sort}
+                            onSort={(c) => setSort(cycleSort(sort, c))}
+                          />
+                          <ColumnFilterPopover
+                            column={columnId}
+                            applications={applications}
+                            filters={filters}
+                            onChange={setFilters}
+                          />
+                        </div>
+                      </TableHead>
+                    )
+                  })}
+                </TableRow>
+              ))}
             </TableHeader>
             <TableBody>
-              {visibleRows.length === 0 && (
+              {table.getRowModel().rows.length === 0 && (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={8} className="text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={visibleColumnIds.length} className="text-center text-sm text-muted-foreground">
                     No applications match the current filters.
                   </TableCell>
                 </TableRow>
               )}
-              {visibleRows.map(({ app, queue: queueStatus }) => (
+              {table.getRowModel().rows.map((row) => (
                 <TableRow
-                  key={app.id}
-                  onClick={() => setSelectedId(app.id)}
+                  key={row.id}
+                  onClick={() => setSelectedId(row.original.id)}
                   className="cursor-pointer"
                 >
-                  <TableCell className="font-semibold">{app.company}</TableCell>
-                  <TableCell>{app.role_title}</TableCell>
-                  <TableCell>
-                    {app.lane ? (
-                      <Badge variant="outline" className="rounded-sm font-mono text-[11px] font-normal">
-                        {app.lane}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>{app.location ?? <span className="text-muted-foreground">-</span>}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={app.status} />
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{app.last_updated.slice(0, 10)}</TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {app.match_score === null ? (
-                      <span className="text-muted-foreground">-</span>
-                    ) : (
-                      `${Math.round(app.match_score)}%`
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <QueueStatusBadge status={queueStatus} />
-                  </TableCell>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell
+                      key={cell.id}
+                      className="overflow-hidden"
+                      style={{ width: cell.column.getSize() }}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
                 </TableRow>
               ))}
             </TableBody>

@@ -6,58 +6,29 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Slider } from '@/components/ui/slider'
+import { COLUMN_BY_ID, UNSET, type ColumnId } from '@/lib/jobColumns'
 import { cn } from '@/lib/utils'
-import { QUEUE_STATUS_ORDER, STATUS_ORDER, type JobApplication, type QueueStatus } from '@/lib/types'
+import type { JobApplication } from '@/lib/types'
 
-// The checklist value standing in for a null lane/location - an actual lane or location named
-// this is not realistically possible, so no real value can collide with it.
-export const UNSET = '(none)'
+export type SortState = { column: ColumnId; direction: 'asc' | 'desc' } | null
 
-export type SortColumn =
-  | 'company'
-  | 'role_title'
-  | 'lane'
-  | 'location'
-  | 'status'
-  | 'last_updated'
-  | 'match_score'
-  | 'queue'
+// D-227: one filter value per column kind, keyed by whichever columns the active view actually
+// shows - unlike the pre-D-227 fixed `Filters` shape, a column not currently visible simply has
+// no entry here.
+export type FilterValue =
+  | { kind: 'text'; selected: Set<string> }
+  | { kind: 'date'; from: string | null; to: string | null }
+  | { kind: 'score'; min: number; max: number; includeUnscored: boolean }
 
-export type SortState = { column: SortColumn; direction: 'asc' | 'desc' } | null
+export type Filters = Partial<Record<ColumnId, FilterValue>>
 
-export type Filters = {
-  company: Set<string>
-  role_title: Set<string>
-  lane: Set<string>
-  location: Set<string>
-  status: Set<string>
-  queue: Set<QueueStatus>
-  lastUpdatedFrom: string | null
-  lastUpdatedTo: string | null
-  matchScoreMin: number
-  matchScoreMax: number
-  includeUnscored: boolean
-}
-
-export const DEFAULT_FILTERS: Filters = {
-  company: new Set(),
-  role_title: new Set(),
-  lane: new Set(),
-  location: new Set(),
-  status: new Set(),
-  queue: new Set(),
-  lastUpdatedFrom: null,
-  lastUpdatedTo: null,
-  matchScoreMin: 0,
-  matchScoreMax: 100,
-  includeUnscored: true,
-}
+export const DEFAULT_FILTERS: Filters = {}
 
 export type FilterOption = { value: string; label: string; count: number }
 
 // Distinct values actually present in the data, alphabetical, with a null tally appended last as
-// the UNSET option - used for Company, Title, Lane and Location, none of which has a closed set
-// of possible values.
+// the UNSET option - used for every free-text column (Company, Title, Lane, Location, Job
+// portal, Next action, Notes), none of which has a closed set of possible values.
 export function textOptions(values: (string | null)[]): FilterOption[] {
   const counts = new Map<string, number>()
   let nullCount = 0
@@ -75,104 +46,72 @@ export function textOptions(values: (string | null)[]): FilterOption[] {
   return options
 }
 
-// Every value in `order` is listed, even with a zero count - used for Status and Queue, both a
-// closed, defined set (D-44/D-101's stages; the queue's own lifecycle), so the checklist stays
-// the same regardless of what the current data happens to contain.
-export function orderedOptions<T extends string>(order: readonly T[], values: string[]): FilterOption[] {
+// Every value in `order` is listed, even with a zero count - used for Status and every "status
+// flag" column (Done/Not done), both closed, defined sets, so the checklist stays the same
+// regardless of what the current data happens to contain.
+export function orderedOptions(order: readonly string[], values: string[]): FilterOption[] {
   const counts = new Map<string, number>()
   for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1)
   return order.map((value) => ({ value, label: value, count: counts.get(value) ?? 0 }))
 }
 
-export function filtersAreActive(filters: Filters): boolean {
-  return (
-    filters.company.size > 0 ||
-    filters.role_title.size > 0 ||
-    filters.lane.size > 0 ||
-    filters.location.size > 0 ||
-    filters.status.size > 0 ||
-    filters.queue.size > 0 ||
-    filters.lastUpdatedFrom !== null ||
-    filters.lastUpdatedTo !== null ||
-    filters.matchScoreMin !== DEFAULT_FILTERS.matchScoreMin ||
-    filters.matchScoreMax !== DEFAULT_FILTERS.matchScoreMax ||
-    !filters.includeUnscored
-  )
+export function optionsForColumn(column: ColumnId, applications: JobApplication[]): FilterOption[] {
+  const spec = COLUMN_BY_ID[column].filter
+  if (!spec) return []
+  if (spec.kind === 'text') return textOptions(applications.map(spec.value))
+  if (spec.kind === 'ordered') return orderedOptions(spec.order, applications.map(spec.value))
+  return []
 }
 
-export function applicationMatchesFilters(
-  app: JobApplication,
-  queueStatus: QueueStatus,
-  filters: Filters
-): boolean {
-  if (filters.company.size > 0 && !filters.company.has(app.company)) return false
-  if (filters.role_title.size > 0 && !filters.role_title.has(app.role_title)) return false
-  if (filters.lane.size > 0 && !filters.lane.has(app.lane ?? UNSET)) return false
-  if (filters.location.size > 0 && !filters.location.has(app.location ?? UNSET)) return false
-  if (filters.status.size > 0 && !filters.status.has(app.status)) return false
-  if (filters.queue.size > 0 && !filters.queue.has(queueStatus)) return false
-  const day = app.last_updated.slice(0, 10)
-  if (filters.lastUpdatedFrom && day < filters.lastUpdatedFrom) return false
-  if (filters.lastUpdatedTo && day > filters.lastUpdatedTo) return false
-  if (app.match_score === null) {
-    if (!filters.includeUnscored) return false
-  } else {
-    const rounded = Math.round(app.match_score)
-    if (rounded < filters.matchScoreMin || rounded > filters.matchScoreMax) return false
+export function filtersAreActive(filters: Filters): boolean {
+  return Object.values(filters).some((value) => {
+    if (!value) return false
+    if (value.kind === 'text') return value.selected.size > 0
+    if (value.kind === 'date') return value.from !== null || value.to !== null
+    return value.min !== 0 || value.max !== 100 || !value.includeUnscored
+  })
+}
+
+export function applicationMatchesFilters(app: JobApplication, filters: Filters): boolean {
+  for (const key of Object.keys(filters)) {
+    const value = filters[key as ColumnId]
+    if (!value) continue
+    const spec = COLUMN_BY_ID[key as ColumnId].filter
+    if (!spec) continue
+    if (spec.kind === 'text' || spec.kind === 'ordered') {
+      if (value.kind !== 'text') continue
+      if (value.selected.size === 0) continue
+      const raw = spec.value(app)
+      if (!value.selected.has(raw ?? UNSET)) return false
+    } else if (spec.kind === 'date') {
+      if (value.kind !== 'date') continue
+      const raw = spec.value(app)
+      const day = raw ? raw.slice(0, 10) : null
+      if (value.from && (!day || day < value.from)) return false
+      if (value.to && (!day || day > value.to)) return false
+    } else if (spec.kind === 'score') {
+      if (value.kind !== 'score') continue
+      if (app.match_score === null) {
+        if (!value.includeUnscored) return false
+      } else {
+        const rounded = Math.round(app.match_score)
+        if (rounded < value.min || rounded > value.max) return false
+      }
+    }
   }
   return true
 }
 
-// Null always sorts last, in either direction - an unset lane/location/score is "unknown", not
-// "least", so flipping the direction shouldn't move it to the front.
-function compareNullableStrings(a: string | null, b: string | null, direction: 1 | -1): number {
-  if (a === null && b === null) return 0
-  if (a === null) return 1
-  if (b === null) return -1
-  return direction * a.localeCompare(b)
-}
-
-function compareNullableNumbers(a: number | null, b: number | null, direction: 1 | -1): number {
-  if (a === null && b === null) return 0
-  if (a === null) return 1
-  if (b === null) return -1
-  return direction * (a - b)
-}
-
-export function compareApplications(
-  a: { app: JobApplication; queue: QueueStatus },
-  b: { app: JobApplication; queue: QueueStatus },
-  sort: SortState
-): number {
+export function compareApplications(a: JobApplication, b: JobApplication, sort: SortState): number {
   if (!sort) return 0
+  const column = COLUMN_BY_ID[sort.column]
   const direction = sort.direction === 'asc' ? 1 : -1
-  switch (sort.column) {
-    case 'company':
-      return direction * a.app.company.localeCompare(b.app.company)
-    case 'role_title':
-      return direction * a.app.role_title.localeCompare(b.app.role_title)
-    case 'lane':
-      return compareNullableStrings(a.app.lane, b.app.lane, direction)
-    case 'location':
-      return compareNullableStrings(a.app.location, b.app.location, direction)
-    case 'status':
-      return (
-        direction *
-        ((STATUS_ORDER as readonly string[]).indexOf(a.app.status) -
-          (STATUS_ORDER as readonly string[]).indexOf(b.app.status))
-      )
-    case 'last_updated':
-      return direction * a.app.last_updated.localeCompare(b.app.last_updated)
-    case 'match_score':
-      return compareNullableNumbers(a.app.match_score, b.app.match_score, direction)
-    case 'queue':
-      return direction * (QUEUE_STATUS_ORDER.indexOf(a.queue) - QUEUE_STATUS_ORDER.indexOf(b.queue))
-  }
+  return column.compare(a, b, direction)
 }
 
 // Clicking an unsorted column sorts it ascending; clicking the active column flips direction;
 // clicking it again (now descending) clears the sort back to the table's natural order.
-export function cycleSort(previous: SortState, column: SortColumn): SortState {
+export function cycleSort(previous: SortState, column: ColumnId): SortState {
   if (previous?.column !== column) return { column, direction: 'asc' }
   if (previous.direction === 'asc') return { column, direction: 'desc' }
   return null
@@ -184,10 +123,10 @@ export function SortableHeader({
   sort,
   onSort,
 }: {
-  column: SortColumn
+  column: ColumnId
   label: string
   sort: SortState
-  onSort: (column: SortColumn) => void
+  onSort: (column: ColumnId) => void
 }) {
   const active = sort?.column === column
   const Icon = !active ? ArrowUpDown : sort.direction === 'asc' ? ArrowUp : ArrowDown
@@ -340,6 +279,9 @@ export function DateRangeFilterPopover({
   )
 }
 
+const SCORE_MIN = 0
+const SCORE_MAX = 100
+
 export function MatchScoreFilterPopover({
   label,
   min,
@@ -353,10 +295,7 @@ export function MatchScoreFilterPopover({
   includeUnscored: boolean
   onChange: (min: number, max: number, includeUnscored: boolean) => void
 }) {
-  const active =
-    min !== DEFAULT_FILTERS.matchScoreMin ||
-    max !== DEFAULT_FILTERS.matchScoreMax ||
-    !includeUnscored
+  const active = min !== SCORE_MIN || max !== SCORE_MAX || !includeUnscored
 
   return (
     <Popover>
@@ -387,9 +326,7 @@ export function MatchScoreFilterPopover({
         {active && (
           <button
             type="button"
-            onClick={() =>
-              onChange(DEFAULT_FILTERS.matchScoreMin, DEFAULT_FILTERS.matchScoreMax, true)
-            }
+            onClick={() => onChange(SCORE_MIN, SCORE_MAX, true)}
             className="self-start text-xs text-muted-foreground hover:text-foreground hover:underline"
           >
             Clear filter
@@ -397,5 +334,63 @@ export function MatchScoreFilterPopover({
         )}
       </PopoverContent>
     </Popover>
+  )
+}
+
+// Renders the right filter popover for a visible column, reading/writing its slice of `Filters`
+// - the one place that bridges the registry's column-agnostic FilterSpec onto the three concrete
+// popover components above.
+export function ColumnFilterPopover({
+  column,
+  applications,
+  filters,
+  onChange,
+}: {
+  column: ColumnId
+  applications: JobApplication[]
+  filters: Filters
+  onChange: (next: Filters) => void
+}) {
+  const definition = COLUMN_BY_ID[column]
+  const spec = definition.filter
+  if (!spec) return null
+  const current = filters[column]
+
+  if (spec.kind === 'text' || spec.kind === 'ordered') {
+    const selected = current?.kind === 'text' ? current.selected : new Set<string>()
+    return (
+      <TextFilterPopover
+        label={definition.label}
+        options={optionsForColumn(column, applications)}
+        selected={selected}
+        onChange={(next) => onChange({ ...filters, [column]: { kind: 'text', selected: next } })}
+      />
+    )
+  }
+  if (spec.kind === 'date') {
+    const from = current?.kind === 'date' ? current.from : null
+    const to = current?.kind === 'date' ? current.to : null
+    return (
+      <DateRangeFilterPopover
+        label={definition.label}
+        from={from}
+        to={to}
+        onChange={(from, to) => onChange({ ...filters, [column]: { kind: 'date', from, to } })}
+      />
+    )
+  }
+  const min = current?.kind === 'score' ? current.min : SCORE_MIN
+  const max = current?.kind === 'score' ? current.max : SCORE_MAX
+  const includeUnscored = current?.kind === 'score' ? current.includeUnscored : true
+  return (
+    <MatchScoreFilterPopover
+      label={definition.label}
+      min={min}
+      max={max}
+      includeUnscored={includeUnscored}
+      onChange={(min, max, includeUnscored) =>
+        onChange({ ...filters, [column]: { kind: 'score', min, max, includeUnscored } })
+      }
+    />
   )
 }
