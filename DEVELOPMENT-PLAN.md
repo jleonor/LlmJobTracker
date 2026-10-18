@@ -910,12 +910,12 @@ Scope
 
 Step list (drafted 2026-10-18, awaiting approval)
 
-1. Cut `phase-10-dashboard` from `main` (D-61). Extend `Agent/specs/lane-steps.md` with a new §2,
+1. Cut `phase-10-dashboard` from `main` (D-61). Extend `Agent/specs/lane-steps.md` with a new §3,
    "Lane fit/gap summary" (`analyze_lane`, D-238): gate (at least one application in the lane with
    a non-null `match_score` — no minimum beyond that, D-238), inputs (every such application's
-   `role_title`, `fit`, and `gaps` — nothing else), the answer grammar (an `=== LANE FIT/GAPS
-   SUMMARY ===` block with `FIT SUMMARY`/`GAPS SUMMARY` sections, prose, no score), and storage
-   (new `lanes` columns, step 2 below). Docs only.
+   `role_title`, `fit`, and `gaps` — nothing else), the answer grammar (one `=== APPLICATION ===`
+   block per application plus `FIT SUMMARY`/`GAPS SUMMARY` closing sections, prose, no score), and
+   storage (new `lanes` columns, step 2 below). Docs only.
 2. Migration: `lanes.fit_gap_summary` (TEXT, nullable) and `lanes.fit_gap_summary_generated_at`
    (TEXT, nullable, ISO timestamp) — written together whenever `analyze_lane` completes, so the
    Dashboard can show when a lane's summary was last generated. Tests: applies and rolls back.
