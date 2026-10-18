@@ -908,10 +908,67 @@ Scope
 - "Re-score all positioning analyses" (D-218) moves here from Settings, unchanged. A new "Re-score open applications" button sits beside it: the same confirm-preview-then-queue mechanic, filtered to applications whose status is not an end state (D-223) — Identified, Applied, Screening, Interview, Offer only (D-237). Both buttons are removed from the Settings page.
 - This is a distinct idea from the still-parked Kanban board (D-02) — an analytics view, not a replacement for the table.
 
+Step list (drafted 2026-10-18, awaiting approval)
+
+1. Cut `phase-10-dashboard` from `main` (D-61). Extend `Agent/specs/lane-steps.md` with a new §2,
+   "Lane fit/gap summary" (`analyze_lane`, D-238): gate (at least one application in the lane with
+   a non-null `match_score` — no minimum beyond that, D-238), inputs (every such application's
+   `role_title`, `fit`, and `gaps` — nothing else), the answer grammar (an `=== LANE FIT/GAPS
+   SUMMARY ===` block with `FIT SUMMARY`/`GAPS SUMMARY` sections, prose, no score), and storage
+   (new `lanes` columns, step 2 below). Docs only.
+2. Migration: `lanes.fit_gap_summary` (TEXT, nullable) and `lanes.fit_gap_summary_generated_at`
+   (TEXT, nullable, ISO timestamp) — written together whenever `analyze_lane` completes, so the
+   Dashboard can show when a lane's summary was last generated. Tests: applies and rolls back.
+3. Backend: a lane-scoped query (`job_applications.py` or `lane_pipeline.py`) returning, for one
+   lane, every application with a non-null `match_score` and its `role_title`/`fit`/`gaps` — the
+   list `JobApplication` model (D-227) doesn't carry `fit`/`gaps`, so this is a new query, not a
+   reuse of `list_job_applications`. `analyze_lane` Claude Job in `lane_pipeline.py`:
+   submit/render/on_result, built from that query the same way every other job-llm-steps.md step
+   is built from its own inputs. `on_result` parses the `FIT SUMMARY`/`GAPS SUMMARY` blocks and
+   writes `lanes.fit_gap_summary`/`fit_gap_summary_generated_at`. Tests with `FakeRunner`: a lane
+   with several scored applications, a lane with exactly one, and a lane with zero (never
+   submitted, reported as skipped — the same "skipped, not an error" shape D-218 established).
+4. Backend: `GET /lanes/analyze` (preview: how many lanes are eligible vs. skipped, mirroring
+   `_rescore_candidates`'s GET/POST split so the dialog's count can never drift from what running
+   it does) and `POST /lanes/analyze` (queues one `analyze_lane` job per eligible lane, D-238).
+   Reuses the existing Claude Jobs queue (D-50) — no new queue mechanic.
+5. Backend: `GET /positioning/rescore-open` and `POST /positioning/rescore-open` (D-237) —
+   `_rescore_candidates`'s existing logic (`app.py`), with an added filter to applications whose
+   `status` is not in `END_STATUSES` (`job_applications.py`). Tests alongside the existing
+   rescore-all tests: an open application is queued, an end-state one is skipped and counted.
+6. Frontend: add `recharts` (D-240) and `components/ui/chart.tsx`, shadcn's own wrapper, the same
+   way every other `ui/` primitive wraps its underlying library.
+7. Frontend: `lib/dashboardStats.ts` — pure functions computing each chart's data from the full
+   job-applications list (`fetchJobApplications`, already carrying lane/status/match_score/
+   location/status_history — no new list endpoint needed) plus the current slicer selection:
+   proportions by lane, by stage (status), and by match-score bucket (10%-wide, plus a "Not
+   scored" bucket for a null `match_score`, D-239); the average days between an application's
+   first Identified and first Applied `status_history` entry; applications-identified and
+   applications-sent averages per calendar day and per calendar week, each a whole-history total
+   divided by the number of calendar days/weeks since the earliest tracked application (D-239,
+   D-241 — no business-day calendar, not filtered by the current slicers); and a trailing-12-month
+   day-by-day count of applications sent, for the heatmap.
+8. Frontend: `DashboardPage.tsx`, a route, and a sidebar nav entry. A slicer bar (lane, stage,
+   match-score bucket including "Not scored", location — reusing the table's existing filter
+   popover styling) filtering every chart on the page via `dashboardStats.ts`. Charts: three
+   proportion charts (lane/stage/match-score bucket), stat tiles for the Identified→Applied
+   average and the per-day/per-week averages, and the calendar heatmap.
+9. Frontend: a per-lane strengths/weaknesses table on the Dashboard (lane name, average match
+   score, the `fit_gap_summary` text and its `generated_at`, or "Not enough data yet" when null)
+   and an "Analyze lanes" button opening the same confirm-preview-then-queue dialog shape as
+   "Re-score all" (D-218), wired to the new `/lanes/analyze` routes.
+10. Frontend: `RescorePositioningSection` moves out of `SettingsPage.tsx` onto `DashboardPage.tsx`
+    unchanged, and a second button, "Re-score open applications," sits beside it, wired to the new
+    `/positioning/rescore-open` routes with its own preview/confirm dialog.
+11. Checks: `scripts/check.py` output; personal-data scan; screenshots of each chart responding to
+    a slicer change, the calendar heatmap against real application dates, a real "Analyze lanes"
+    run producing at least one lane's fit/gap summary, and "Re-score all"/"Re-score open
+    applications" both working from the Dashboard with neither button left on Settings.
+
 Done when
 - [ ] Every chart responds to each slicer, alone and combined.
 - [ ] The calendar heatmap matches the real application dates in the tracker.
-- [ ] The strengths/weaknesses table is generated for at least one lane with enough jobs, and the user judges its quality (CLAUDE.md rule 4).
+- [ ] "Analyze lanes" generates a fit/gap summary for at least one lane with a positioning-scored application, built only from that lane's own jobs' titles, fit and gaps (no new score), and the user judges its quality (CLAUDE.md rule 4).
 - [ ] "Re-score all" and "Re-score open applications" both work from the Dashboard, each queuing the right set of applications, and neither button remains on the Settings page.
 
 ---
