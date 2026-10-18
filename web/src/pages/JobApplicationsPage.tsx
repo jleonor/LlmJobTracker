@@ -6,7 +6,7 @@ import {
   type ColumnSizingState,
   type VisibilityState,
 } from '@tanstack/react-table'
-import { Loader2, Plus, TriangleAlert } from 'lucide-react'
+import { Columns3, Loader2, Plus, TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { AddJobOverlay } from '@/components/app/AddJobOverlay'
@@ -22,7 +22,10 @@ import {
   type SortState,
 } from '@/components/app/JobsTableFilters'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ApiError, fetchJobApplicationDetail, fetchJobApplications } from '@/lib/api'
@@ -116,6 +119,56 @@ function visibilityFor(visible: readonly ColumnId[]): VisibilityState {
   return state
 }
 
+// D-227's "Select columns" - a checklist over all 27 columns (declaration order, so the list
+// doesn't reshuffle as the user reorders the table itself), toggling columnVisibility.
+function SelectColumnsPopover({
+  visibility,
+  onToggle,
+}: {
+  visibility: VisibilityState
+  onToggle: (id: ColumnId, visible: boolean) => void
+}) {
+  const [search, setSearch] = useState('')
+  const query = search.trim().toLowerCase()
+  const visibleOptions = JOB_COLUMNS.filter(
+    (column) => query === '' || column.label.toLowerCase().includes(query)
+  )
+
+  return (
+    <Popover>
+      <PopoverTrigger className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
+        <Columns3 className="size-4" aria-hidden="true" />
+        Select columns
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64">
+        <Input
+          placeholder="Search columns..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          className="h-7 text-xs"
+        />
+        <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto">
+          {visibleOptions.map((column) => (
+            <label
+              key={column.id}
+              className="flex items-center gap-2 rounded px-1 py-1 text-xs hover:bg-accent"
+            >
+              <Checkbox
+                checked={visibility[column.id] ?? false}
+                onCheckedChange={(checked) => onToggle(column.id, checked === true)}
+              />
+              <span className="flex-1 truncate">{column.label}</span>
+            </label>
+          ))}
+          {visibleOptions.length === 0 && (
+            <p className="px-1 py-2 text-xs text-muted-foreground">No matches.</p>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 export function JobApplicationsPage({
   queue,
   resetSignal = 0,
@@ -136,7 +189,9 @@ export function JobApplicationsPage({
   const [columnOrder, setColumnOrder] = useState<ColumnId[]>(() =>
     JOB_COLUMNS.map((column) => column.id)
   )
-  const [columnVisibility] = useState<VisibilityState>(() => visibilityFor(DEFAULT_COLUMN_IDS))
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() =>
+    visibilityFor(DEFAULT_COLUMN_IDS)
+  )
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({})
   // Native HTML5 drag-and-drop (D-228: no second DnD library) - the column id currently being
   // dragged, read by the drop target to know what to move.
@@ -164,11 +219,16 @@ export function JobApplicationsPage({
         (typeof updater === 'function' ? updater(current) : updater) as ColumnId[]
       ),
     onColumnSizingChange: setColumnSizing,
+    onColumnVisibilityChange: setColumnVisibility,
     columnResizeMode: 'onChange',
     getRowId: (app) => String(app.id),
     getCoreRowModel: getCoreRowModel(),
   })
   const visibleColumnIds = table.getVisibleLeafColumns().map((column) => column.id as ColumnId)
+
+  function toggleColumn(id: ColumnId, visible: boolean) {
+    setColumnVisibility((current) => ({ ...current, [id]: visible }))
+  }
 
   function moveColumn(from: ColumnId, to: ColumnId) {
     if (from === to) return
@@ -327,6 +387,12 @@ export function JobApplicationsPage({
       {state.kind === 'error' && (
         <div role="alert" className="rounded border border-destructive/50 p-4 text-sm text-destructive">
           {state.message}
+        </div>
+      )}
+
+      {state.kind === 'ready' && applications.length > 0 && (
+        <div className="flex justify-end">
+          <SelectColumnsPopover visibility={columnVisibility} onToggle={toggleColumn} />
         </div>
       )}
 
