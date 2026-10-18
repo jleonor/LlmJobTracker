@@ -5,6 +5,7 @@ import {
   applicationsSentHeatmap,
   applySlicers,
   averageDaysIdentifiedToApplied,
+  averageMatchScoreForLane,
   distinctLanes,
   distinctLocations,
   foldToOther,
@@ -172,6 +173,23 @@ describe('foldToOther', () => {
       { label: 'B', count: 4 },
       { label: 'Other', count: 5 },
     ])
+  })
+})
+
+describe('averageMatchScoreForLane', () => {
+  it('averages only that lane\'s own scored applications', () => {
+    const applications = [
+      application({ lane: 'Data Analytics', match_score: 80 }),
+      application({ lane: 'Data Analytics', match_score: 60 }),
+      application({ lane: 'Data Analytics', match_score: null }),
+      application({ lane: 'Product Analytics', match_score: 10 }),
+    ]
+    expect(averageMatchScoreForLane(applications, 'Data Analytics')).toBe(70)
+  })
+
+  it('returns null when the lane has no scored application', () => {
+    const applications = [application({ lane: 'Data Analytics', match_score: null })]
+    expect(averageMatchScoreForLane(applications, 'Data Analytics')).toBeNull()
   })
 })
 

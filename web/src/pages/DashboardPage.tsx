@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from 'recharts'
 
+import { MarkdownDocument } from '@/components/app/MarkdownDocument'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   ChartContainer,
@@ -8,6 +10,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from '@/components/ui/chart'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CATEGORICAL_CHART_COLORS, MATCH_SCORE_RAMP, NOT_SCORED_COLOR } from '@/lib/chartPalette'
@@ -15,6 +18,7 @@ import {
   applicationsSentHeatmap,
   applySlicers,
   averageDaysIdentifiedToApplied,
+  averageMatchScoreForLane,
   distinctLanes,
   distinctLocations,
   EMPTY_SLICERS,
@@ -28,8 +32,8 @@ import {
   type CountEntry,
   type DashboardSlicers,
 } from '@/lib/dashboardStats'
-import { ApiError, fetchJobApplications } from '@/lib/api'
-import { STATUS_ORDER, type JobApplication } from '@/lib/types'
+import { ApiError, analyzeLanes, fetchJobApplications, fetchLanes, fetchLaneAnalysisPreview } from '@/lib/api'
+import { STATUS_ORDER, type JobApplication, type Lane, type LaneAnalysisSummary } from '@/lib/types'
 
 type State =
   | { kind: 'loading' }
@@ -43,6 +47,7 @@ const MAX_LANE_BARS = 7
 export function DashboardPage() {
   const [state, setState] = useState<State>({ kind: 'loading' })
   const [slicers, setSlicers] = useState<DashboardSlicers>(EMPTY_SLICERS)
+  const [lanes, setLanes] = useState<Lane[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -58,6 +63,18 @@ export function DashboardPage() {
     return () => {
       cancelled = true
     }
+  }, [])
+
+  function reloadLanes() {
+    fetchLanes()
+      .then(setLanes)
+      .catch(() => undefined)
+  }
+
+  useEffect(() => {
+    fetchLanes()
+      .then(setLanes)
+      .catch(() => undefined)
   }, [])
 
   const allApplications = useMemo(
@@ -148,6 +165,8 @@ export function DashboardPage() {
           <ApplicationsSentHeatmap days={heatmap} />
         </CardContent>
       </Card>
+
+      <LaneSummarySection lanes={lanes} applications={allApplications} onAnalyzed={reloadLanes} />
     </div>
   )
 }
@@ -378,5 +397,130 @@ function ApplicationsSentHeatmap({ days }: { days: { date: string; count: number
         <span>More</span>
       </div>
     </div>
+  )
+}
+
+// --- Per-lane strengths/weaknesses (D-238) ------------------------------------------------------
+
+function LaneSummarySection({
+  lanes,
+  applications,
+  onAnalyzed,
+}: {
+  lanes: Lane[]
+  applications: JobApplication[]
+  onAnalyzed: () => void
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle>Per-lane strengths and weaknesses</CardTitle>
+        <AnalyzeLanesButton onAnalyzed={onAnalyzed} />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {lanes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No lanes yet.</p>
+        ) : (
+          lanes.map((lane) => {
+            const averageMatchScore = averageMatchScoreForLane(applications, lane.name)
+            return (
+              <div key={lane.id} className="flex flex-col gap-1 border-b border-border pb-4 last:border-b-0 last:pb-0">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{lane.name}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {averageMatchScore === null ? 'No scored applications' : `${averageMatchScore.toFixed(1)}% average match`}
+                  </span>
+                </div>
+                {lane.fit_gap_summary === null ? (
+                  <p className="text-xs text-muted-foreground">
+                    Not analyzed yet - run "Analyze lanes" once it has a scored application.
+                  </p>
+                ) : (
+                  <>
+                    <MarkdownDocument text={lane.fit_gap_summary} />
+                    {lane.fit_gap_summary_generated_at && (
+                      <p className="text-xs text-muted-foreground">
+                        Generated {new Date(lane.fit_gap_summary_generated_at).toLocaleString()}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )
+          })
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function AnalyzeLanesButton({ onAnalyzed }: { onAnalyzed: () => void }) {
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [preview, setPreview] = useState<LaneAnalysisSummary | null>(null)
+  const [result, setResult] = useState<LaneAnalysisSummary | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function openConfirm() {
+    setError(null)
+    setResult(null)
+    setConfirmOpen(true)
+    fetchLaneAnalysisPreview()
+      .then(setPreview)
+      .catch(() => setPreview(null))
+  }
+
+  async function confirmAndRun() {
+    setBusy(true)
+    setError(null)
+    try {
+      const summary = await analyzeLanes()
+      setResult(summary)
+      setConfirmOpen(false)
+      onAnalyzed()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The analysis did not start.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={openConfirm}>
+        Analyze lanes
+      </Button>
+      {result && (
+        <p className="text-xs text-muted-foreground">
+          Queued {result.queued}, skipped {result.skipped}.
+        </p>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Analyze lanes?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {preview === null
+              ? 'Checking how many lanes are ready...'
+              : `This will generate a fit/gap summary for ${preview.queued} lane${preview.queued === 1 ? '' : 's'} (${preview.skipped} skipped - no positioning-scored application yet).`}{' '}
+            It can take a while and uses real usage.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={busy || preview === null || preview.queued === 0}
+              onClick={() => void confirmAndRun()}
+            >
+              {busy ? 'Queuing...' : 'Analyze'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

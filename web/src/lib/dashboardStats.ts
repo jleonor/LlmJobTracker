@@ -147,6 +147,22 @@ export function proportionByMatchScoreBucket(applications: JobApplication[]): Co
   return sortedEntries(counts, MATCH_SCORE_BUCKETS)
 }
 
+// The Dashboard's per-lane strengths/weaknesses table (D-238) always reads the full,
+// unfiltered application list - filtering it by the lane slicer itself would leave at most one
+// row, and filtering by the others would blur what "this lane's own average" means. null when
+// the lane has no scored application yet.
+export function averageMatchScoreForLane(
+  applications: JobApplication[],
+  laneName: string,
+): number | null {
+  const scores = applications
+    .filter((application) => application.lane === laneName)
+    .map((application) => application.match_score)
+    .filter((score): score is number => score !== null)
+  if (scores.length === 0) return null
+  return scores.reduce((total, score) => total + score, 0) / scores.length
+}
+
 // --- Identified -> Applied lead time -------------------------------------------------------
 
 function earliestDateFor(application: JobApplication, status: string): string | null {
