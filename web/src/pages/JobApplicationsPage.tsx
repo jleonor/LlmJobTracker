@@ -31,6 +31,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ApiError, fetchJobApplicationDetail, fetchJobApplications } from '@/lib/api'
 import { COLUMN_BY_ID, DEFAULT_COLUMN_IDS, JOB_COLUMNS, type ColumnId } from '@/lib/jobColumns'
 import { JOB_VIEWS, type JobView, type ViewId } from '@/lib/jobViews'
+import {
+  deserializeFilters,
+  loadPersistedTableState,
+  savePersistedTableState,
+  serializeFilters,
+} from '@/lib/jobTableStorage'
 import type { JobApplication, JobApplicationDetailData, QueueStatus } from '@/lib/types'
 import { queueStatusFor, type QueueState } from '@/lib/useClaudeJobs'
 import { cn } from '@/lib/utils'
@@ -193,22 +199,44 @@ export function JobApplicationsPage({
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [detailState, setDetailState] = useState<DetailState | null>(null)
   const [addJobOpen, setAddJobOpen] = useState(false)
-  const [sort, setSort] = useState<SortState>(null)
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
+  // D-229: read once on mount - whatever this run's sessionStorage held, or nothing on a fresh
+  // app launch - and used to seed every piece of view state below.
+  const [persisted] = useState(() => loadPersistedTableState())
+  const [sort, setSort] = useState<SortState>(() => persisted?.sort ?? null)
+  const [filters, setFilters] = useState<Filters>(() =>
+    persisted ? deserializeFilters(persisted.filters) : DEFAULT_FILTERS
+  )
   // D-227/D-230: which of the seven views is active, or 'custom' once the user resizes,
   // reorders or changes column selection away from a predefined one (sort/filter adjustments
   // alone don't fork - a view stays "active" with a different sort or filter applied).
-  const [activeViewId, setActiveViewId] = useState<ViewId | 'custom'>('default')
-  const [columnOrder, setColumnOrder] = useState<ColumnId[]>(() =>
-    JOB_COLUMNS.map((column) => column.id)
+  const [activeViewId, setActiveViewId] = useState<ViewId | 'custom'>(
+    () => persisted?.activeViewId ?? 'default'
   )
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() =>
-    visibilityFor(DEFAULT_COLUMN_IDS)
+  const [columnOrder, setColumnOrder] = useState<ColumnId[]>(
+    () => persisted?.columnOrder ?? JOB_COLUMNS.map((column) => column.id)
   )
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({})
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
+    () => persisted?.columnVisibility ?? visibilityFor(DEFAULT_COLUMN_IDS)
+  )
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(
+    () => persisted?.columnSizing ?? {}
+  )
   // Native HTML5 drag-and-drop (D-228: no second DnD library) - the column id currently being
   // dragged, read by the drop target to know what to move.
   const draggedColumn = useRef<ColumnId | null>(null)
+
+  // D-229: written on every change to the view state, so the active view and any Custom
+  // customization survive navigating around the app and reloading the page.
+  useEffect(() => {
+    savePersistedTableState({
+      activeViewId,
+      columnOrder,
+      columnVisibility,
+      columnSizing,
+      sort,
+      filters: serializeFilters(filters),
+    })
+  }, [activeViewId, columnOrder, columnVisibility, columnSizing, sort, filters])
 
   const applications = useMemo<JobApplication[]>(
     () => (state.kind === 'ready' ? state.applications : []),
