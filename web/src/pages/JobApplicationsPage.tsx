@@ -30,6 +30,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ApiError, fetchJobApplicationDetail, fetchJobApplications } from '@/lib/api'
 import { COLUMN_BY_ID, DEFAULT_COLUMN_IDS, JOB_COLUMNS, type ColumnId } from '@/lib/jobColumns'
+import { JOB_VIEWS, type JobView, type ViewId } from '@/lib/jobViews'
 import type { JobApplication, JobApplicationDetailData, QueueStatus } from '@/lib/types'
 import { queueStatusFor, type QueueState } from '@/lib/useClaudeJobs'
 import { cn } from '@/lib/utils'
@@ -119,6 +120,14 @@ function visibilityFor(visible: readonly ColumnId[]): VisibilityState {
   return state
 }
 
+// TanStack's columnOrder must list every column (visibility, not order, decides what's shown) -
+// a view's own columns come first, in the order it names them, with the rest appended afterward
+// in their registry order so nothing is ever missing from columnOrder.
+function orderForView(columns: readonly ColumnId[]): ColumnId[] {
+  const rest = JOB_COLUMNS.map((column) => column.id).filter((id) => !columns.includes(id))
+  return [...columns, ...rest]
+}
+
 // D-227's "Select columns" - a checklist over all 27 columns (declaration order, so the list
 // doesn't reshuffle as the user reorders the table itself), toggling columnVisibility.
 function SelectColumnsPopover({
@@ -186,6 +195,10 @@ export function JobApplicationsPage({
   const [addJobOpen, setAddJobOpen] = useState(false)
   const [sort, setSort] = useState<SortState>(null)
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
+  // D-227/D-230: which of the seven views is active, or 'custom' once the user resizes,
+  // reorders or changes column selection away from a predefined one (sort/filter adjustments
+  // alone don't fork - a view stays "active" with a different sort or filter applied).
+  const [activeViewId, setActiveViewId] = useState<ViewId | 'custom'>('default')
   const [columnOrder, setColumnOrder] = useState<ColumnId[]>(() =>
     JOB_COLUMNS.map((column) => column.id)
   )
@@ -218,7 +231,10 @@ export function JobApplicationsPage({
       setColumnOrder((current) =>
         (typeof updater === 'function' ? updater(current) : updater) as ColumnId[]
       ),
-    onColumnSizingChange: setColumnSizing,
+    onColumnSizingChange: (updater) => {
+      setColumnSizing(updater)
+      setActiveViewId('custom')
+    },
     onColumnVisibilityChange: setColumnVisibility,
     columnResizeMode: 'onChange',
     getRowId: (app) => String(app.id),
@@ -228,6 +244,7 @@ export function JobApplicationsPage({
 
   function toggleColumn(id: ColumnId, visible: boolean) {
     setColumnVisibility((current) => ({ ...current, [id]: visible }))
+    setActiveViewId('custom')
   }
 
   function moveColumn(from: ColumnId, to: ColumnId) {
@@ -241,6 +258,18 @@ export function JobApplicationsPage({
       next.splice(toIndex, 0, from)
       return next
     })
+    setActiveViewId('custom')
+  }
+
+  // D-227/D-230: switching views replaces columns/order/sizing/sort/filter atomically, using the
+  // raw setters directly (never toggleColumn/moveColumn) so this never itself forks into Custom.
+  function switchView(view: JobView) {
+    setActiveViewId(view.id)
+    setColumnOrder(orderForView(view.columns))
+    setColumnVisibility(visibilityFor(view.columns))
+    setColumnSizing({})
+    setSort(view.sort)
+    setFilters(view.filters)
   }
 
   function reloadApplications() {
@@ -391,7 +420,28 @@ export function JobApplicationsPage({
       )}
 
       {state.kind === 'ready' && applications.length > 0 && (
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {JOB_VIEWS.map((view) => {
+              const Icon = view.icon
+              return (
+                <button
+                  key={view.id}
+                  type="button"
+                  onClick={() => switchView(view)}
+                  className={cn(
+                    buttonVariants({
+                      variant: activeViewId === view.id ? 'default' : 'outline',
+                      size: 'sm',
+                    })
+                  )}
+                >
+                  <Icon className="size-3.5" aria-hidden="true" />
+                  {view.label}
+                </button>
+              )
+            })}
+          </div>
           <SelectColumnsPopover visibility={columnVisibility} onToggle={toggleColumn} />
         </div>
       )}
