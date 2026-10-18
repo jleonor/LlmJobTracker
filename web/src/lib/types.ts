@@ -241,6 +241,17 @@ export type Lane = {
   description: string | null
   reasoning: string | null
   position: number
+  // The Dashboard's per-lane strengths/weaknesses summary (D-238) - null until "Analyze lanes"
+  // has run for this lane at least once.
+  fit_gap_summary: string | null
+  fit_gap_summary_generated_at: string | null
+}
+
+// The Dashboard's "Analyze lanes" action (D-238). Same GET-previews/POST-runs shape as
+// PositioningRescoreSummary and LaneReassignmentSummary.
+export type LaneAnalysisSummary = {
+  queued: number
+  skipped: number
 }
 
 // Settings' "Re-score all positioning analyses" action (D-218). GET previews these counts
@@ -300,6 +311,7 @@ export type ClaudeJob = {
   label: string
   kind: string
   job_application_id: number | null
+  lane_id: number | null
   status: string
   error: string | null
   created_at: string

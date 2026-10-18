@@ -14,6 +14,7 @@ function job(
     label: `job ${id}`,
     kind: 'profile_analysis',
     job_application_id: jobApplicationId,
+    lane_id: null,
     status,
     error: null,
     created_at: updatedAt,

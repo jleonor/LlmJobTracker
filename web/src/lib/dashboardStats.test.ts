@@ -1,0 +1,223 @@
+import { describe, expect, it } from 'vitest'
+
+import type { JobApplication } from '@/lib/types'
+import {
+  applicationsSentHeatmap,
+  applySlicers,
+  averageDaysIdentifiedToApplied,
+  distinctLanes,
+  distinctLocations,
+  matchScoreBucket,
+  proportionByLane,
+  proportionByMatchScoreBucket,
+  proportionByStage,
+  wholeHistoryRates,
+} from './dashboardStats'
+
+function application(overrides: Partial<JobApplication> = {}): JobApplication {
+  return {
+    id: 1,
+    company: 'Acme Inc',
+    role_title: 'Analyst',
+    lane: null,
+    location: null,
+    status: 'Identified',
+    last_updated: '2026-10-01T09:00:00Z',
+    match_score: null,
+    portal_name: null,
+    portal_url: null,
+    work_mode: 'Unknown',
+    contract_type: 'Unknown',
+    notes: null,
+    next_action: null,
+    due_date: null,
+    status_history: [],
+    has_listing: true,
+    has_details: false,
+    has_analysis: false,
+    has_tailored_cv: false,
+    has_cover_letter: false,
+    has_interview_prep: false,
+    ...overrides,
+  }
+}
+
+describe('matchScoreBucket', () => {
+  it('buckets a null score as "Not scored"', () => {
+    expect(matchScoreBucket(null)).toBe('Not scored')
+  })
+
+  it('buckets a score into its 10%-wide band', () => {
+    expect(matchScoreBucket(0)).toBe('0-10%')
+    expect(matchScoreBucket(45)).toBe('40-50%')
+    expect(matchScoreBucket(100)).toBe('90-100%')
+  })
+})
+
+describe('applySlicers', () => {
+  const applications = [
+    application({ id: 1, lane: 'Data Analytics', status: 'Identified', match_score: 42, location: 'Remote' }),
+    application({ id: 2, lane: 'Product Analytics', status: 'Applied', match_score: null, location: 'Montreal' }),
+  ]
+
+  it('filters by lane', () => {
+    const result = applySlicers(applications, {
+      lane: 'Data Analytics',
+      stage: null,
+      matchScoreBucket: null,
+      location: null,
+    })
+    expect(result.map((a) => a.id)).toEqual([1])
+  })
+
+  it('filters by stage', () => {
+    const result = applySlicers(applications, {
+      lane: null,
+      stage: 'Applied',
+      matchScoreBucket: null,
+      location: null,
+    })
+    expect(result.map((a) => a.id)).toEqual([2])
+  })
+
+  it('filters by the "Not scored" match-score bucket', () => {
+    const result = applySlicers(applications, {
+      lane: null,
+      stage: null,
+      matchScoreBucket: 'Not scored',
+      location: null,
+    })
+    expect(result.map((a) => a.id)).toEqual([2])
+  })
+
+  it('filters by location', () => {
+    const result = applySlicers(applications, {
+      lane: null,
+      stage: null,
+      matchScoreBucket: null,
+      location: 'Montreal',
+    })
+    expect(result.map((a) => a.id)).toEqual([2])
+  })
+
+  it('combines every slicer at once', () => {
+    const result = applySlicers(applications, {
+      lane: 'Data Analytics',
+      stage: 'Identified',
+      matchScoreBucket: '40-50%',
+      location: 'Remote',
+    })
+    expect(result.map((a) => a.id)).toEqual([1])
+  })
+})
+
+describe('distinctLanes and distinctLocations', () => {
+  it('report a "No lane"/"No location" entry for a null value, each once', () => {
+    const applications = [
+      application({ lane: 'Data Analytics', location: 'Remote' }),
+      application({ lane: null, location: null }),
+      application({ lane: 'Data Analytics', location: null }),
+    ]
+    expect(distinctLanes(applications)).toEqual(['Data Analytics', 'No lane'])
+    expect(distinctLocations(applications)).toEqual(['No location', 'Remote'])
+  })
+})
+
+describe('proportionByLane/Stage/MatchScoreBucket', () => {
+  const applications = [
+    application({ lane: 'Data Analytics', status: 'Identified', match_score: 85 }),
+    application({ lane: 'Data Analytics', status: 'Applied', match_score: 15 }),
+    application({ lane: null, status: 'Applied', match_score: null }),
+  ]
+
+  it('counts by lane, with no-lane applications grouped together', () => {
+    expect(proportionByLane(applications)).toEqual([
+      { label: 'Data Analytics', count: 2 },
+      { label: 'No lane', count: 1 },
+    ])
+  })
+
+  it('counts by stage, in the defined stage order, skipping stages with no applications', () => {
+    expect(proportionByStage(applications)).toEqual([
+      { label: 'Identified', count: 1 },
+      { label: 'Applied', count: 2 },
+    ])
+  })
+
+  it('counts by match-score bucket, in bucket order including "Not scored"', () => {
+    expect(proportionByMatchScoreBucket(applications)).toEqual([
+      { label: 'Not scored', count: 1 },
+      { label: '10-20%', count: 1 },
+      { label: '80-90%', count: 1 },
+    ])
+  })
+})
+
+describe('averageDaysIdentifiedToApplied', () => {
+  it('averages only applications with both an Identified and a later Applied date', () => {
+    const applications = [
+      application({
+        status_history: [
+          { status: 'Identified', changed_at: '2026-09-01T00:00:00Z' },
+          { status: 'Applied', changed_at: '2026-09-05T00:00:00Z' },
+        ],
+      }),
+      application({
+        status_history: [{ status: 'Identified', changed_at: '2026-09-10T00:00:00Z' }],
+      }),
+    ]
+    expect(averageDaysIdentifiedToApplied(applications)).toBe(4)
+  })
+
+  it('returns null when no application has both dates', () => {
+    const applications = [
+      application({ status_history: [{ status: 'Identified', changed_at: '2026-09-01T00:00:00Z' }] }),
+    ]
+    expect(averageDaysIdentifiedToApplied(applications)).toBeNull()
+  })
+})
+
+describe('wholeHistoryRates', () => {
+  it('divides each status count by the days/weeks since the earliest tracked entry', () => {
+    const applications = [
+      application({
+        status_history: [
+          { status: 'Identified', changed_at: '2026-09-01T00:00:00Z' },
+          { status: 'Applied', changed_at: '2026-09-06T00:00:00Z' },
+        ],
+      }),
+      application({
+        status_history: [{ status: 'Identified', changed_at: '2026-09-05T00:00:00Z' }],
+      }),
+    ]
+    const now = new Date('2026-09-11T00:00:00Z') // 10 days after the earliest entry
+    const rates = wholeHistoryRates(applications, now)
+    expect(rates).not.toBeNull()
+    expect(rates?.identifiedPerDay).toBeCloseTo(2 / 10)
+    expect(rates?.appliedPerDay).toBeCloseTo(1 / 10)
+    expect(rates?.identifiedPerWeek).toBeCloseTo(2 / (10 / 7))
+  })
+
+  it('returns null with no status history anywhere', () => {
+    expect(wholeHistoryRates([application()])).toBeNull()
+  })
+})
+
+describe('applicationsSentHeatmap', () => {
+  it('spans exactly 365 trailing days and counts Applied entries on their own day', () => {
+    const today = new Date('2026-10-18T00:00:00Z')
+    const applications = [
+      application({
+        status_history: [
+          { status: 'Applied', changed_at: '2026-10-18T09:00:00Z' },
+          { status: 'Applied', changed_at: '2026-10-18T14:00:00Z' },
+          { status: 'Identified', changed_at: '2026-10-17T09:00:00Z' },
+        ],
+      }),
+    ]
+    const heatmap = applicationsSentHeatmap(applications, today)
+    expect(heatmap).toHaveLength(365)
+    expect(heatmap[heatmap.length - 1]).toEqual({ date: '2026-10-18', count: 2 })
+    expect(heatmap[heatmap.length - 2]).toEqual({ date: '2026-10-17', count: 0 }) // Identified, not Applied
+  })
+})

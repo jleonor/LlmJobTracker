@@ -12,6 +12,7 @@ import type {
   JobApplicationFile,
   JobIdentityAnswer,
   Lane,
+  LaneAnalysisSummary,
   LaneClearSummary,
   LaneReassignmentSummary,
   ListingExtraction,
@@ -475,14 +476,24 @@ export function fetchSettings(): Promise<Settings> {
   return request<Settings>('/api/settings')
 }
 
-// Settings' "Re-score all positioning analyses" action (D-218). GET previews the counts
-// read-only, for the confirm dialog; POST runs it for real.
+// The Dashboard's "Re-score all positioning analyses" action (D-218, moved from Settings by
+// D-237). GET previews the counts read-only, for the confirm dialog; POST runs it for real.
 export function fetchPositioningRescorePreview(): Promise<PositioningRescoreSummary> {
   return request<PositioningRescoreSummary>('/api/positioning/rescore-all')
 }
 
 export function runPositioningRescoreAll(): Promise<PositioningRescoreSummary> {
   return request<PositioningRescoreSummary>('/api/positioning/rescore-all', { method: 'POST' })
+}
+
+// The Dashboard's "Re-score open applications" action (D-237): the same mechanic, filtered to
+// applications that haven't reached an end state (Rejected, Withdrawn, Expired).
+export function fetchPositioningRescoreOpenPreview(): Promise<PositioningRescoreSummary> {
+  return request<PositioningRescoreSummary>('/api/positioning/rescore-open')
+}
+
+export function runPositioningRescoreOpen(): Promise<PositioningRescoreSummary> {
+  return request<PositioningRescoreSummary>('/api/positioning/rescore-open', { method: 'POST' })
 }
 
 export function saveSettings(userName: string): Promise<Settings> {
@@ -722,6 +733,17 @@ export function fetchClearLanesNotInListPreview(): Promise<LaneClearSummary> {
 
 export function clearLanesNotInList(): Promise<LaneClearSummary> {
   return request<LaneClearSummary>('/api/lanes/clear-not-in-list', { method: 'POST' })
+}
+
+// The Dashboard's "Analyze lanes" action (D-238): queues one analyze_lane Claude Job per lane
+// with at least one positioning-scored application, skipping (and counting) the rest. GET
+// previews the counts read-only, for the confirm dialog; POST runs it for real.
+export function fetchLaneAnalysisPreview(): Promise<LaneAnalysisSummary> {
+  return request<LaneAnalysisSummary>('/api/lanes/analyze')
+}
+
+export function analyzeLanes(): Promise<LaneAnalysisSummary> {
+  return request<LaneAnalysisSummary>('/api/lanes/analyze', { method: 'POST' })
 }
 
 // The newest version of each of the three generated documents, for the analysis overlay's
