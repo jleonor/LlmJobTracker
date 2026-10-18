@@ -3,10 +3,11 @@ import {
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
+  type ColumnSizingState,
   type VisibilityState,
 } from '@tanstack/react-table'
 import { Loader2, Plus, TriangleAlert } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { AddJobOverlay } from '@/components/app/AddJobOverlay'
 import {
@@ -28,6 +29,7 @@ import { ApiError, fetchJobApplicationDetail, fetchJobApplications } from '@/lib
 import { COLUMN_BY_ID, DEFAULT_COLUMN_IDS, JOB_COLUMNS, type ColumnId } from '@/lib/jobColumns'
 import type { JobApplication, JobApplicationDetailData, QueueStatus } from '@/lib/types'
 import { queueStatusFor, type QueueState } from '@/lib/useClaudeJobs'
+import { cn } from '@/lib/utils'
 import { JobApplicationDetailPage } from '@/pages/JobApplicationDetailPage'
 
 type State =
@@ -131,9 +133,14 @@ export function JobApplicationsPage({
   const [addJobOpen, setAddJobOpen] = useState(false)
   const [sort, setSort] = useState<SortState>(null)
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
-  const [columnOrder] = useState<ColumnId[]>(() => JOB_COLUMNS.map((column) => column.id))
+  const [columnOrder, setColumnOrder] = useState<ColumnId[]>(() =>
+    JOB_COLUMNS.map((column) => column.id)
+  )
   const [columnVisibility] = useState<VisibilityState>(() => visibilityFor(DEFAULT_COLUMN_IDS))
-  const [columnSizing] = useState({})
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({})
+  // Native HTML5 drag-and-drop (D-228: no second DnD library) - the column id currently being
+  // dragged, read by the drop target to know what to move.
+  const draggedColumn = useRef<ColumnId | null>(null)
 
   const applications = useMemo<JobApplication[]>(
     () => (state.kind === 'ready' ? state.applications : []),
@@ -152,10 +159,29 @@ export function JobApplicationsPage({
     data: visibleApplications,
     columns: tanstackColumns,
     state: { columnOrder, columnVisibility, columnSizing },
+    onColumnOrderChange: (updater) =>
+      setColumnOrder((current) =>
+        (typeof updater === 'function' ? updater(current) : updater) as ColumnId[]
+      ),
+    onColumnSizingChange: setColumnSizing,
+    columnResizeMode: 'onChange',
     getRowId: (app) => String(app.id),
     getCoreRowModel: getCoreRowModel(),
   })
   const visibleColumnIds = table.getVisibleLeafColumns().map((column) => column.id as ColumnId)
+
+  function moveColumn(from: ColumnId, to: ColumnId) {
+    if (from === to) return
+    setColumnOrder((current) => {
+      const next = [...current]
+      const fromIndex = next.indexOf(from)
+      const toIndex = next.indexOf(to)
+      if (fromIndex === -1 || toIndex === -1) return current
+      next.splice(fromIndex, 1)
+      next.splice(toIndex, 0, from)
+      return next
+    })
+  }
 
   function reloadApplications() {
     fetchJobApplications()
@@ -321,10 +347,22 @@ export function JobApplicationsPage({
                     return (
                       <TableHead
                         key={header.id}
-                        className={HEAD}
+                        className={cn(HEAD, 'relative')}
                         style={{ width: header.getSize() }}
                       >
-                        <div className="flex items-center gap-1 overflow-hidden">
+                        <div
+                          draggable
+                          onDragStart={() => {
+                            draggedColumn.current = columnId
+                          }}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={(event) => {
+                            event.preventDefault()
+                            if (draggedColumn.current) moveColumn(draggedColumn.current, columnId)
+                            draggedColumn.current = null
+                          }}
+                          className="flex cursor-grab items-center gap-1 overflow-hidden active:cursor-grabbing"
+                        >
                           <SortableHeader
                             column={columnId}
                             label={COLUMN_BY_ID[columnId].label}
@@ -338,6 +376,17 @@ export function JobApplicationsPage({
                             onChange={setFilters}
                           />
                         </div>
+                        <div
+                          onMouseDown={header.getResizeHandler()}
+                          onTouchStart={header.getResizeHandler()}
+                          className={cn(
+                            // A wider hit area than the visible bar (centered on the column
+                            // boundary, D-227) - 1.5px alone proved too narrow to reliably grab.
+                            'absolute top-0 -right-1.5 z-10 h-full w-3 cursor-col-resize touch-none select-none',
+                            'after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent hover:after:bg-primary/50',
+                            header.column.getIsResizing() && 'after:bg-primary'
+                          )}
+                        />
                       </TableHead>
                     )
                   })}
