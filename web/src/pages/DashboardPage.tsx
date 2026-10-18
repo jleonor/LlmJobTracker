@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from 'recharts'
 
 import { MarkdownDocument } from '@/components/app/MarkdownDocument'
@@ -185,7 +185,7 @@ export function DashboardPage({ settings }: { settings: Settings }) {
           <CardHeader>
             <CardTitle>Applications sent</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-1 flex-col">
             <ApplicationsSentHeatmap days={heatmap} />
           </CardContent>
         </Card>
@@ -411,37 +411,41 @@ function ApplicationsSentHeatmap({ days }: { days: { date: string; count: number
     weeks.push(padded.slice(i, i + 7))
   }
 
-  // The grid runs oldest -> newest left to right, so today's week sits at the far right - scroll
-  // there on load/update rather than leaving the viewer looking at a year-old, mostly-empty start.
-  const scrollRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollLeft = el.scrollWidth
-  }, [days])
-
   if (days.length === 0) {
     return <p className="text-sm text-muted-foreground">No applications sent yet.</p>
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div ref={scrollRef} className="flex gap-1 overflow-x-auto pb-1">
-        {weeks.map((week, weekIndex) => (
-          <div key={weekIndex} className="flex flex-col gap-1">
-            {week.map((day, dayIndex) =>
-              day === null ? (
-                <div key={dayIndex} className="size-3" />
-              ) : (
-                <div
-                  key={day.date}
-                  title={`${day.date}: ${day.count} application${day.count === 1 ? '' : 's'} sent`}
-                  className="size-3 rounded-sm"
-                  style={{ backgroundColor: heatmapColor(day.count, max) }}
-                />
-              ),
-            )}
-          </div>
-        ))}
+    <div className="flex h-full flex-col gap-2">
+      {/* A CSS grid with fractional tracks (not fixed-size cells) so the whole year fills the
+          card's actual width and height exactly, oldest week at the left, today's at the right -
+          no fixed cell size, no horizontal scroll. */}
+      <div
+        className="grid flex-1 gap-1"
+        style={{
+          gridTemplateColumns: `repeat(${weeks.length}, 1fr)`,
+          gridTemplateRows: 'repeat(7, 1fr)',
+          gridAutoFlow: 'column',
+          // A floor for when nothing stretches this card taller (e.g. below the `lg` breakpoint,
+          // where it isn't sharing a row with the taller lane chart) - without it, 1fr rows have
+          // no intrinsic size to fall back on and the grid collapses toward zero height.
+          minHeight: 112,
+        }}
+      >
+        {weeks.flatMap((week, weekIndex) =>
+          week.map((day, dayIndex) =>
+            day === null ? (
+              <div key={`${weekIndex}-${dayIndex}`} />
+            ) : (
+              <div
+                key={day.date}
+                title={`${day.date}: ${day.count} application${day.count === 1 ? '' : 's'} sent`}
+                className="rounded-sm"
+                style={{ backgroundColor: heatmapColor(day.count, max) }}
+              />
+            ),
+          ),
+        )}
       </div>
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
         <span>Less</span>
