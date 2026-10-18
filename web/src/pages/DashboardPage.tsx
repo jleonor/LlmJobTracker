@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from 'recharts'
 
 import { MarkdownDocument } from '@/components/app/MarkdownDocument'
@@ -402,13 +402,21 @@ function ApplicationsSentHeatmap({ days }: { days: { date: string; count: number
     weeks.push(padded.slice(i, i + 7))
   }
 
+  // The grid runs oldest -> newest left to right, so today's week sits at the far right - scroll
+  // there on load/update rather than leaving the viewer looking at a year-old, mostly-empty start.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [days])
+
   if (days.length === 0) {
     return <p className="text-sm text-muted-foreground">No applications sent yet.</p>
   }
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex gap-1 overflow-x-auto pb-1">
+      <div ref={scrollRef} className="flex gap-1 overflow-x-auto pb-1">
         {weeks.map((week, weekIndex) => (
           <div key={weekIndex} className="flex flex-col gap-1">
             {week.map((day, dayIndex) =>
