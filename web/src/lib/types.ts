@@ -254,6 +254,13 @@ export type LaneAnalysisSummary = {
   skipped: number
 }
 
+// The Dashboard's cross-lane overview report (D-245): both fields null until "Summarize lanes"
+// has run at least once.
+export type LaneOverview = {
+  summary: string | null
+  generated_at: string | null
+}
+
 // Settings' "Re-score all positioning analyses" action (D-218). GET previews these counts
 // read-only; POST runs it for real and returns the same shape.
 export type PositioningRescoreSummary = {

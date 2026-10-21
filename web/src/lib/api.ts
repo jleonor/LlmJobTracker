@@ -14,6 +14,7 @@ import type {
   Lane,
   LaneAnalysisSummary,
   LaneClearSummary,
+  LaneOverview,
   LaneReassignmentSummary,
   ListingExtraction,
   LlmAppOpened,
@@ -744,6 +745,17 @@ export function fetchLaneAnalysisPreview(): Promise<LaneAnalysisSummary> {
 
 export function analyzeLanes(): Promise<LaneAnalysisSummary> {
   return request<LaneAnalysisSummary>('/api/lanes/analyze', { method: 'POST' })
+}
+
+// The Dashboard's cross-lane overview report (D-245): the stored summary, or both fields null.
+export function fetchLaneOverview(): Promise<LaneOverview> {
+  return request<LaneOverview>('/api/lanes/overview')
+}
+
+// "Summarize lanes" (D-245): one job, not a batch - queues it and returns the Claude Job so the
+// caller can show a live trace, the same shape syncLanesFromStrategy already returns.
+export function analyzeLaneOverview(): Promise<ClaudeJob> {
+  return request<ClaudeJob>('/api/lanes/overview/analyze', { method: 'POST' })
 }
 
 // The newest version of each of the three generated documents, for the analysis overlay's

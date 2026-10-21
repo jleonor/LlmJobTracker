@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from 'recharts'
 
 import { MarkdownDocument } from '@/components/app/MarkdownDocument'
+import { RunTrace } from '@/components/app/RunTrace'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -36,10 +37,12 @@ import {
   type DashboardSlicers,
 } from '@/lib/dashboardStats'
 import {
+  analyzeLaneOverview,
   analyzeLanes,
   ApiError,
   fetchJobApplications,
   fetchLaneAnalysisPreview,
+  fetchLaneOverview,
   fetchLanes,
   fetchPositioningRescoreOpenPreview,
   fetchPositioningRescorePreview,
@@ -51,10 +54,12 @@ import {
   type JobApplication,
   type Lane,
   type LaneAnalysisSummary,
+  type LaneOverview,
   type PositioningRescoreSummary,
   type Settings,
 } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import type { QueueState } from '@/lib/useClaudeJobs'
 
 type State =
   | { kind: 'loading' }
@@ -65,10 +70,11 @@ type State =
 // fold the tail into "Other" rather than keep adding distinct hues.
 const MAX_LANE_BARS = 7
 
-export function DashboardPage({ settings }: { settings: Settings }) {
+export function DashboardPage({ settings, queue }: { settings: Settings; queue: QueueState }) {
   const [state, setState] = useState<State>({ kind: 'loading' })
   const [slicers, setSlicers] = useState<DashboardSlicers>(EMPTY_SLICERS)
   const [lanes, setLanes] = useState<Lane[]>([])
+  const [overview, setOverview] = useState<LaneOverview>({ summary: null, generated_at: null })
 
   useEffect(() => {
     let cancelled = false
@@ -97,6 +103,26 @@ export function DashboardPage({ settings }: { settings: Settings }) {
       .then(setLanes)
       .catch(() => undefined)
   }, [])
+
+  useEffect(() => {
+    fetchLaneOverview()
+      .then(setOverview)
+      .catch(() => undefined)
+  }, [])
+
+  // Reloads the stored overview once a "Summarize lanes" job finishes, the same
+  // finished-job-id-as-a-dependency pattern ProfilePage.tsx's own Sync-from-strategy reload uses.
+  const summarizeLanesJob = [...queue.jobs].reverse().find((job) => job.kind === 'summarize_lanes')
+  const finishedSummarizeLanesJob =
+    summarizeLanesJob && (summarizeLanesJob.status === 'done' || summarizeLanesJob.status === 'failed')
+      ? summarizeLanesJob.id
+      : null
+  useEffect(() => {
+    if (finishedSummarizeLanesJob === null) return
+    fetchLaneOverview()
+      .then(setOverview)
+      .catch(() => undefined)
+  }, [finishedSummarizeLanesJob])
 
   const allApplications = useMemo(
     () => (state.kind === 'ready' ? state.applications : []),
@@ -194,7 +220,13 @@ export function DashboardPage({ settings }: { settings: Settings }) {
         </Card>
       </div>
 
-      <LaneSummarySection lanes={lanes} applications={allApplications} onAnalyzed={reloadLanes} />
+      <LaneSummarySection
+        lanes={lanes}
+        applications={allApplications}
+        onAnalyzed={reloadLanes}
+        overview={overview}
+        queue={queue}
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <RescoreSection
@@ -471,18 +503,29 @@ function LaneSummarySection({
   lanes,
   applications,
   onAnalyzed,
+  overview,
+  queue,
 }: {
   lanes: Lane[]
   applications: JobApplication[]
   onAnalyzed: () => void
+  overview: LaneOverview
+  queue: QueueState
 }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Per-lane strengths and weaknesses</CardTitle>
-        <AnalyzeLanesButton onAnalyzed={onAnalyzed} />
+        <div className="flex items-center gap-2">
+          <SummarizeLanesButton
+            lanesAnalyzed={lanes.some((lane) => lane.fit_gap_summary !== null)}
+            queue={queue}
+          />
+          <AnalyzeLanesButton onAnalyzed={onAnalyzed} />
+        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        <LaneOverviewReport overview={overview} />
         {lanes.length === 0 ? (
           <p className="text-sm text-muted-foreground">No lanes yet.</p>
         ) : (
@@ -496,6 +539,26 @@ function LaneSummarySection({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function LaneOverviewReport({ overview }: { overview: LaneOverview }) {
+  if (overview.summary === null) {
+    return (
+      <p className="text-sm text-muted-foreground border-b border-border pb-4">
+        No overview yet - run "Summarize lanes" once at least one lane has been analyzed.
+      </p>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-1 border-b border-border pb-4">
+      <MarkdownDocument text={overview.summary} />
+      {overview.generated_at && (
+        <p className="text-xs text-muted-foreground">
+          Generated {new Date(overview.generated_at).toLocaleString()}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -546,6 +609,86 @@ function LaneSummaryRow({
         )}
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+function SummarizeLanesButton({
+  lanesAnalyzed,
+  queue,
+}: {
+  lanesAnalyzed: boolean
+  queue: QueueState
+}) {
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [jobId, setJobId] = useState<number | null>(null)
+  const [running, setRunning] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setError(null)
+    setJobId(null)
+    setRunning(false)
+  }, [open])
+
+  const job = jobId === null ? null : (queue.jobs.find((j) => j.id === jobId) ?? null)
+
+  async function start() {
+    setBusy(true)
+    setError(null)
+    try {
+      const started = await analyzeLaneOverview()
+      setJobId(started.id)
+      setRunning(true)
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'The summary did not start.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!lanesAnalyzed}
+        title={lanesAnalyzed ? undefined : 'Analyze at least one lane first'}
+        onClick={() => setOpen(true)}
+      >
+        Summarize lanes
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="flex h-[85vh] w-full max-w-6xl flex-col gap-3 sm:max-w-6xl">
+          <DialogHeader>
+            <DialogTitle>Summarize lanes</DialogTitle>
+          </DialogHeader>
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+            {!running && (
+              <div className="flex flex-col gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Generates one overview report from the career history, the positioning
+                  strategy, and every lane's own analysis so far. Replaces the current overview,
+                  if there is one.
+                </p>
+                {error && <p className="text-sm text-destructive">{error}</p>}
+                <Button disabled={busy} onClick={() => void start()} className="self-start">
+                  {busy ? 'Starting...' : 'Summarize'}
+                </Button>
+              </div>
+            )}
+            {running && <RunTrace job={job} />}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

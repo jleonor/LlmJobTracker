@@ -32,7 +32,7 @@ function App() {
       userName={settings.user_name}
     >
       {screen === 'jobs' && <JobApplicationsPage queue={queue} resetSignal={jobsResetSignal} />}
-      {screen === 'dashboard' && <DashboardPage settings={settings} />}
+      {screen === 'dashboard' && <DashboardPage settings={settings} queue={queue} />}
       {screen === 'profile' && (
         <ProfilePage userName={settings.user_name} onNameChanged={reloadSettings} />
       )}
