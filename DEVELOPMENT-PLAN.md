@@ -1033,6 +1033,24 @@ this plan's established pattern (D-104).
 17. Checks: `scripts/check.py` output; personal-data scan; screenshots of a real `analyze_lane`
     answer showing the listing-derived subheadings, and the overview section/dialog.
 
+Done when (this batch)
+- [x] `analyze_lane`'s own prompt includes each scored application's listing text and asks for
+  structured Markdown (`###` subheadings, bullets); verified via `test_lane_pipeline.py` and live
+  — injected structured sample text (bold/italic/subheadings) rendered exactly as designed in a
+  lane's expanded summary. A real LLM-generated answer with real listing content is left for the
+  user to judge (CLAUDE.md rule 4), same reasoning as the original 11 steps' own open items.
+- [x] "Summarize lanes" is disabled with a reason until at least one lane has been analyzed, opens
+  a confirm-then-trace dialog, and the stored overview renders at the top of "Per-lane strengths
+  and weaknesses" — confirmed live (2026-10-21): the button showed "Analyze at least one lane
+  first" while disabled, became enabled and opened its dialog once a lane had a `fit_gap_summary`.
+  A real completed `summarize_lanes` run is left for the user, since it spends real usage.
+- [x] `python scripts/check.py` is green and a personal-data scan of this batch's commits found no
+  matches. (2026-10-21: `check.py` — 7/7 steps pass (`[PASS]` for api lint/format/types/tests, web
+  lint/types-and-build/tests); web suite 45/45. A first run caught a real formatting issue (ruff
+  format wanted two lines changed in `app.py` and `lane_pipeline.py`) despite the background task's
+  exit code reading 0 — fixed and re-run clean. Personal-data scan of every commit on this batch,
+  including the formatting fix, grepped for the user's name and email: no matches.)
+
 ---
 
 ## Phase 11: Shell, hardening, and in-app LLM + browser
