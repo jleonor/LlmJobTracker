@@ -278,7 +278,11 @@ Score every one of these requirements, in this order:
 
 {numbered}
 
-Use this scale for both numbers - pick the band the evidence actually supports, not a guess:
+Use this scale for both numbers - pick the band the evidence actually supports, not a guess. When
+the evidence could reasonably sit in two neighboring bands, score the lower one: a strict,
+conservative read is correct more often than a generous one, especially for MATCH - do not round
+up because a skill is adjacent, implied, or likely, only because the career history actually shows
+it.
 
 WEIGHT (how important this requirement is to the role):
 - 9-10: stated as required, essential, a must-have, or clearly a core, frequently-performed duty
