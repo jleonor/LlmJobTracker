@@ -1714,9 +1714,7 @@ def create_app(
             submit_analyze_lane(conn, queue, lane.id)
         return LaneAnalysisSummary(queued=len(ready), skipped=skipped)
 
-    @app.get(
-        "/lanes/overview", response_model=LaneOverview, dependencies=[Depends(require_token)]
-    )
+    @app.get("/lanes/overview", response_model=LaneOverview, dependencies=[Depends(require_token)])
     def read_lane_overview(conn: Annotated[Connection, Depends(get_db)]) -> LaneOverview:
         """The Dashboard's cross-lane overview report (D-245), or both fields null if
         "Summarize lanes" has never run."""

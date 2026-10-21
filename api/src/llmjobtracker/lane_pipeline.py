@@ -469,12 +469,7 @@ def lane_overview_ready(conn: sqlite3.Connection) -> bool:
 
 
 def _render_lane_block(lane: Lane) -> str:
-    return (
-        "=== LANE ===\n"
-        f"NAME: {lane.name}\n"
-        f"ANALYSIS:\n{lane.fit_gap_summary}\n"
-        "=== END LANE ==="
-    )
+    return f"=== LANE ===\nNAME: {lane.name}\nANALYSIS:\n{lane.fit_gap_summary}\n=== END LANE ==="
 
 
 def build_summarize_lanes_prompt(conn: sqlite3.Connection) -> str:
