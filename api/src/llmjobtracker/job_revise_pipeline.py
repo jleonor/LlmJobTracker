@@ -501,12 +501,30 @@ def parse_application_history_revision(text: str) -> ApplicationHistoryRevision:
     )
 
 
+# The rest of an application_history revise prompt (status history, description, prior messages)
+# is always small - a few KB at most. Capping the one attachment well under MAX_PROMPT_CHARS means
+# a long PDF, DOCX or email thread is truncated instead of failing the whole turn (D-247); the
+# model is told it was cut, the same "say what's missing" honesty rule every other prompt follows.
+_MAX_ATTACHMENT_CHARS: Final = 100_000
+
+
+def _truncate_attachment(text: str) -> str:
+    if len(text) <= _MAX_ATTACHMENT_CHARS:
+        return text
+    return (
+        text[:_MAX_ATTACHMENT_CHARS]
+        + f"\n\n(truncated - this file is {len(text):,} characters; only the first "
+        f"{_MAX_ATTACHMENT_CHARS:,} are shown here)"
+    )
+
+
 def _attachment_text(
     conn: sqlite3.Connection, files_root: Path, attachment_job_file_id: int | None
 ) -> tuple[str, str] | None:
     """(name, text) for a turn's attached file, or None if there is none, it's missing on disk,
     or its text could not be read - the prompt says so either way rather than silently omitting
-    the attachment."""
+    the attachment. A file whose extracted text is longer than _MAX_ATTACHMENT_CHARS is truncated,
+    not rejected (D-247)."""
     if attachment_job_file_id is None:
         return None
     row = conn.execute(
@@ -519,11 +537,11 @@ def _attachment_text(
     if not path.exists():
         return name, "(this file could no longer be found)"
     if row["kind"] == "eml":
-        return name, eml_to_text(path.read_bytes()).body
+        return name, _truncate_attachment(eml_to_text(path.read_bytes()).body)
     if row["kind"] == "msg":
-        return name, msg_to_text(path.read_bytes()).body
+        return name, _truncate_attachment(msg_to_text(path.read_bytes()).body)
     result = extract(path)
-    return name, (
+    return name, _truncate_attachment(
         result.text if result.status == "ok" else f"(could not be read: {result.message})"
     )
 

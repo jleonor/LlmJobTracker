@@ -628,6 +628,43 @@ def test_an_attached_other_file_is_read_with_the_general_extractor(db_path: Path
     assert "Recruiter said to follow up by the 5th." in runner.prompts[0]
 
 
+def test_an_oversized_attachment_is_truncated_rather_than_failing_the_turn(db_path: Path) -> None:
+    """D-247: a PDF (or any other file type) longer than the per-attachment cap no longer fails
+    the whole turn with "material is too large" - it's truncated, with a note, so any file type
+    already accepted elsewhere in the app can actually be attached here too."""
+    app_id = add_application(db_path)
+    fill_application_history(db_path, app_id, "Wait for a reply.", None)
+    conn = connect(db_path)
+    try:
+        attachment = store_job_file(
+            conn,
+            db_path.parent / "files",
+            app_id,
+            "other",
+            "notes.txt",
+            ("Recruiter said to follow up by the 5th. " + "Filler. " * 20_000).encode(),
+        )
+    finally:
+        conn.close()
+    runner = FakeRunner(text=history_answer())
+    queue = make_queue(db_path, runner)
+
+    submit(
+        db_path,
+        queue,
+        app_id,
+        "application_history",
+        "Anything useful in the attachment?",
+        attachment.id,
+    )
+    run_all(queue)
+
+    assert "Recruiter said to follow up by the 5th." in runner.prompts[0]
+    assert "(truncated - this file is" in runner.prompts[0]
+    assert "Filler. Filler. Filler." in runner.prompts[0]
+    assert len(runner.prompts[0]) < 150_000
+
+
 def test_submit_rejects_when_application_history_has_nothing_to_revise(db_path: Path) -> None:
     app_id = add_application(db_path)
     queue = make_queue(db_path, FakeRunner())
