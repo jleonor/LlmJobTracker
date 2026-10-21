@@ -1138,6 +1138,18 @@ MIGRATIONS: tuple[Migration, ...] = (
         ),
         down=("DROP TABLE lane_overview",),
     ),
+    Migration(
+        version=34,
+        name="split lane_overview's summary into a short summary plus fit/gaps sections (D-245)",
+        up=(
+            "ALTER TABLE lane_overview ADD COLUMN overall_fit TEXT",
+            "ALTER TABLE lane_overview ADD COLUMN overall_gaps TEXT",
+        ),
+        down=(
+            "ALTER TABLE lane_overview DROP COLUMN overall_gaps",
+            "ALTER TABLE lane_overview DROP COLUMN overall_fit",
+        ),
+    ),
 )
 
 _LEDGER = """

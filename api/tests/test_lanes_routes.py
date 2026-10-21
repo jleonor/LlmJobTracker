@@ -334,7 +334,11 @@ def test_analyze_lanes_preview_matches_the_post_route_and_changes_nothing(db_pat
 
 # --- Lane overview (summarize_lanes, D-245) -----------------------------------------------------
 
-GOOD_SUMMARIZE_LANES_ANSWER = """=== OVERALL FIT ===
+GOOD_SUMMARIZE_LANES_ANSWER = """=== SUMMARY ===
+Strong and consistent fit across data-facing roles, with distributed systems the main gap.
+=== END SUMMARY ===
+
+=== OVERALL FIT ===
 Consistently strong across data-facing roles.
 === END OVERALL FIT ===
 
@@ -345,7 +349,12 @@ Large-scale distributed systems experience is the recurring gap.
 
 def test_lane_overview_starts_empty(client: TestClient) -> None:
     overview = client.get("/lanes/overview").json()
-    assert overview == {"summary": None, "generated_at": None}
+    assert overview == {
+        "summary": None,
+        "overall_fit": None,
+        "overall_gaps": None,
+        "generated_at": None,
+    }
 
 
 def test_analyze_lane_overview_requires_a_lane_to_be_analyzed(client: TestClient) -> None:

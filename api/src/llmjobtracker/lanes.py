@@ -211,21 +211,27 @@ def replace_all_lanes(
 
 class LaneOverview(BaseModel):
     summary: str | None
+    overall_fit: str | None
+    overall_gaps: str | None
     generated_at: str | None
 
 
 def get_lane_overview(conn: sqlite3.Connection) -> LaneOverview:
-    row = conn.execute("SELECT summary, generated_at FROM lane_overview WHERE id = 1").fetchone()
+    row = conn.execute(
+        "SELECT summary, overall_fit, overall_gaps, generated_at FROM lane_overview WHERE id = 1"
+    ).fetchone()
     return LaneOverview(**dict(row))
 
 
-def set_lane_overview(conn: sqlite3.Connection, summary: str) -> None:
+def set_lane_overview(
+    conn: sqlite3.Connection, *, summary: str, overall_fit: str, overall_gaps: str
+) -> None:
     """summarize_lanes's own write (D-245): a later run replaces the stored report outright -
     there is no history of past overviews kept, the same "at most one current version"
     convention `lanes.fit_gap_summary` (D-238) already uses."""
     with conn:
         conn.execute(
-            "UPDATE lane_overview SET summary = ?, "
+            "UPDATE lane_overview SET summary = ?, overall_fit = ?, overall_gaps = ?, "
             "generated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = 1",
-            (summary,),
+            (summary, overall_fit, overall_gaps),
         )

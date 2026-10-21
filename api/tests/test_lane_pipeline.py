@@ -781,7 +781,11 @@ def test_analyze_lane_job_writes_the_fit_gap_summary(db_path: Path) -> None:
 
 # --- summarize_lanes (Phase 10's cross-lane overview report, D-245) ----------------------------
 
-GOOD_SUMMARIZE_LANES_ANSWER = """=== OVERALL FIT ===
+GOOD_SUMMARIZE_LANES_ANSWER = """=== SUMMARY ===
+Strong and consistent fit across data-facing roles, with distributed systems the main gap.
+=== END SUMMARY ===
+
+=== OVERALL FIT ===
 Consistently strong across data-facing roles.
 === END OVERALL FIT ===
 
@@ -873,8 +877,11 @@ def test_build_summarize_lanes_prompt_rejects_when_no_lane_has_been_analyzed(
         conn.close()
 
 
-def test_parse_summarize_lanes_answer_reads_both_sections() -> None:
+def test_parse_summarize_lanes_answer_reads_the_summary_and_both_sections() -> None:
     answer = parse_summarize_lanes_answer(GOOD_SUMMARIZE_LANES_ANSWER)
+    assert answer.summary == (
+        "Strong and consistent fit across data-facing roles, with distributed systems the main gap."
+    )
     assert answer.overall_fit == "Consistently strong across data-facing roles."
     assert answer.overall_gaps == "Large-scale distributed systems experience is the recurring gap."
 
@@ -925,7 +932,11 @@ def test_summarize_lanes_job_writes_the_lane_overview(db_path: Path) -> None:
         overview = get_lane_overview(conn)
     finally:
         conn.close()
-    assert overview.summary is not None
-    assert "Consistently strong across data-facing roles." in overview.summary
-    assert "Large-scale distributed systems experience is the recurring gap." in overview.summary
+    assert overview.summary == (
+        "Strong and consistent fit across data-facing roles, with distributed systems the main gap."
+    )
+    assert overview.overall_fit == "Consistently strong across data-facing roles."
+    assert overview.overall_gaps == (
+        "Large-scale distributed systems experience is the recurring gap."
+    )
     assert overview.generated_at is not None

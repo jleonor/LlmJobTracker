@@ -74,7 +74,12 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   const [state, setState] = useState<State>({ kind: 'loading' })
   const [slicers, setSlicers] = useState<DashboardSlicers>(EMPTY_SLICERS)
   const [lanes, setLanes] = useState<Lane[]>([])
-  const [overview, setOverview] = useState<LaneOverview>({ summary: null, generated_at: null })
+  const [overview, setOverview] = useState<LaneOverview>({
+    summary: null,
+    overall_fit: null,
+    overall_gaps: null,
+    generated_at: null,
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -551,14 +556,35 @@ function LaneOverviewReport({ overview }: { overview: LaneOverview }) {
     )
   }
   return (
-    <div className="flex flex-col gap-1 border-b border-border pb-4">
+    <div className="flex flex-col gap-2 border-b border-border pb-4">
       <MarkdownDocument text={overview.summary} />
+      <OverviewDetailSection title="Overall fit" text={overview.overall_fit} />
+      <OverviewDetailSection title="Overall gaps" text={overview.overall_gaps} />
       {overview.generated_at && (
         <p className="text-xs text-muted-foreground">
           Generated {new Date(overview.generated_at).toLocaleString()}
         </p>
       )}
     </div>
+  )
+}
+
+// One of the overview's two detail sections (D-245) - collapsed by default so the always-visible
+// short summary above is what the user sees first; the same Collapsible shape LaneSummaryRow's
+// own per-lane detail already uses.
+function OverviewDetailSection({ title, text }: { title: string; text: string | null }) {
+  const [open, setOpen] = useState(false)
+  if (text === null) return null
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex items-center gap-1 text-left text-sm font-medium">
+        <ChevronRight className={cn('size-4 transition-transform', open && 'rotate-90')} />
+        {title}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-2 pl-5">
+        <MarkdownDocument text={text} />
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 

@@ -431,6 +431,11 @@ what it says or asks.
 Then write a structured overview. Use Markdown subheadings (###) for each section below, bullet
 points for individual findings, and bold/italic emphasis to highlight what matters most.
 
+=== SUMMARY ===
+<3-5 plain sentences: a short, plain-language summary of the overall fit and gaps below - no
+subheadings, no bullet points, just prose a reader could skim before opening the detail>
+=== END SUMMARY ===
+
 === OVERALL FIT ===
 ### Recurring strengths
 <bulleted list: strengths that show up across more than one lane>
@@ -448,6 +453,7 @@ lead with>
 <bulleted list: which of these gaps matters most across the whole search, and why>
 === END OVERALL GAPS ==="""
 
+_SUMMARY_BLOCK = block_pattern("SUMMARY")
 _OVERALL_FIT_BLOCK = block_pattern("OVERALL FIT")
 _OVERALL_GAPS_BLOCK = block_pattern("OVERALL GAPS")
 
@@ -459,6 +465,7 @@ class LaneOverviewNotReady(Exception):
 
 @dataclass(frozen=True)
 class LaneOverviewAnswer:
+    summary: str
     overall_fit: str
     overall_gaps: str
 
@@ -487,19 +494,14 @@ def build_summarize_lanes_prompt(conn: sqlite3.Connection) -> str:
 def parse_summarize_lanes_answer(text: str) -> LaneOverviewAnswer:
     """Same degenerate-answer guard as analyze_lane's own FIT SUMMARY/GAPS SUMMARY (D-238):
     at least one of OVERALL FIT/OVERALL GAPS must be non-empty. Either section alone may be
-    empty."""
+    empty. SUMMARY has no gate of its own - a short synopsis with nothing to summarize is still
+    a valid (if plain) answer."""
+    summary = block_text(_SUMMARY_BLOCK, text)
     overall_fit = block_text(_OVERALL_FIT_BLOCK, text)
     overall_gaps = block_text(_OVERALL_GAPS_BLOCK, text)
     if not overall_fit and not overall_gaps:
         raise PromptRejected("The answer had no OVERALL FIT or OVERALL GAPS content.")
-    return LaneOverviewAnswer(overall_fit=overall_fit, overall_gaps=overall_gaps)
-
-
-def render_lane_overview(answer: LaneOverviewAnswer) -> str:
-    return (
-        f"## Overall Fit\n\n{answer.overall_fit or '(nothing notable across these lanes)'}\n\n"
-        f"## Overall Gaps\n\n{answer.overall_gaps or '(nothing notable across these lanes)'}"
-    )
+    return LaneOverviewAnswer(summary=summary, overall_fit=overall_fit, overall_gaps=overall_gaps)
 
 
 def submit_summarize_lanes(conn: sqlite3.Connection, queue: ClaudeJobQueue) -> int:
@@ -512,6 +514,14 @@ def submit_summarize_lanes(conn: sqlite3.Connection, queue: ClaudeJobQueue) -> i
     )
 
 
+_NOTHING_NOTABLE: Final = "(nothing notable across these lanes)"
+
+
 def store_summarize_lanes_result(conn: sqlite3.Connection, text: str) -> None:
     answer = parse_summarize_lanes_answer(text)
-    set_lane_overview(conn, render_lane_overview(answer))
+    set_lane_overview(
+        conn,
+        summary=answer.summary or _NOTHING_NOTABLE,
+        overall_fit=answer.overall_fit or _NOTHING_NOTABLE,
+        overall_gaps=answer.overall_gaps or _NOTHING_NOTABLE,
+    )

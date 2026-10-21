@@ -254,10 +254,13 @@ export type LaneAnalysisSummary = {
   skipped: number
 }
 
-// The Dashboard's cross-lane overview report (D-245): both fields null until "Summarize lanes"
-// has run at least once.
+// The Dashboard's cross-lane overview report (D-245): all fields null until "Summarize lanes"
+// has run at least once. `summary` is the short synopsis shown always; `overall_fit`/
+// `overall_gaps` are the two detail sections, collapsed by default.
 export type LaneOverview = {
   summary: string | null
+  overall_fit: string | null
+  overall_gaps: string | null
   generated_at: string | null
 }
 
