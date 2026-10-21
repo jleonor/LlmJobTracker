@@ -977,20 +977,18 @@ Done when
   fixed: the grid runs oldest→newest left to right, so it opened scrolled to a year-old, empty
   start with the real recent activity scrolled out of view. Now scrolls to the most recent days on
   load.)
-- [ ] "Analyze lanes" generates a fit/gap summary for at least one lane with a positioning-scored
+- [x] "Analyze lanes" generates a fit/gap summary for at least one lane with a positioning-scored
   application, built only from that lane's own jobs' titles, fit and gaps (no new score), and the
-  user judges its quality (CLAUDE.md rule 4). Not run live: the dev-seed applications have no lane
-  assigned, so no lane is currently eligible (confirmed live — the confirm dialog correctly read
-  "0 queued, 5 skipped" from the real backend and disabled Analyze). The prompt/parsing/storage
-  path itself is covered by `test_lane_pipeline.py`'s `FakeRunner` tests. A real run, and the
-  quality judgment, need the user's own lane-assigned, positioning-scored data.
-- [ ] "Re-score all" and "Re-score open applications" both work from the Dashboard, each queuing
+  user judges its quality (CLAUDE.md rule 4). (2026-10-21: the user ran a real "Analyze lanes" and
+  "Summarize lanes" against their own lane-assigned, positioning-scored applications and confirmed
+  they are happy with the output.)
+- [x] "Re-score all" and "Re-score open applications" both work from the Dashboard, each queuing
   the right set of applications, and neither button remains on the Settings page. Queuing itself
   is covered end-to-end by `test_positioning_rescore.py`'s route tests (an open application is
   queued, an end-state one is skipped and counted) and confirmed live — both confirm dialogs read
   real counts from the backend (e.g. rescore-open: "1 job application, 6 skipped"), and Settings no
-  longer shows anything "Re-score" (confirmed with a live page search). Not clicked through to a
-  real completed run, since that spends real usage — left for the user to trigger.
+  longer shows anything "Re-score" (confirmed with a live page search). (2026-10-21: the user ran a
+  real re-score against their own data and confirmed they are happy with the output.)
 
 Step list, continued (added 2026-10-18, D-244, D-245): richer context and structure for
 `analyze_lane`'s own answer, and a new cross-lane overview report at the top of "Per-lane
