@@ -29,7 +29,9 @@ from llmjobtracker.profile_pipeline import store_output
 from llmjobtracker.runner import FakeRunner
 from llmjobtracker.storage import connect
 
-FIXTURES = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "job_documents"
+FIXTURES = (
+    Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "job_documents"
+)
 
 GOOD_COMPANY_DETAILS_ANSWER = """=== TARGET NAME ===
 Acme Talent Pool
@@ -165,7 +167,9 @@ def test_parse_company_details_answer_falls_back_to_none_on_a_bad_target_type() 
 
 
 def test_parse_company_details_answer_never_overwrites_the_typed_angle() -> None:
-    answer = parse_company_details_answer(GOOD_COMPANY_DETAILS_ANSWER, typed_angle="My mom knows the CTO.")
+    answer = parse_company_details_answer(
+        GOOD_COMPANY_DETAILS_ANSWER, typed_angle="My mom knows the CTO."
+    )
     assert answer.angle == "My mom knows the CTO."
 
 
@@ -222,20 +226,26 @@ def test_cv_and_cover_letter_and_introduction_message_generate_end_to_end(db_pat
     queue.set_runner(FakeRunner(text=GOOD_CV_ANSWER))
     job_id = submit_generate_cv(conn, queue, application_id)
     run_all(queue)
-    assert get_claude_job(conn, job_id).status == "done"
+    job = get_claude_job(conn, job_id)
+    assert job is not None
+    assert job.status == "done"
     assert latest_open_application_file_of_kind(conn, application_id, "tailored_cv") is not None
 
     assert cover_letter_ready(conn, application_id) is True
     queue.set_runner(FakeRunner(text=GOOD_LETTER_ANSWER))
     job_id = submit_generate_cover_letter(conn, queue, application_id)
     run_all(queue)
-    assert get_claude_job(conn, job_id).status == "done"
+    job = get_claude_job(conn, job_id)
+    assert job is not None
+    assert job.status == "done"
     assert latest_open_application_file_of_kind(conn, application_id, "cover_letter") is not None
 
     queue.set_runner(FakeRunner(text=GOOD_INTRODUCTION_ANSWER))
     job_id = submit_generate_introduction_message(conn, queue, application_id)
     run_all(queue)
-    assert get_claude_job(conn, job_id).status == "done"
+    job = get_claude_job(conn, job_id)
+    assert job is not None
+    assert job.status == "done"
     intro = latest_open_application_file_of_kind(conn, application_id, "introduction_message")
     assert intro is not None
     assert intro["subject"] == "Following up on your talent pool"
