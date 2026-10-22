@@ -147,8 +147,11 @@ class ClaudeJobQueue:
         prompts: Sequence[tuple[str, str]],
         job_application_id: int | None = None,
         lane_id: int | None = None,
+        open_application_id: int | None = None,
     ) -> int:
-        job_id = create_claude_job(conn, label, kind, prompts, job_application_id, lane_id)
+        job_id = create_claude_job(
+            conn, label, kind, prompts, job_application_id, lane_id, open_application_id
+        )
         self.wake()
         return job_id
 
