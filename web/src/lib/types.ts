@@ -470,6 +470,9 @@ export type OpenApplicationDetailData = {
   contact_name: string | null
   contact_title: string | null
   contact_email: string | null
+  // A link-shaped contact (e.g. a LinkedIn profile) - rendered as a clickable link next to
+  // Contact, the same way contact_email renders as a mailto: link.
+  contact_url: string | null
   angle: string | null
   why_this_company: string | null
   other_notes: string | null
@@ -492,6 +495,7 @@ export type OpenApplicationEdit = Partial<{
   contact_name: string | null
   contact_title: string | null
   contact_email: string | null
+  contact_url: string | null
   angle: string | null
   why_this_company: string | null
   other_notes: string | null
@@ -500,14 +504,16 @@ export type OpenApplicationEdit = Partial<{
   due_date: string | null
 }>
 
-// "Add Open Application"'s request body (D-251) - the research intake plus any manually
-// pre-filled fields, together.
+// "Add Open Application"'s final "Create" step (D-251, revised): the wizard has already run the
+// research through the extraction preview and the pre-creation identity step below, so every
+// field here is the already-reviewed, final value - nothing is queued at creation anymore.
 export type CreateOpenApplicationRequest = Partial<{
   target_name: string | null
   target_type: OpenApplicationTargetType | null
   contact_name: string | null
   contact_title: string | null
   contact_email: string | null
+  contact_url: string | null
   angle: string | null
   why_this_company: string | null
   other_notes: string | null
@@ -517,7 +523,29 @@ export type CreateOpenApplicationRequest = Partial<{
 
 export type AddOpenApplicationResult = {
   application_id: number
-  claude_job_id: number
+}
+
+// POST /open-applications/intake/extract's per-item result (D-251's wizard "source" stage) -
+// code-only extraction, nothing saved yet. Same shape as OpenApplicationResearchItem minus
+// id/position, since nothing is stored.
+export type OpenApplicationResearchItemPreview = {
+  source_type: 'url' | 'text'
+  content: string
+  extracted_text: string | null
+  extraction_status: string | null
+  extraction_message: string | null
+}
+
+// GET /open-applications/intake/identity/{job_id}'s parsed answer (the wizard's "fields" stage) -
+// angle is deliberately absent, since it is never inferred, only typed by hand (D-251).
+export type OpenApplicationIdentityAnswer = {
+  target_name: string | null
+  target_type: OpenApplicationTargetType | null
+  contact_name: string | null
+  contact_title: string | null
+  contact_email: string | null
+  contact_url: string | null
+  why_this_company: string | null
 }
 
 // The Open Application detail page's full shape, mirroring JobApplicationDetail: the API

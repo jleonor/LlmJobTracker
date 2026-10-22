@@ -202,15 +202,7 @@ function CompanyDetails({
           {application.target_type ? TARGET_TYPE_ITEMS[application.target_type] : EMPTY}
         </Field>
         <Field label="Contact">
-          {application.contact_name ? (
-            <>
-              {application.contact_name}
-              {application.contact_title ? ` (${application.contact_title})` : ''}
-              {application.contact_email ? ` - ${application.contact_email}` : ''}
-            </>
-          ) : (
-            EMPTY
-          )}
+          <ContactValue application={application} />
         </Field>
         <Field label="Angle">{application.angle ?? EMPTY}</Field>
         <Field label="Why this company">{application.why_this_company ?? EMPTY}</Field>
@@ -233,6 +225,40 @@ function CompanyDetails({
         onChanged={onChanged}
       />
     </Section>
+  )
+}
+
+// Contact as the user asked: an email renders as a clickable mailto: link, and a contact URL
+// (e.g. a LinkedIn profile) renders as its own clickable link alongside the name/title.
+function ContactValue({ application }: { application: OpenApplicationDetail }) {
+  if (!application.contact_name && !application.contact_email && !application.contact_url) {
+    return EMPTY
+  }
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {application.contact_name && <span>{application.contact_name}</span>}
+      {application.contact_title && (
+        <span className="text-muted-foreground">({application.contact_title})</span>
+      )}
+      {application.contact_email && (
+        <a
+          href={`mailto:${application.contact_email}`}
+          className="text-primary underline underline-offset-2"
+        >
+          {application.contact_email}
+        </a>
+      )}
+      {application.contact_url && (
+        <a
+          href={application.contact_url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary underline underline-offset-2"
+        >
+          {application.contact_url}
+        </a>
+      )}
+    </span>
   )
 }
 
@@ -266,6 +292,7 @@ function CompanyDetailsEditDialog({
   const [contactName, setContactName] = useState('')
   const [contactTitle, setContactTitle] = useState('')
   const [contactEmail, setContactEmail] = useState('')
+  const [contactUrl, setContactUrl] = useState('')
   const [angle, setAngle] = useState('')
   const [whyThisCompany, setWhyThisCompany] = useState('')
   const [otherNotes, setOtherNotes] = useState('')
@@ -279,6 +306,7 @@ function CompanyDetailsEditDialog({
     setContactName(application.contact_name ?? '')
     setContactTitle(application.contact_title ?? '')
     setContactEmail(application.contact_email ?? '')
+    setContactUrl(application.contact_url ?? '')
     setAngle(application.angle ?? '')
     setWhyThisCompany(application.why_this_company ?? '')
     setOtherNotes(application.other_notes ?? '')
@@ -293,6 +321,7 @@ function CompanyDetailsEditDialog({
       contact_name: contactName.trim() || null,
       contact_title: contactTitle.trim() || null,
       contact_email: contactEmail.trim() || null,
+      contact_url: contactUrl.trim() || null,
       angle: angle.trim() || null,
       why_this_company: whyThisCompany.trim() || null,
       other_notes: otherNotes.trim() || null,
@@ -351,6 +380,9 @@ function CompanyDetailsEditDialog({
           </div>
           <FormField label="Contact email">
             <Input value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} />
+          </FormField>
+          <FormField label="Contact URL (e.g. LinkedIn)">
+            <Input value={contactUrl} onChange={(event) => setContactUrl(event.target.value)} />
           </FormField>
           <FormField label="Angle - your own connection">
             <Textarea rows={2} value={angle} onChange={(event) => setAngle(event.target.value)} />

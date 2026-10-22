@@ -402,7 +402,7 @@ class JobReviseTurnView(BaseModel):
 
 
 class CreateOpenApplicationRequest(BaseModel):
-    """"Add Open Application"'s final "Create" step: the wizard has already run the research
+    """ "Add Open Application"'s final "Create" step: the wizard has already run the research
     through the extraction preview and the pre-creation identity step, and the user has reviewed
     and possibly edited both - so every field here is the already-resolved, final value, written
     straight to the row with nothing queued at creation (D-251, revised). Nothing is required on

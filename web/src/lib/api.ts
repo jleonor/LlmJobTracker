@@ -26,6 +26,8 @@ import type {
   OpenApplicationDetailData,
   OpenApplicationEdit,
   OpenApplicationFile,
+  OpenApplicationIdentityAnswer,
+  OpenApplicationResearchItemPreview,
   ParsedModelPrice,
   PositioningRescoreSummary,
   ProfileFile,
@@ -904,8 +906,9 @@ export function fetchOpenApplicationDetail(id: number): Promise<OpenApplicationD
   return request<OpenApplicationDetailData>(`/api/open-applications/${id}`)
 }
 
-// "Add Open Application" (D-251): one combined flow - the research intake and any manually
-// pre-filled fields create the row and immediately queue Company details' Generate step.
+// "Add Open Application"'s final "Create" step (D-251, revised): the wizard has already resolved
+// every field via extractOpenApplicationResearch/startOpenApplicationIdentity below, so this just
+// writes the row - nothing is queued here.
 export function createOpenApplication(
   body: CreateOpenApplicationRequest,
 ): Promise<AddOpenApplicationResult> {
@@ -914,6 +917,35 @@ export function createOpenApplication(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+}
+
+// The wizard's "source" stage: code-only extraction for up to 5 not-yet-saved research items
+// (a URL or pasted text each), so their combined text can be reviewed and edited before anything
+// is written to the database.
+export function extractOpenApplicationResearch(
+  items: { source_type: 'url' | 'text'; content: string }[],
+): Promise<OpenApplicationResearchItemPreview[]> {
+  return request<OpenApplicationResearchItemPreview[]>('/api/open-applications/intake/extract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
+  })
+}
+
+// The wizard's "fields" stage: runs Company details' own mapping against the reviewed text,
+// before any row exists (mirrors intakeExtractIdentity for Add Job).
+export function startOpenApplicationIdentity(text: string): Promise<ClaudeJob> {
+  return request<ClaudeJob>('/api/open-applications/intake/identity', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+}
+
+export function fetchOpenApplicationIdentityResult(
+  jobId: number,
+): Promise<OpenApplicationIdentityAnswer> {
+  return request<OpenApplicationIdentityAnswer>(`/api/open-applications/intake/identity/${jobId}`)
 }
 
 export async function deleteOpenApplication(id: number): Promise<void> {

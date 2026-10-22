@@ -157,7 +157,7 @@ def add_open_application(db_path: Path, fields: dict[str, str | None] | None = N
     return application_id
 
 
-COMPANY_DETAILS_FIELDS = {
+COMPANY_DETAILS_FIELDS: dict[str, str | None] = {
     "target_name": "Acme Talent Pool",
     "target_type": "talent_pool",
     "why_this_company": "They have a strong data team.",
