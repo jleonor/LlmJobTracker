@@ -88,7 +88,6 @@ from llmjobtracker.job_pipeline import (
 )
 from llmjobtracker.job_revise_pipeline import (
     JobReviseNotReady,
-    make_pipeline,
     submit_job_revise_turn,
 )
 from llmjobtracker.job_revise_turns import (
@@ -133,6 +132,52 @@ from llmjobtracker.listing_intake import (
 )
 from llmjobtracker.migrations import JOB_REVISE_SECTION_KINDS as SECTION_KINDS
 from llmjobtracker.migrations import RUNNER_BACKENDS
+from llmjobtracker.open_application_files import (
+    OpenApplicationFile,
+    OpenApplicationFileUploadError,
+    delete_open_application_file,
+    store_open_application_file,
+)
+from llmjobtracker.open_application_pipeline import SECTION_KINDS as OPEN_APPLICATION_SECTION_KINDS
+from llmjobtracker.open_application_pipeline import (
+    OpenApplicationReviseNotReady,
+    OpenApplicationStepNotReady,
+    make_pipeline,
+    submit_add_open_application,
+    submit_generate_introduction_message,
+    submit_open_application_revise_turn,
+)
+from llmjobtracker.open_application_pipeline import (
+    submit_generate_cover_letter as submit_generate_open_application_cover_letter,
+)
+from llmjobtracker.open_application_pipeline import (
+    submit_generate_cv as submit_generate_open_application_cv,
+)
+from llmjobtracker.open_application_research import ResearchItemInput
+from llmjobtracker.open_application_revise_turns import OpenApplicationReviseTurn
+from llmjobtracker.open_application_revise_turns import (
+    turn_for_job as open_application_revise_turn_for_job,
+)
+from llmjobtracker.open_application_revise_turns import (
+    turns_for_section as open_application_turns_for_section,
+)
+from llmjobtracker.open_applications import MasterCvSelection as OpenApplicationMasterCvSelection
+from llmjobtracker.open_applications import NoStatusEntries as OpenApplicationNoStatusEntries
+from llmjobtracker.open_applications import (
+    OpenApplication,
+    OpenApplicationDetail,
+    OpenApplicationEdit,
+    delete_open_application,
+    get_open_application_detail,
+    list_open_applications,
+    update_open_application,
+)
+from llmjobtracker.open_applications import StatusHistoryEdit as OpenApplicationStatusHistoryEdit
+from llmjobtracker.open_applications import UnknownField as OpenApplicationUnknownField
+from llmjobtracker.open_applications import (
+    replace_status_history as replace_open_application_status_history,
+)
+from llmjobtracker.open_applications import set_master_cv as set_open_application_master_cv
 from llmjobtracker.pricing import (
     ModelPrice,
     delete_model_price,
@@ -339,6 +384,41 @@ class JobReviseTurnCreate(BaseModel):
 
 class JobReviseTurnView(BaseModel):
     """One chat turn revising a job-page section, and the Claude Job it queued (D-136)."""
+
+    id: int
+    message: str
+    created_at: str
+    job: ClaudeJob
+
+
+class CreateOpenApplicationRequest(BaseModel):
+    """ "Add Open Application" (D-251): a combined flow - the research intake and any manually
+    pre-filled fields together create the row and immediately queue Company details' Generate
+    step. Unlike CreateJobApplicationRequest, nothing here is required on its own; the route
+    rejects only a request with neither a research item nor a single field filled in."""
+
+    target_name: str | None = None
+    target_type: str | None = None
+    contact_name: str | None = None
+    contact_title: str | None = None
+    contact_email: str | None = None
+    angle: str | None = None
+    why_this_company: str | None = None
+    other_notes: str | None = None
+    research_items: list[ResearchItemInput] = []
+
+
+class AddOpenApplicationResult(BaseModel):
+    application_id: int
+    claude_job_id: int
+
+
+class OpenApplicationReviseTurnCreate(BaseModel):
+    message: str
+
+
+class OpenApplicationReviseTurnView(BaseModel):
+    """One chat turn revising an Open Application section, and the Claude Job it queued."""
 
     id: int
     message: str
@@ -1318,6 +1398,326 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         return _job_revise_turn_view(queue, conn, turn)
 
+    # --- Open Applications (Phase 11, D-248 to D-254) -------------------------------------
+
+    @app.get(
+        "/open-applications",
+        response_model=list[OpenApplication],
+        dependencies=[Depends(require_token)],
+    )
+    def open_applications_route(
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> list[OpenApplication]:
+        return list_open_applications(conn)
+
+    @app.post(
+        "/open-applications",
+        response_model=AddOpenApplicationResult,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def create_open_application(
+        body: CreateOpenApplicationRequest, conn: Annotated[Connection, Depends(get_db)]
+    ) -> AddOpenApplicationResult:
+        if not body.research_items and not any(
+            [body.target_name, body.target_type, body.angle, body.why_this_company]
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Give at least one research item or a field to start from.",
+            )
+        application_id, job_id = submit_add_open_application(
+            conn,
+            queue,
+            {
+                "target_name": body.target_name,
+                "target_type": body.target_type,
+                "contact_name": body.contact_name,
+                "contact_title": body.contact_title,
+                "contact_email": body.contact_email,
+                "angle": body.angle,
+                "why_this_company": body.why_this_company,
+                "other_notes": body.other_notes,
+            },
+            body.research_items,
+        )
+        return AddOpenApplicationResult(application_id=application_id, claude_job_id=job_id)
+
+    @app.get(
+        "/open-applications/{application_id}",
+        response_model=OpenApplicationDetail,
+        dependencies=[Depends(require_token)],
+    )
+    def open_application_detail_route(
+        application_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> OpenApplicationDetail:
+        detail = get_open_application_detail(conn, application_id)
+        if detail is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return detail
+
+    @app.delete(
+        "/open-applications/{application_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_token)],
+    )
+    def delete_open_application_route(
+        application_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> None:
+        if not delete_open_application(conn, files_root, application_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    @app.patch(
+        "/open-applications/{application_id}",
+        response_model=OpenApplicationDetail,
+        dependencies=[Depends(require_token)],
+    )
+    def edit_open_application(
+        application_id: int,
+        edit: OpenApplicationEdit,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> OpenApplicationDetail:
+        try:
+            detail = update_open_application(
+                conn, application_id, edit.model_dump(exclude_unset=True)
+            )
+        except OpenApplicationUnknownField as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown field: {error}."
+            ) from error
+        if detail is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return detail
+
+    @app.post(
+        "/open-applications/{application_id}/master-cv",
+        response_model=OpenApplicationDetail,
+        dependencies=[Depends(require_token)],
+    )
+    def choose_open_application_master_cv(
+        application_id: int,
+        selection: OpenApplicationMasterCvSelection,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> OpenApplicationDetail:
+        if get_open_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        _require_master_cv_kind(conn, selection.profile_file_id)
+        detail = set_open_application_master_cv(conn, application_id, selection.profile_file_id)
+        assert detail is not None
+        return detail
+
+    @app.put(
+        "/open-applications/{application_id}/status-history",
+        response_model=OpenApplicationDetail,
+        dependencies=[Depends(require_token)],
+    )
+    def edit_open_application_status_history(
+        application_id: int,
+        edit: OpenApplicationStatusHistoryEdit,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> OpenApplicationDetail:
+        try:
+            detail = replace_open_application_status_history(
+                conn, application_id, [(entry.status, entry.changed_at) for entry in edit.entries]
+            )
+        except OpenApplicationNoStatusEntries as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="At least one stage needs a date."
+            ) from error
+        if detail is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return detail
+
+    @app.post(
+        "/open-applications/{application_id}/files/{kind}",
+        response_model=OpenApplicationFile,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    async def upload_open_application_file(
+        application_id: int, kind: str, request: Request
+    ) -> OpenApplicationFile:
+        if kind != "other":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only Additional files may be uploaded directly.",
+            )
+        name = unquote(request.headers.get("X-File-Name", ""))
+        content = await request.body()
+        conn = connect(db_path)
+        try:
+            detail = get_open_application_detail(conn, application_id)
+            if detail is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+            return store_open_application_file(
+                conn, files_root, application_id, detail.target_name, name, content
+            )
+        except OpenApplicationFileUploadError as error:
+            raise HTTPException(status_code=error.status, detail=error.message) from error
+        finally:
+            conn.close()
+
+    @app.post(
+        "/open-applications/{application_id}/files/{file_id}/open",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_token)],
+    )
+    def open_open_application_file(
+        application_id: int, file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> None:
+        path = _open_application_file_or_404(conn, files_root, application_id, file_id)
+        open_in_default_app(path)
+
+    @app.get(
+        "/open-applications/{application_id}/files/{file_id}/download",
+        dependencies=[Depends(require_token)],
+    )
+    def download_open_application_file(
+        application_id: int, file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> FileResponse:
+        path = _open_application_file_or_404(conn, files_root, application_id, file_id)
+        return FileResponse(path, filename=path.name)
+
+    @app.get(
+        "/open-applications/{application_id}/files/{file_id}/preview",
+        dependencies=[Depends(require_token)],
+    )
+    def open_application_file_preview(
+        application_id: int, file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> Response:
+        path = _open_application_file_or_404(conn, files_root, application_id, file_id)
+        try:
+            preview = preview_for(path.name, path.read_bytes())
+        except UnsupportedPreview as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+            ) from error
+        content = (
+            preview.content
+            if isinstance(preview.content, bytes)
+            else preview.content.encode("utf-8")
+        )
+        return Response(content=content, media_type=PREVIEW_MEDIA_TYPES[preview.kind])
+
+    @app.delete(
+        "/open-applications/{application_id}/files/{file_id}",
+        dependencies=[Depends(require_token)],
+    )
+    def remove_open_application_file(
+        application_id: int, file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> None:
+        try:
+            delete_open_application_file(conn, files_root, application_id, file_id)
+        except OpenApplicationFileUploadError as error:
+            raise HTTPException(status_code=error.status, detail=error.message) from error
+
+    @app.post(
+        "/open-applications/{application_id}/tailored-cv/generate",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def generate_open_application_cv(
+        application_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> ClaudeJob:
+        if get_open_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            job_id = submit_generate_open_application_cv(conn, queue, application_id)
+        except OpenApplicationStepNotReady as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        return _job_or_404(conn, job_id)
+
+    @app.post(
+        "/open-applications/{application_id}/cover-letter/generate",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def generate_open_application_cover_letter(
+        application_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> ClaudeJob:
+        if get_open_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            job_id = submit_generate_open_application_cover_letter(conn, queue, application_id)
+        except OpenApplicationStepNotReady as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        return _job_or_404(conn, job_id)
+
+    @app.post(
+        "/open-applications/{application_id}/introduction-message/generate",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def generate_open_application_introduction_message(
+        application_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> ClaudeJob:
+        if get_open_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            job_id = submit_generate_introduction_message(conn, queue, application_id)
+        except OpenApplicationStepNotReady as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        return _job_or_404(conn, job_id)
+
+    @app.get(
+        "/open-applications/{application_id}/revise/{section_kind}/turns",
+        response_model=list[OpenApplicationReviseTurnView],
+        dependencies=[Depends(require_token)],
+    )
+    def open_application_revise_turns_route(
+        application_id: int, section_kind: str, conn: Annotated[Connection, Depends(get_db)]
+    ) -> list[OpenApplicationReviseTurnView]:
+        if get_open_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        if section_kind not in OPEN_APPLICATION_SECTION_KINDS:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return [
+            _open_application_revise_turn_view(queue, conn, turn)
+            for turn in open_application_turns_for_section(conn, application_id, section_kind)
+        ]
+
+    @app.post(
+        "/open-applications/{application_id}/revise/{section_kind}/turns",
+        response_model=OpenApplicationReviseTurnView,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def start_open_application_revise_turn(
+        application_id: int,
+        section_kind: str,
+        body: OpenApplicationReviseTurnCreate,
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> OpenApplicationReviseTurnView:
+        if get_open_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        if section_kind not in OPEN_APPLICATION_SECTION_KINDS:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            job_id = submit_open_application_revise_turn(
+                conn, queue, application_id, section_kind, body.message
+            )
+        except OpenApplicationReviseNotReady as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        turn = open_application_revise_turn_for_job(conn, job_id)
+        if turn is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return _open_application_revise_turn_view(queue, conn, turn)
+
     @app.post("/runs/check", response_model=RunResult, dependencies=[Depends(require_token)])
     def run_check(conn: Annotated[Connection, Depends(get_db)]) -> RunResult:
         """Checks whichever backend and model are currently selected (D-195, D-206) - the same
@@ -1937,6 +2337,35 @@ def _job_revise_turn_view(
 ) -> JobReviseTurnView:
     job = _job_or_404(conn, turn.claude_job_id)
     return JobReviseTurnView(
+        id=turn.id,
+        message=turn.message,
+        created_at=turn.created_at,
+        job=_with_live_text(queue, job),
+    )
+
+
+def _open_application_file_or_404(
+    conn: Connection, files_root: Path, application_id: int, file_id: int
+) -> Path:
+    """Mirrors _job_file_or_404: the on-disk path for one of an Open Application's own files,
+    checking it actually belongs to that application."""
+    row = conn.execute(
+        "SELECT open_application_id, stored_path FROM open_application_files WHERE id = ?",
+        (file_id,),
+    ).fetchone()
+    if row is None or row["open_application_id"] != application_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    path = files_root / str(row["stored_path"])
+    if not path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return path
+
+
+def _open_application_revise_turn_view(
+    queue: ClaudeJobQueue, conn: Connection, turn: OpenApplicationReviseTurn
+) -> OpenApplicationReviseTurnView:
+    job = _job_or_404(conn, turn.claude_job_id)
+    return OpenApplicationReviseTurnView(
         id=turn.id,
         message=turn.message,
         created_at=turn.created_at,
