@@ -1265,6 +1265,12 @@ MIGRATIONS: tuple[Migration, ...] = (
             "DROP TABLE open_applications",
         ),
     ),
+    Migration(
+        version=36,
+        name="add open_applications.contact_url for a link-shaped contact (Phase 11 follow-up)",
+        up=("ALTER TABLE open_applications ADD COLUMN contact_url TEXT",),
+        down=("ALTER TABLE open_applications DROP COLUMN contact_url",),
+    ),
 )
 
 _LEDGER = """

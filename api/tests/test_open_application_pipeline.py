@@ -6,24 +6,31 @@ message.
 from pathlib import Path
 
 from llmjobtracker.claude_job_queue import ClaudeJobQueue
-from llmjobtracker.claude_jobs import get_claude_job
+from llmjobtracker.claude_jobs import get_claude_job, prompt_exchange
 from llmjobtracker.open_application_files import latest_open_application_file_of_kind
 from llmjobtracker.open_application_pipeline import (
     OpenApplicationStepNotReady,
+    build_open_application_identity_prompt,
     cover_letter_ready,
+    create_open_application,
     cv_ready,
     introduction_message_ready,
     make_pipeline,
     parse_company_details_answer,
     parse_introduction_message_answer,
-    submit_add_open_application,
+    parse_open_application_identity_answer,
+    submit_extract_open_application_identity,
     submit_generate_cover_letter,
     submit_generate_cv,
     submit_generate_introduction_message,
     submit_open_application_revise_turn,
 )
 from llmjobtracker.open_application_research import ResearchItemInput
-from llmjobtracker.open_applications import get_open_application_detail, set_master_cv
+from llmjobtracker.open_applications import (
+    count_open_applications,
+    get_open_application_detail,
+    set_master_cv,
+)
 from llmjobtracker.profile_files import store_profile_file
 from llmjobtracker.profile_pipeline import store_output
 from llmjobtracker.runner import FakeRunner
@@ -134,19 +141,27 @@ def add_cover_letter_template(db_path: Path) -> None:
         conn.close()
 
 
-def add_open_application(db_path: Path, queue: ClaudeJobQueue) -> int:
+def add_open_application(db_path: Path, fields: dict[str, str | None] | None = None) -> int:
+    """Creates a row directly with `fields` already resolved - the wizard's own pre-creation
+    identity step (tested separately below) is what would normally have produced them."""
     conn = connect(db_path)
     try:
-        application_id, _ = submit_add_open_application(
+        application_id = create_open_application(
             conn,
-            queue,
-            {},
+            fields or {},
             [ResearchItemInput(source_type="text", content="Acme is hiring data analysts.")],
         )
         conn.commit()
     finally:
         conn.close()
     return application_id
+
+
+COMPANY_DETAILS_FIELDS = {
+    "target_name": "Acme Talent Pool",
+    "target_type": "talent_pool",
+    "why_this_company": "They have a strong data team.",
+}
 
 
 # --- Parsing (no queue involved) ----------------------------------------------------------------
@@ -182,23 +197,40 @@ def test_parse_introduction_message_answer_requires_both_blocks() -> None:
 # --- End to end, through the real queue and FakeRunner -----------------------------------------
 
 
-def test_company_details_generates_and_populates_the_fields(db_path: Path) -> None:
+def test_extract_identity_populates_the_fields_without_writing_to_any_row(db_path: Path) -> None:
+    """The wizard's "fields" stage (D-251's revised flow): runs against raw reviewed text, with
+    no Open Application row to read from or write to yet - `open_application_id` is None."""
     queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
-    application_id = add_open_application(db_path, queue)
+    conn = connect(db_path)
+    job_id = submit_extract_open_application_identity(
+        conn, queue, "Acme is a talent pool for data analysts."
+    )
+    conn.commit()
     run_all(queue)
 
-    conn = connect(db_path)
-    detail = get_open_application_detail(conn, application_id)
-    assert detail is not None
-    assert detail.target_name == "Acme Talent Pool"
-    assert detail.target_type == "talent_pool"
-    assert detail.why_this_company == "They have a strong data team."
+    job = get_claude_job(conn, job_id)
+    assert job is not None
+    assert job.status == "done"
+    assert job.open_application_id is None
+    assert count_open_applications(conn) == 0  # nothing was created
+
+    exchange = prompt_exchange(conn, job_id, 0)
+    assert exchange is not None
+    answer = parse_open_application_identity_answer(exchange.result_text or "")
+    assert answer.target_name == "Acme Talent Pool"
+    assert answer.target_type == "talent_pool"
+    assert answer.why_this_company == "They have a strong data team."
+
+
+def test_build_open_application_identity_prompt_includes_the_text() -> None:
+    prompt = build_open_application_identity_prompt("Acme is hiring data analysts.")
+    assert "TASK: generate_open_application_company_details" in prompt
+    assert "Acme is hiring data analysts." in prompt
 
 
 def test_cv_is_not_ready_until_company_details_and_master_cv_exist(db_path: Path) -> None:
-    queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
-    application_id = add_open_application(db_path, queue)
-    run_all(queue)  # populates Company details
+    queue = make_queue(db_path, FakeRunner(text=GOOD_CV_ANSWER))
+    application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
 
     conn = connect(db_path)
     assert cv_ready(conn, application_id) is False  # no master CV, no profile documents yet
@@ -212,9 +244,8 @@ def test_cv_is_not_ready_until_company_details_and_master_cv_exist(db_path: Path
 
 
 def test_cv_and_cover_letter_and_introduction_message_generate_end_to_end(db_path: Path) -> None:
-    queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
-    application_id = add_open_application(db_path, queue)
-    run_all(queue)
+    queue = make_queue(db_path, FakeRunner(text=GOOD_CV_ANSWER))
+    application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
     add_profile_documents(db_path)
     add_master_cv(db_path, application_id)
     add_cover_letter_template(db_path)
@@ -253,8 +284,7 @@ def test_cv_and_cover_letter_and_introduction_message_generate_end_to_end(db_pat
 
 def test_revise_company_details_patches_one_field(db_path: Path) -> None:
     queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
-    application_id = add_open_application(db_path, queue)
-    run_all(queue)
+    application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
 
     conn = connect(db_path)
     queue.set_runner(

@@ -16,7 +16,7 @@ def test_create_rejects_an_empty_request(client: TestClient) -> None:
     assert response.status_code == 400
 
 
-def test_create_with_a_research_item_queues_company_details(client: TestClient) -> None:
+def test_create_with_a_research_item_creates_the_row(client: TestClient) -> None:
     response = client.post(
         "/open-applications",
         json={"research_items": [{"source_type": "text", "content": "Acme is hiring."}]},
@@ -24,11 +24,43 @@ def test_create_with_a_research_item_queues_company_details(client: TestClient) 
     assert response.status_code == 201
     body = response.json()
     assert "application_id" in body
-    assert "claude_job_id" in body
 
     detail = client.get(f"/open-applications/{body['application_id']}").json()
     assert detail["status"] == "Identified"
     assert len(detail["status_history"]) == 1
+
+
+def test_intake_extract_reads_pasted_text(client: TestClient) -> None:
+    response = client.post(
+        "/open-applications/intake/extract",
+        json={"items": [{"source_type": "text", "content": "Acme is hiring data analysts."}]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["extraction_status"] == "ok"
+    assert body[0]["extracted_text"] == "Acme is hiring data analysts."
+
+
+def test_intake_extract_rejects_too_many_items(client: TestClient) -> None:
+    response = client.post(
+        "/open-applications/intake/extract",
+        json={"items": [{"source_type": "text", "content": f"item {i}"} for i in range(6)]},
+    )
+    assert response.status_code == 400
+
+
+def test_intake_identity_queues_with_no_application(client: TestClient) -> None:
+    started = client.post(
+        "/open-applications/intake/identity",
+        json={"text": "Acme is a talent pool for data analysts."},
+    )
+    assert started.status_code == 201
+    assert started.json()["open_application_id"] is None
+
+
+def test_intake_identity_result_for_an_unknown_job_404s(client: TestClient) -> None:
+    assert client.get("/open-applications/intake/identity/999").status_code == 404
 
 
 def test_create_with_only_manual_fields_is_accepted(client: TestClient) -> None:

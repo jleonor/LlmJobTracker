@@ -140,12 +140,17 @@ from llmjobtracker.open_application_files import (
 )
 from llmjobtracker.open_application_pipeline import SECTION_KINDS as OPEN_APPLICATION_SECTION_KINDS
 from llmjobtracker.open_application_pipeline import (
+    OpenApplicationIdentityAnswer,
     OpenApplicationReviseNotReady,
     OpenApplicationStepNotReady,
     make_pipeline,
-    submit_add_open_application,
+    parse_open_application_identity_answer,
+    submit_extract_open_application_identity,
     submit_generate_introduction_message,
     submit_open_application_revise_turn,
+)
+from llmjobtracker.open_application_pipeline import (
+    create_open_application as create_open_application_row,
 )
 from llmjobtracker.open_application_pipeline import (
     submit_generate_cover_letter as submit_generate_open_application_cover_letter,
@@ -153,7 +158,12 @@ from llmjobtracker.open_application_pipeline import (
 from llmjobtracker.open_application_pipeline import (
     submit_generate_cv as submit_generate_open_application_cv,
 )
-from llmjobtracker.open_application_research import ResearchItemInput
+from llmjobtracker.open_application_research import (
+    InvalidResearchItem,
+    ResearchItemInput,
+    ResearchItemPreview,
+    extract_research_items_preview,
+)
 from llmjobtracker.open_application_revise_turns import OpenApplicationReviseTurn
 from llmjobtracker.open_application_revise_turns import (
     turn_for_job as open_application_revise_turn_for_job,
@@ -392,16 +402,19 @@ class JobReviseTurnView(BaseModel):
 
 
 class CreateOpenApplicationRequest(BaseModel):
-    """ "Add Open Application" (D-251): a combined flow - the research intake and any manually
-    pre-filled fields together create the row and immediately queue Company details' Generate
-    step. Unlike CreateJobApplicationRequest, nothing here is required on its own; the route
-    rejects only a request with neither a research item nor a single field filled in."""
+    """"Add Open Application"'s final "Create" step: the wizard has already run the research
+    through the extraction preview and the pre-creation identity step, and the user has reviewed
+    and possibly edited both - so every field here is the already-resolved, final value, written
+    straight to the row with nothing queued at creation (D-251, revised). Nothing is required on
+    its own; the route rejects only a request with neither a research item nor a single field
+    filled in."""
 
     target_name: str | None = None
     target_type: str | None = None
     contact_name: str | None = None
     contact_title: str | None = None
     contact_email: str | None = None
+    contact_url: str | None = None
     angle: str | None = None
     why_this_company: str | None = None
     other_notes: str | None = None
@@ -410,7 +423,14 @@ class CreateOpenApplicationRequest(BaseModel):
 
 class AddOpenApplicationResult(BaseModel):
     application_id: int
-    claude_job_id: int
+
+
+class OpenApplicationResearchExtractRequest(BaseModel):
+    items: list[ResearchItemInput]
+
+
+class OpenApplicationIdentityRequest(BaseModel):
+    text: str
 
 
 class OpenApplicationReviseTurnCreate(BaseModel):
@@ -1426,22 +1446,67 @@ def create_app(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Give at least one research item or a field to start from.",
             )
-        application_id, job_id = submit_add_open_application(
+        application_id = create_open_application_row(
             conn,
-            queue,
             {
                 "target_name": body.target_name,
                 "target_type": body.target_type,
                 "contact_name": body.contact_name,
                 "contact_title": body.contact_title,
                 "contact_email": body.contact_email,
+                "contact_url": body.contact_url,
                 "angle": body.angle,
                 "why_this_company": body.why_this_company,
                 "other_notes": body.other_notes,
             },
             body.research_items,
         )
-        return AddOpenApplicationResult(application_id=application_id, claude_job_id=job_id)
+        return AddOpenApplicationResult(application_id=application_id)
+
+    @app.post(
+        "/open-applications/intake/extract",
+        response_model=list[ResearchItemPreview],
+        dependencies=[Depends(require_token)],
+    )
+    def open_application_intake_extract(
+        body: OpenApplicationResearchExtractRequest,
+    ) -> list[ResearchItemPreview]:
+        try:
+            return extract_research_items_preview(body.items)
+        except InvalidResearchItem as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+
+    @app.post(
+        "/open-applications/intake/identity",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def open_application_intake_identity(
+        body: OpenApplicationIdentityRequest, conn: Annotated[Connection, Depends(get_db)]
+    ) -> ClaudeJob:
+        try:
+            job_id = submit_extract_open_application_identity(conn, queue, body.text)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        return _job_or_404(conn, job_id)
+
+    @app.get(
+        "/open-applications/intake/identity/{job_id}",
+        response_model=OpenApplicationIdentityAnswer,
+        dependencies=[Depends(require_token)],
+    )
+    def open_application_intake_identity_result(
+        job_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> OpenApplicationIdentityAnswer:
+        exchange = prompt_exchange(conn, job_id, 0)
+        if exchange is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return parse_open_application_identity_answer(exchange.result_text or "")
 
     @app.get(
         "/open-applications/{application_id}",

@@ -32,6 +32,7 @@ _EDITABLE_COLUMNS = frozenset(
         "contact_name",
         "contact_title",
         "contact_email",
+        "contact_url",
         "angle",
         "why_this_company",
         "other_notes",
@@ -74,6 +75,10 @@ class OpenApplicationDetail(BaseModel):
     contact_name: str | None
     contact_title: str | None
     contact_email: str | None
+    # A link-shaped contact (e.g. a LinkedIn profile) found in the research, or typed by hand -
+    # rendered as a clickable link next to Contact on the detail page, the same way contact_email
+    # renders as a mailto: link.
+    contact_url: str | None
     angle: str | None
     why_this_company: str | None
     other_notes: str | None
@@ -97,6 +102,7 @@ class OpenApplicationEdit(BaseModel):
     contact_name: str | None = None
     contact_title: str | None = None
     contact_email: str | None = None
+    contact_url: str | None = None
     angle: str | None = None
     why_this_company: str | None = None
     other_notes: str | None = None
@@ -191,17 +197,19 @@ def count_open_applications(conn: sqlite3.Connection) -> int:
 
 
 def insert_open_application(conn: sqlite3.Connection, fields: dict[str, Any]) -> int:
-    """Insert a bare row — "Add Open Application" creates this, then immediately queues
-    `generate_open_application_company_details` (D-251). `fields` carries whatever the user
-    pre-typed; every column defaults to null when omitted."""
+    """Insert a bare row. "Add Open Application" resolves Company details' fields in the
+    overlay itself, against a not-yet-created-row preview job (`extract_open_application_
+    identity`), before this ever runs - so `fields` here is the already-reviewed, possibly
+    user-edited set, not something a Claude Job fills in afterward. Every column defaults to
+    null when omitted."""
     now = _now()
     with conn:
         cursor = conn.execute(
             """
             INSERT INTO open_applications (
                 target_name, target_type, contact_name, contact_title, contact_email,
-                angle, why_this_company, other_notes, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                contact_url, angle, why_this_company, other_notes, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 fields.get("target_name"),
@@ -209,6 +217,7 @@ def insert_open_application(conn: sqlite3.Connection, fields: dict[str, Any]) ->
                 fields.get("contact_name"),
                 fields.get("contact_title"),
                 fields.get("contact_email"),
+                fields.get("contact_url"),
                 fields.get("angle"),
                 fields.get("why_this_company"),
                 fields.get("other_notes"),
@@ -248,7 +257,7 @@ def get_open_application_detail(
         """
         SELECT
             a.id, a.target_name, a.target_type, a.contact_name, a.contact_title,
-            a.contact_email, a.angle, a.why_this_company, a.other_notes, a.status,
+            a.contact_email, a.contact_url, a.angle, a.why_this_company, a.other_notes, a.status,
             a.notes, a.next_action, a.due_date,
             a.master_cv_profile_file_id, p.original_name AS master_cv_name,
             COALESCE(
@@ -276,6 +285,7 @@ def get_open_application_detail(
         contact_name=row["contact_name"],
         contact_title=row["contact_title"],
         contact_email=row["contact_email"],
+        contact_url=row["contact_url"],
         angle=row["angle"],
         why_this_company=row["why_this_company"],
         other_notes=row["other_notes"],

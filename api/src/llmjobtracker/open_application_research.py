@@ -35,17 +35,53 @@ class InvalidResearchItem(Exception):
 
 def extract_research_item(item: ResearchItemInput) -> tuple[str | None, str | None, str | None]:
     """Returns (extracted_text, extraction_status, extraction_message) for one item, reusing
-    listing_intake.py's own code-only extraction (D-251: no new extraction logic)."""
+    listing_intake.py's own code-only extraction (D-251: no new extraction logic). A URL-sourced
+    item's text is prefixed with its own source URL (the user's request) so a reader - human or
+    model - always knows where that chunk came from once several items are concatenated."""
     if item.source_type == "url":
         try:
             result = extract_from_url(item.content)
         except ListingFetchError as error:
             return None, "failed", error.message
+        text = f"Source: {item.content}\n\n{result.text}" if result.status == "ok" else result.text
+        return text, result.status, result.message
     elif item.source_type == "text":
         result = extract_from_paste(item.content)
     else:
         raise InvalidResearchItem(f"Unknown source_type: {item.source_type!r}")
     return result.text, result.status, result.message
+
+
+class ResearchItemPreview(BaseModel):
+    """One item's extraction result before any Open Application exists (the "Add Open
+    Application" wizard's source stage) - same shape as `ResearchItem` minus `id`/`position`,
+    since nothing is stored yet."""
+
+    source_type: str
+    content: str
+    extracted_text: str | None
+    extraction_status: str | None
+    extraction_message: str | None
+
+
+def extract_research_items_preview(items: list[ResearchItemInput]) -> list[ResearchItemPreview]:
+    """Code-only extraction for up to 5 not-yet-saved items, so the wizard can show (and the user
+    can edit) the combined reviewed text before anything is written to the database."""
+    if len(items) > MAX_RESEARCH_ITEMS:
+        raise InvalidResearchItem(f"At most {MAX_RESEARCH_ITEMS} research items are allowed.")
+    previews = []
+    for item in items:
+        text, status, message = extract_research_item(item)
+        previews.append(
+            ResearchItemPreview(
+                source_type=item.source_type,
+                content=item.content,
+                extracted_text=text,
+                extraction_status=status,
+                extraction_message=message,
+            )
+        )
+    return previews
 
 
 def replace_research_items(
