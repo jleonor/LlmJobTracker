@@ -1,9 +1,11 @@
 import type {
   AddJobResult,
+  AddOpenApplicationResult,
   AuthStatus,
   Backend,
   ClaudeJob,
   CreateJobApplicationRequest,
+  CreateOpenApplicationRequest,
   DuplicateListingMatch,
   FilePreviewData,
   JobApplication,
@@ -20,6 +22,10 @@ import type {
   LlmAppOpened,
   LlmAppStatus,
   ModelPrice,
+  OpenApplication,
+  OpenApplicationDetailData,
+  OpenApplicationEdit,
+  OpenApplicationFile,
   ParsedModelPrice,
   PositioningRescoreSummary,
   ProfileFile,
@@ -886,4 +892,196 @@ export async function deleteProfileFile(id: number): Promise<void> {
   if (!response.ok) {
     throw new ApiError(await errorMessage(response), response.status)
   }
+}
+
+// --- Open Applications (Phase 11, D-248 to D-254) ----------------------------------------------
+
+export function fetchOpenApplications(): Promise<OpenApplication[]> {
+  return request<OpenApplication[]>('/api/open-applications')
+}
+
+export function fetchOpenApplicationDetail(id: number): Promise<OpenApplicationDetailData> {
+  return request<OpenApplicationDetailData>(`/api/open-applications/${id}`)
+}
+
+// "Add Open Application" (D-251): one combined flow - the research intake and any manually
+// pre-filled fields create the row and immediately queue Company details' Generate step.
+export function createOpenApplication(
+  body: CreateOpenApplicationRequest,
+): Promise<AddOpenApplicationResult> {
+  return request<AddOpenApplicationResult>('/api/open-applications', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function deleteOpenApplication(id: number): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`/api/open-applications/${id}`, { method: 'DELETE' })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+}
+
+export function patchOpenApplication(
+  id: number,
+  edit: OpenApplicationEdit,
+): Promise<OpenApplicationDetailData> {
+  return request<OpenApplicationDetailData>(`/api/open-applications/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(edit),
+  })
+}
+
+export function setOpenApplicationMasterCv(
+  id: number,
+  profileFileId: number | null,
+): Promise<OpenApplicationDetailData> {
+  return request<OpenApplicationDetailData>(`/api/open-applications/${id}/master-cv`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profile_file_id: profileFileId }),
+  })
+}
+
+export function replaceOpenApplicationStatusHistory(
+  id: number,
+  entries: StatusHistoryEntry[],
+): Promise<OpenApplicationDetailData> {
+  return request<OpenApplicationDetailData>(`/api/open-applications/${id}/status-history`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries }),
+  })
+}
+
+// Additional files only (D-253) - the three generated kinds (Tailored CV, Cover letter,
+// Introduction message) have no direct-upload route, the same as a Job Application's own
+// generated kinds.
+export async function uploadOpenApplicationFile(
+  applicationId: number,
+  file: File,
+): Promise<OpenApplicationFile> {
+  let response: Response
+  try {
+    response = await fetch(`/api/open-applications/${applicationId}/files/other`, {
+      method: 'POST',
+      headers: { 'X-File-Name': encodeURIComponent(file.name) },
+      body: file,
+    })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+  return (await response.json()) as OpenApplicationFile
+}
+
+export async function openOpenApplicationFile(applicationId: number, fileId: number): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`/api/open-applications/${applicationId}/files/${fileId}/open`, {
+      method: 'POST',
+    })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+}
+
+export function downloadOpenApplicationFile(
+  applicationId: number,
+  fileId: number,
+  name: string,
+): Promise<void> {
+  return downloadFile(`/api/open-applications/${applicationId}/files/${fileId}/download`, name)
+}
+
+export async function deleteOpenApplicationFile(applicationId: number, fileId: number): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`/api/open-applications/${applicationId}/files/${fileId}`, {
+      method: 'DELETE',
+    })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+}
+
+export async function fetchOpenApplicationFilePreview(
+  applicationId: number,
+  fileId: number,
+): Promise<FilePreviewData> {
+  let response: Response
+  try {
+    response = await fetch(`/api/open-applications/${applicationId}/files/${fileId}/preview`)
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+  const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.includes('application/pdf')) {
+    return { kind: 'pdf', blob: await response.blob() }
+  }
+  if (contentType.includes('text/markdown')) {
+    return { kind: 'markdown', text: await response.text() }
+  }
+  if (contentType.includes('text/html')) {
+    return { kind: 'html', text: await response.text() }
+  }
+  return { kind: 'text', text: await response.text() }
+}
+
+export function generateOpenApplicationCv(id: number): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/open-applications/${id}/tailored-cv/generate`, { method: 'POST' })
+}
+
+export function generateOpenApplicationCoverLetter(id: number): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/open-applications/${id}/cover-letter/generate`, {
+    method: 'POST',
+  })
+}
+
+export function generateOpenApplicationIntroductionMessage(id: number): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/open-applications/${id}/introduction-message/generate`, {
+    method: 'POST',
+  })
+}
+
+export function fetchOpenApplicationReviseTurns(
+  applicationId: number,
+  sectionKind: string,
+): Promise<ReviseTurn[]> {
+  return request<ReviseTurn[]>(
+    `/api/open-applications/${applicationId}/revise/${sectionKind}/turns`,
+  )
+}
+
+export function postOpenApplicationReviseTurn(
+  applicationId: number,
+  sectionKind: string,
+  message: string,
+): Promise<ReviseTurn> {
+  return request<ReviseTurn>(
+    `/api/open-applications/${applicationId}/revise/${sectionKind}/turns`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    },
+  )
 }

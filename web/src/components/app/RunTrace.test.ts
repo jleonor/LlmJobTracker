@@ -32,6 +32,7 @@ function job(status: string, prompts: ClaudeJobPrompt[]): ClaudeJob {
     kind: 'profile_analysis',
     job_application_id: null,
     lane_id: null,
+    open_application_id: null,
     status,
     error: null,
     created_at: '2026-10-06T09:00:00Z',

@@ -2,20 +2,30 @@ import { useEffect, useState } from 'react'
 
 import { MarkdownDocument } from '@/components/app/MarkdownDocument'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ApiError, fetchJobFilePreview, fetchProfileFilePreview } from '@/lib/api'
+import {
+  ApiError,
+  fetchJobFilePreview,
+  fetchOpenApplicationFilePreview,
+  fetchProfileFilePreview,
+} from '@/lib/api'
 import type { FilePreviewData } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 // Where a previewed file's bytes come from. Profile files were the only source through D-109; a
-// Job Application's own files (D-116) are the second, needing the owning application's id too
-// since the route is nested under it.
+// Job Application's own files (D-116) are the second, and an Open Application's own files
+// (D-253) the third - both need the owning application's id too since each route is nested
+// under it.
 export type PreviewSource =
   | { table: 'profile_file'; id: number }
   | { table: 'job_file'; applicationId: number; id: number }
+  | { table: 'open_application_file'; applicationId: number; id: number }
 
 async function load(source: PreviewSource): Promise<FilePreviewData> {
   if (source.table === 'profile_file') return fetchProfileFilePreview(source.id)
   if (source.table === 'job_file') return fetchJobFilePreview(source.applicationId, source.id)
+  if (source.table === 'open_application_file') {
+    return fetchOpenApplicationFilePreview(source.applicationId, source.id)
+  }
   throw new Error(`Unknown preview source: ${JSON.stringify(source)}`)
 }
 
@@ -57,7 +67,7 @@ export function useFilePreview(source: PreviewSource, active: boolean): State {
     // `source` is a plain object literal from the caller; comparing its fields, not identity,
     // avoids re-fetching on every render while still refetching when the target file changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, source.table, source.id, source.table === 'job_file' ? source.applicationId : null])
+  }, [active, source.table, source.id, 'applicationId' in source ? source.applicationId : null])
 
   return state
 }

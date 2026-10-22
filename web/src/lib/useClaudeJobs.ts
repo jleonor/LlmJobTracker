@@ -64,7 +64,15 @@ export function queueLabel(jobs: ClaudeJob[]): string {
 // idle too - nothing is pending and nothing needs a look, which is what the badge is for (D-49
 // to D-52).
 export function queueStatusFor(jobs: ClaudeJob[], applicationId: number): QueueStatus {
-  const mine = jobs.filter((job) => job.job_application_id === applicationId)
+  return queueStatusForJobs(jobs.filter((job) => job.job_application_id === applicationId))
+}
+
+// Mirrors queueStatusFor, scoped to an Open Application instead of a Job Application (D-250).
+export function openApplicationQueueStatusFor(jobs: ClaudeJob[], applicationId: number): QueueStatus {
+  return queueStatusForJobs(jobs.filter((job) => job.open_application_id === applicationId))
+}
+
+function queueStatusForJobs(mine: ClaudeJob[]): QueueStatus {
   if (mine.some((job) => job.status === 'processing')) return 'processing'
   const mostRecent = mine.reduce<ClaudeJob | null>(
     (latest, job) => (!latest || job.updated_at > latest.updated_at ? job : latest),

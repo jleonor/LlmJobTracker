@@ -322,6 +322,7 @@ export type ClaudeJob = {
   kind: string
   job_application_id: number | null
   lane_id: number | null
+  open_application_id: number | null
   status: string
   error: string | null
   created_at: string
@@ -416,4 +417,108 @@ export type CreateJobApplicationRequest = {
 export type AddJobResult = {
   application_id: number
   claude_job_ids: number[]
+}
+
+// --- Open Applications (Phase 11, D-248 to D-254) ----------------------------------------------
+
+// A second application type for talent pools, unsolicited CV drops and cold outreach - not tied
+// to a specific listing. No lane, no match score (D-249).
+export type OpenApplicationTargetType = 'talent_pool' | 'unsolicited' | 'cold_outreach'
+
+// One row of the Open Applications table (D-250): Company (target name), Target type, Status,
+// Last updated, plus the same has_* flags the Job Applications table uses for its own flags.
+export type OpenApplication = {
+  id: number
+  target_name: string | null
+  target_type: OpenApplicationTargetType | null
+  status: string
+  last_updated: string
+  has_company_details: boolean
+  has_tailored_cv: boolean
+  has_cover_letter: boolean
+  has_introduction_message: boolean
+}
+
+export type OpenApplicationResearchItem = {
+  id: number
+  position: number
+  source_type: 'url' | 'text'
+  content: string
+  extracted_text: string | null
+  extraction_status: string | null
+  extraction_message: string | null
+}
+
+export type OpenApplicationFile = {
+  id: number
+  kind: string
+  name: string
+  subject: string | null
+  extraction_status: string | null
+  extraction_message: string | null
+}
+
+// GET /open-applications/{id}'s full record, for the detail page's Company details, Application
+// history and Files sections (D-251, D-253).
+export type OpenApplicationDetailData = {
+  id: number
+  target_name: string | null
+  target_type: OpenApplicationTargetType | null
+  contact_name: string | null
+  contact_title: string | null
+  contact_email: string | null
+  angle: string | null
+  why_this_company: string | null
+  other_notes: string | null
+  status: string
+  last_updated: string
+  notes: string | null
+  next_action: string | null
+  due_date: string | null
+  status_history: StatusHistoryEntry[]
+  files: OpenApplicationFile[]
+  master_cv_profile_file_id: number | null
+  master_cv_name: string | null
+}
+
+// A PATCH /open-applications/{id} body - only the fields a form actually sends are written,
+// matching the API's OpenApplicationEdit.
+export type OpenApplicationEdit = Partial<{
+  target_name: string | null
+  target_type: OpenApplicationTargetType | null
+  contact_name: string | null
+  contact_title: string | null
+  contact_email: string | null
+  angle: string | null
+  why_this_company: string | null
+  other_notes: string | null
+  notes: string | null
+  next_action: string | null
+  due_date: string | null
+}>
+
+// "Add Open Application"'s request body (D-251) - the research intake plus any manually
+// pre-filled fields, together.
+export type CreateOpenApplicationRequest = Partial<{
+  target_name: string | null
+  target_type: OpenApplicationTargetType | null
+  contact_name: string | null
+  contact_title: string | null
+  contact_email: string | null
+  angle: string | null
+  why_this_company: string | null
+  other_notes: string | null
+}> & {
+  research_items: { source_type: 'url' | 'text'; content: string }[]
+}
+
+export type AddOpenApplicationResult = {
+  application_id: number
+  claude_job_id: number
+}
+
+// The Open Application detail page's full shape, mirroring JobApplicationDetail: the API
+// response plus the queue badge OpenApplicationsPage.tsx fills in.
+export type OpenApplicationDetail = OpenApplicationDetailData & {
+  queue_status: QueueStatus
 }

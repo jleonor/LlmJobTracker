@@ -41,6 +41,7 @@ import type { JobApplication, JobApplicationDetailData, QueueStatus } from '@/li
 import { queueStatusFor, type QueueState } from '@/lib/useClaudeJobs'
 import { cn } from '@/lib/utils'
 import { JobApplicationDetailPage } from '@/pages/JobApplicationDetailPage'
+import { OpenApplicationsPage } from '@/pages/OpenApplicationsPage'
 
 type State =
   | { kind: 'loading' }
@@ -195,6 +196,9 @@ export function JobApplicationsPage({
   // never-triggered convention RunTrace's own clearSignal uses.
   resetSignal?: number
 }) {
+  // D-250: a toggle at the top of this page switches between the existing Job Applications
+  // table/detail flow below and a second, separate Open Applications one - not a merged table.
+  const [mode, setMode] = useState<'targeted' | 'open'>('targeted')
   const [state, setState] = useState<State>({ kind: 'loading' })
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [detailState, setDetailState] = useState<DetailState | null>(null)
@@ -363,10 +367,39 @@ export function JobApplicationsPage({
 
   useEffect(() => {
     if (resetSignal === 0) return // the initial render, not an actual click
+    setMode('targeted')
     backToList()
     // backToList is stable in practice; resetSignal's own change is the real trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetSignal])
+
+  const toggle = (
+    <div className="flex gap-1.5">
+      <button
+        type="button"
+        onClick={() => setMode('targeted')}
+        className={cn(buttonVariants({ variant: mode === 'targeted' ? 'default' : 'outline', size: 'sm' }))}
+      >
+        Targeted applications
+      </button>
+      <button
+        type="button"
+        onClick={() => setMode('open')}
+        className={cn(buttonVariants({ variant: mode === 'open' ? 'default' : 'outline', size: 'sm' }))}
+      >
+        Open applications
+      </button>
+    </div>
+  )
+
+  if (mode === 'open') {
+    return (
+      <div className="flex flex-col gap-4">
+        {toggle}
+        <OpenApplicationsPage queue={queue} />
+      </div>
+    )
+  }
 
   if (selectedId !== null) {
     const current = detailState?.id === selectedId ? detailState : null
@@ -395,6 +428,7 @@ export function JobApplicationsPage({
 
   return (
     <section aria-labelledby="applications-heading" className="flex flex-col gap-4">
+      {toggle}
       <div className="flex items-baseline justify-between">
         <div className="flex items-baseline gap-3">
           <h1 id="applications-heading" className="text-xl font-semibold tracking-tight">
