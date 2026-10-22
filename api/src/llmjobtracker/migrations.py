@@ -62,6 +62,19 @@ _V18_JOB_REVISE_SECTION_KINDS = (
 # table shape; migration 18's table keeps using the frozen tuple above.
 JOB_REVISE_SECTION_KINDS = (*_V18_JOB_REVISE_SECTION_KINDS, "interview_prep")
 
+# Open Application values (Phase 11, D-249 to D-253; open-application-domain.md). A subset of
+# STATUSES above - Screening, Interview and Offer are never written to open_applications.
+OPEN_APPLICATION_STATUSES = ("Identified", "Applied", "Rejected", "Withdrawn", "Expired")
+OPEN_APPLICATION_TARGET_TYPES = ("talent_pool", "unsolicited", "cold_outreach")
+OPEN_APPLICATION_FILE_KINDS = ("tailored_cv", "cover_letter", "introduction_message", "other")
+OPEN_APPLICATION_RESEARCH_SOURCE_TYPES = ("url", "text")
+OPEN_APPLICATION_REVISE_SECTION_KINDS = (
+    "company_details",
+    "tailored_cv",
+    "cover_letter",
+    "introduction_message",
+)
+
 # Phase 2 values (D-62, D-64, D-66; Agent/specs/profile-steps.md).
 CLAUDE_JOB_STATUSES = ("queued", "processing", "paused", "cancelled", "done", "failed")
 PROMPT_STATUSES = ("queued", "running", "done", "failed", "cancelled")
@@ -1148,6 +1161,108 @@ MIGRATIONS: tuple[Migration, ...] = (
         down=(
             "ALTER TABLE lane_overview DROP COLUMN overall_gaps",
             "ALTER TABLE lane_overview DROP COLUMN overall_fit",
+        ),
+    ),
+    Migration(
+        version=35,
+        name="add Open Applications: entity, status history, research items, files, revise "
+        "turns (Phase 11, D-248 to D-254)",
+        up=(
+            f"""
+            CREATE TABLE open_applications (
+                id INTEGER PRIMARY KEY,
+                target_name TEXT,
+                target_type TEXT
+                    CHECK (target_type IS NULL OR target_type IN (
+                        {_in_list(OPEN_APPLICATION_TARGET_TYPES)}
+                    )),
+                contact_name TEXT,
+                contact_title TEXT,
+                contact_email TEXT,
+                angle TEXT,
+                why_this_company TEXT,
+                other_notes TEXT,
+                master_cv_profile_file_id INTEGER
+                    REFERENCES profile_files(id) ON DELETE SET NULL,
+                notes TEXT,
+                next_action TEXT,
+                due_date TEXT,
+                status TEXT NOT NULL DEFAULT 'Identified'
+                    CHECK (status IN ({_in_list(OPEN_APPLICATION_STATUSES)})),
+                created_at TEXT NOT NULL DEFAULT ({_NOW})
+            )
+            """,
+            f"""
+            CREATE TABLE open_application_status_history (
+                id INTEGER PRIMARY KEY,
+                open_application_id INTEGER NOT NULL
+                    REFERENCES open_applications(id) ON DELETE CASCADE,
+                status TEXT NOT NULL CHECK (status IN ({_in_list(OPEN_APPLICATION_STATUSES)})),
+                changed_at TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX open_application_status_history_by_application "
+            "ON open_application_status_history (open_application_id, changed_at)",
+            f"""
+            CREATE TABLE open_application_research_items (
+                id INTEGER PRIMARY KEY,
+                open_application_id INTEGER NOT NULL
+                    REFERENCES open_applications(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL CHECK (position BETWEEN 1 AND 5),
+                source_type TEXT NOT NULL
+                    CHECK (source_type IN ({_in_list(OPEN_APPLICATION_RESEARCH_SOURCE_TYPES)})),
+                content TEXT NOT NULL,
+                extraction_status TEXT
+                    CHECK (
+                        extraction_status IS NULL
+                        OR extraction_status IN ({_in_list(EXTRACTION_STATUSES)})
+                    ),
+                extraction_message TEXT,
+                extracted_text TEXT,
+                UNIQUE (open_application_id, position)
+            )
+            """,
+            f"""
+            CREATE TABLE open_application_files (
+                id INTEGER PRIMARY KEY,
+                open_application_id INTEGER NOT NULL
+                    REFERENCES open_applications(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL CHECK (kind IN ({_in_list(OPEN_APPLICATION_FILE_KINDS)})),
+                name TEXT NOT NULL,
+                stored_path TEXT NOT NULL,
+                subject TEXT,
+                sha256 TEXT,
+                extraction_status TEXT
+                    CHECK (
+                        extraction_status IS NULL
+                        OR extraction_status IN ({_in_list(EXTRACTION_STATUSES)})
+                    ),
+                extraction_message TEXT,
+                extracted_text TEXT
+            )
+            """,
+            f"""
+            CREATE TABLE open_application_revise_turns (
+                id INTEGER PRIMARY KEY,
+                open_application_id INTEGER NOT NULL
+                    REFERENCES open_applications(id) ON DELETE CASCADE,
+                section_kind TEXT NOT NULL
+                    CHECK (section_kind IN ({_in_list(OPEN_APPLICATION_REVISE_SECTION_KINDS)})),
+                claude_job_id INTEGER NOT NULL REFERENCES claude_jobs(id) ON DELETE CASCADE,
+                message TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT ({_NOW})
+            )
+            """,
+            "ALTER TABLE claude_jobs ADD COLUMN open_application_id INTEGER "
+            "REFERENCES open_applications(id) ON DELETE CASCADE",
+        ),
+        down=(
+            "ALTER TABLE claude_jobs DROP COLUMN open_application_id",
+            "DROP TABLE open_application_revise_turns",
+            "DROP TABLE open_application_files",
+            "DROP TABLE open_application_research_items",
+            "DROP TABLE open_application_status_history",
+            "DROP TABLE open_applications",
         ),
     ),
 )
