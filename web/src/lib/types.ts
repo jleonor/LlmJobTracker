@@ -433,6 +433,9 @@ export type OpenApplication = {
   target_type: OpenApplicationTargetType | null
   status: string
   last_updated: string
+  // Carried on every row (D-254) so the Dashboard can compute combined counts and the activity
+  // heatmap client-side, the same way it already does from the Job Applications list.
+  status_history: StatusHistoryEntry[]
   has_company_details: boolean
   has_tailored_cv: boolean
   has_cover_letter: boolean

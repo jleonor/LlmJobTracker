@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import type { JobApplication } from '@/lib/types'
+import type { JobApplication, OpenApplication } from '@/lib/types'
 import {
   applicationsSentHeatmap,
   applySlicers,
+  applyStageSlicer,
   averageDaysIdentifiedToApplied,
   averageMatchScoreForLane,
+  combinedApplicationsSentHeatmap,
+  combinedProportionByStage,
+  combinedTotals,
+  combinedWholeHistoryRates,
   distinctLanes,
   distinctLocations,
   foldToOther,
@@ -15,6 +20,22 @@ import {
   proportionByStage,
   wholeHistoryRates,
 } from './dashboardStats'
+
+function openApplication(overrides: Partial<OpenApplication> = {}): OpenApplication {
+  return {
+    id: 1,
+    target_name: 'Acme Talent Pool',
+    target_type: 'talent_pool',
+    status: 'Identified',
+    last_updated: '2026-10-01T09:00:00Z',
+    status_history: [],
+    has_company_details: true,
+    has_tailored_cv: false,
+    has_cover_letter: false,
+    has_introduction_message: false,
+    ...overrides,
+  }
+}
 
 function application(overrides: Partial<JobApplication> = {}): JobApplication {
   return {
@@ -279,5 +300,81 @@ describe('applicationsSentHeatmap', () => {
     expect(heatmap).toHaveLength(365)
     expect(heatmap[heatmap.length - 1]).toEqual({ date: '2026-10-18', count: 2 })
     expect(heatmap[heatmap.length - 2]).toEqual({ date: '2026-10-17', count: 0 }) // Identified, not Applied
+  })
+})
+
+describe('combinedProportionByStage', () => {
+  it('folds Open Applications into the same stage bars as Job Applications', () => {
+    const jobApplications = [application({ status: 'Identified' }), application({ status: 'Applied' })]
+    const openApplications = [openApplication({ status: 'Applied' }), openApplication({ status: 'Expired' })]
+    const result = combinedProportionByStage(jobApplications, openApplications)
+    expect(result).toEqual([
+      { label: 'Identified', count: 1 },
+      { label: 'Applied', count: 2 },
+      { label: 'Expired', count: 1 },
+    ])
+  })
+})
+
+describe('applyStageSlicer', () => {
+  it('filters Open Applications by status only (no lane/match-score dimension exists)', () => {
+    const openApplications = [openApplication({ id: 1, status: 'Identified' }), openApplication({ id: 2, status: 'Applied' })]
+    expect(applyStageSlicer(openApplications, 'Applied')).toEqual([openApplications[1]])
+    expect(applyStageSlicer(openApplications, null)).toEqual(openApplications)
+  })
+})
+
+describe('combinedTotals', () => {
+  it('counts both entity types and splits Alive/Dead by the shared end-state set', () => {
+    const jobApplications = [
+      application({ status: 'Identified' }),
+      application({ status: 'Rejected' }),
+    ]
+    const openApplications = [
+      openApplication({ status: 'Applied' }),
+      openApplication({ status: 'Expired' }),
+    ]
+    const totals = combinedTotals(jobApplications, openApplications)
+    expect(totals).toEqual({
+      totalJobApplications: 2,
+      totalOpenApplications: 2,
+      total: 4,
+      alive: 2,
+      dead: 2,
+    })
+  })
+})
+
+describe('combinedWholeHistoryRates', () => {
+  it('merges Identified/Applied events from both entity types', () => {
+    const now = new Date('2026-10-11T00:00:00Z')
+    const jobApplications = [
+      application({ status_history: [{ status: 'Identified', changed_at: '2026-10-01T00:00:00Z' }] }),
+    ]
+    const openApplications = [
+      openApplication({ status_history: [{ status: 'Applied', changed_at: '2026-10-05T00:00:00Z' }] }),
+    ]
+    const rates = combinedWholeHistoryRates(jobApplications, openApplications, now)
+    expect(rates).not.toBeNull()
+    expect(rates?.identifiedPerDay).toBeCloseTo(1 / 10)
+    expect(rates?.appliedPerDay).toBeCloseTo(1 / 10)
+  })
+
+  it('is null when neither list has any status history', () => {
+    expect(combinedWholeHistoryRates([], [])).toBeNull()
+  })
+})
+
+describe('combinedApplicationsSentHeatmap', () => {
+  it('counts Applied entries from both entity types on the same day', () => {
+    const today = new Date('2026-10-18T00:00:00Z')
+    const jobApplications = [
+      application({ status_history: [{ status: 'Applied', changed_at: '2026-10-18T09:00:00Z' }] }),
+    ]
+    const openApplications = [
+      openApplication({ status_history: [{ status: 'Applied', changed_at: '2026-10-18T14:00:00Z' }] }),
+    ]
+    const heatmap = combinedApplicationsSentHeatmap(jobApplications, openApplications, today)
+    expect(heatmap[heatmap.length - 1]).toEqual({ date: '2026-10-18', count: 2 })
   })
 })

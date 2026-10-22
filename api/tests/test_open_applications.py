@@ -48,6 +48,16 @@ def test_list_orders_by_last_updated_and_reports_has_flags(db_path: Path) -> Non
     assert rows[0].has_introduction_message is False
 
 
+def test_list_carries_status_history_for_the_dashboard(db_path: Path) -> None:
+    conn = connect(db_path)
+    application_id = insert_open_application(conn, {"target_name": "Acme"})
+    rows = list_open_applications(conn)
+    assert len(rows) == 1
+    assert len(rows[0].status_history) == 1
+    assert rows[0].status_history[0].status == "Identified"
+    assert rows[0].id == application_id
+
+
 def test_count_matches_the_number_of_rows(db_path: Path) -> None:
     conn = connect(db_path)
     assert count_open_applications(conn) == 0

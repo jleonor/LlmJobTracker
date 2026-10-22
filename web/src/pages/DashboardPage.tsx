@@ -19,10 +19,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { BACKEND_LABELS, MODEL_FIELD } from '@/lib/backends'
 import { CATEGORICAL_CHART_COLORS, MATCH_SCORE_RAMP, NOT_SCORED_COLOR } from '@/lib/chartPalette'
 import {
-  applicationsSentHeatmap,
+  applyStageSlicer,
   applySlicers,
   averageDaysIdentifiedToApplied,
   averageMatchScoreForLane,
+  combinedApplicationsSentHeatmap,
+  combinedProportionByStage,
+  combinedTotals,
+  combinedWholeHistoryRates,
   distinctLanes,
   distinctLocations,
   EMPTY_SLICERS,
@@ -31,8 +35,6 @@ import {
   NOT_SCORED_BUCKET,
   proportionByLane,
   proportionByMatchScoreBucket,
-  proportionByStage,
-  wholeHistoryRates,
   type CountEntry,
   type DashboardSlicers,
 } from '@/lib/dashboardStats'
@@ -44,6 +46,7 @@ import {
   fetchLaneAnalysisPreview,
   fetchLaneOverview,
   fetchLanes,
+  fetchOpenApplications,
   fetchPositioningRescoreOpenPreview,
   fetchPositioningRescorePreview,
   runPositioningRescoreAll,
@@ -55,6 +58,7 @@ import {
   type Lane,
   type LaneAnalysisSummary,
   type LaneOverview,
+  type OpenApplication,
   type PositioningRescoreSummary,
   type Settings,
 } from '@/lib/types'
@@ -72,6 +76,11 @@ const MAX_LANE_BARS = 7
 
 export function DashboardPage({ settings, queue }: { settings: Settings; queue: QueueState }) {
   const [state, setState] = useState<State>({ kind: 'loading' })
+  // Open Applications (D-254): fetched alongside the Job Applications list and folded into the
+  // combined stage chart, rate cards, totals and heatmap below. A fetch failure here degrades to
+  // an empty list rather than blocking the whole Dashboard - Job Applications is still the
+  // primary thing this page is for.
+  const [openApplications, setOpenApplications] = useState<OpenApplication[]>([])
   const [slicers, setSlicers] = useState<DashboardSlicers>(EMPTY_SLICERS)
   const [lanes, setLanes] = useState<Lane[]>([])
   const [overview, setOverview] = useState<LaneOverview>({
@@ -92,6 +101,18 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
         const message = error instanceof ApiError ? error.message : 'Could not load applications.'
         setState({ kind: 'error', message })
       })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchOpenApplications()
+      .then((applications) => {
+        if (!cancelled) setOpenApplications(applications)
+      })
+      .catch(() => undefined)
     return () => {
       cancelled = true
     }
@@ -144,11 +165,32 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
     () => foldToOther(proportionByLane(sliced), MAX_LANE_BARS, 'Other lanes'),
     [sliced],
   )
-  const stageEntries = useMemo(() => proportionByStage(sliced), [sliced])
+  // Open Applications only ever share the Stage slicer with Job Applications (D-249: no lane,
+  // match score or location) - applyStageSlicer filters by status alone, leaving the Open list
+  // unfiltered when Stage isn't set, same as the Job list's own applySlicers would for a
+  // dimension it doesn't touch.
+  const slicedOpen = useMemo(
+    () => applyStageSlicer(openApplications, slicers.stage),
+    [openApplications, slicers.stage],
+  )
+  const stageEntries = useMemo(
+    () => combinedProportionByStage(sliced, slicedOpen),
+    [sliced, slicedOpen],
+  )
   const matchScoreEntries = useMemo(() => proportionByMatchScoreBucket(sliced), [sliced])
   const leadTimeDays = useMemo(() => averageDaysIdentifiedToApplied(sliced), [sliced])
-  const rates = useMemo(() => wholeHistoryRates(allApplications), [allApplications])
-  const heatmap = useMemo(() => applicationsSentHeatmap(sliced), [sliced])
+  const rates = useMemo(
+    () => combinedWholeHistoryRates(allApplications, openApplications),
+    [allApplications, openApplications],
+  )
+  const heatmap = useMemo(
+    () => combinedApplicationsSentHeatmap(sliced, slicedOpen),
+    [sliced, slicedOpen],
+  )
+  const totals = useMemo(
+    () => combinedTotals(allApplications, openApplications),
+    [allApplications, openApplications],
+  )
 
   if (state.kind === 'loading') {
     return <p className="text-sm text-muted-foreground">Loading…</p>
@@ -172,7 +214,7 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
         <StatTile
           label="Identified → Applied"
           value={leadTimeDays === null ? '—' : `${leadTimeDays.toFixed(1)} days`}
-          secondary="average, applications with both dates"
+          secondary="average, job applications with both dates"
         />
         <StatTile
           label="Applications identified"
@@ -184,6 +226,17 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
           value={rates === null ? '—' : `${rates.appliedPerDay.toFixed(2)} / day`}
           secondary={rates === null ? undefined : `${rates.appliedPerWeek.toFixed(1)} / week`}
         />
+      </div>
+
+      {/* D-254: job + open totals, and the Alive/Dead split by the shared end-state set
+          (Rejected, Withdrawn, Expired) - always the full, unsliced counts, like the rate
+          tiles above. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
+        <StatTile label="Total applications" value={String(totals.total)} />
+        <StatTile label="Job applications" value={String(totals.totalJobApplications)} />
+        <StatTile label="Open applications" value={String(totals.totalOpenApplications)} />
+        <StatTile label="Alive" value={String(totals.alive)} />
+        <StatTile label="Dead" value={String(totals.dead)} secondary="Rejected, Withdrawn or Expired" />
       </div>
 
       {/* 3 columns x 2 rows: lane spans both rows in column 1; stage and match score fill row 1's

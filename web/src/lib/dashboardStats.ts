@@ -3,7 +3,12 @@
 // here - DashboardPage.tsx owns the data and the slicer state, this module only computes from
 // what it's given, so every function here is trivially testable on plain arrays.
 
-import { STATUS_ORDER, type JobApplication } from '@/lib/types'
+import { STATUS_ORDER, type JobApplication, type OpenApplication, type StatusHistoryEntry } from '@/lib/types'
+
+// D-249/D-254: the three end states Job Applications and Open Applications share - the only
+// status concept both entity types have in common, which is what every "combined" function
+// below actually combines on.
+const END_STATUSES = new Set(['Rejected', 'Withdrawn', 'Expired'])
 
 // --- Slicers (D-241: these filter every chart except the whole-history rate stats) -------------
 
@@ -146,6 +151,64 @@ export function proportionByStage(applications: JobApplication[]): CountEntry[] 
   return sortedEntries(counts, STATUS_ORDER)
 }
 
+// D-254: the same chart, combining Job and Open Applications' stage counts into the same bars
+// (both use the shared STATUS_ORDER - Open Applications only ever populate Identified, Applied,
+// Rejected, Withdrawn and Expired, never Screening/Interview/Offer). `openApplications` should
+// already be filtered by the Stage slicer if one is active (`applyStageSlicer` below) - Lane,
+// Match score and Location don't apply to this entity, so it is never filtered by those.
+export function combinedProportionByStage(
+  jobApplications: JobApplication[],
+  openApplications: OpenApplication[],
+): CountEntry[] {
+  const counts = countBy(jobApplications, (application) => application.status)
+  for (const application of openApplications) {
+    counts.set(application.status, (counts.get(application.status) ?? 0) + 1)
+  }
+  return sortedEntries(counts, STATUS_ORDER)
+}
+
+// The only slicer dimension Open Applications share with Job Applications (D-249: no lane, no
+// match score, no location) - applied separately from applySlicers above, which is Job
+// Application-shaped throughout.
+export function applyStageSlicer(
+  openApplications: OpenApplication[],
+  stage: string | null,
+): OpenApplication[] {
+  if (stage === null) return openApplications
+  return openApplications.filter((application) => application.status === stage)
+}
+
+// --- Totals, Alive/Dead (D-254) -------------------------------------------------------------
+
+export type CombinedTotals = {
+  totalJobApplications: number
+  totalOpenApplications: number
+  total: number
+  alive: number
+  dead: number
+}
+
+// Always the FULL, unsliced lists (matching the whole-history rates' own D-241 rule) - a
+// top-level "how many applications are there" count shouldn't change as the slicers change.
+export function combinedTotals(
+  jobApplications: JobApplication[],
+  openApplications: OpenApplication[],
+): CombinedTotals {
+  const totalJobApplications = jobApplications.length
+  const totalOpenApplications = openApplications.length
+  const dead =
+    jobApplications.filter((application) => END_STATUSES.has(application.status)).length +
+    openApplications.filter((application) => END_STATUSES.has(application.status)).length
+  const total = totalJobApplications + totalOpenApplications
+  return {
+    totalJobApplications,
+    totalOpenApplications,
+    total,
+    alive: total - dead,
+    dead,
+  }
+}
+
 export function proportionByMatchScoreBucket(applications: JobApplication[]): CountEntry[] {
   const counts = countBy(applications, (application) => matchScoreBucket(application.match_score))
   return sortedEntries(counts, MATCH_SCORE_BUCKETS)
@@ -212,7 +275,29 @@ export function wholeHistoryRates(
   applications: JobApplication[],
   now: Date = new Date(),
 ): WholeHistoryRates | null {
-  const allEntries = applications.flatMap((application) => application.status_history)
+  return ratesFromEntries(
+    applications.flatMap((application) => application.status_history),
+    now,
+  )
+}
+
+// D-254: the same rate, combining Job and Open Applications' Identified/Applied events. Pass
+// the FULL, unsliced lists (D-241's rule extends to the combined version).
+export function combinedWholeHistoryRates(
+  jobApplications: JobApplication[],
+  openApplications: OpenApplication[],
+  now: Date = new Date(),
+): WholeHistoryRates | null {
+  return ratesFromEntries(
+    [
+      ...jobApplications.flatMap((application) => application.status_history),
+      ...openApplications.flatMap((application) => application.status_history),
+    ],
+    now,
+  )
+}
+
+function ratesFromEntries(allEntries: StatusHistoryEntry[], now: Date): WholeHistoryRates | null {
   if (allEntries.length === 0) return null
   const earliest = allEntries.reduce(
     (min, entry) => (entry.changed_at < min ? entry.changed_at : min),
@@ -242,17 +327,37 @@ export function applicationsSentHeatmap(
   applications: JobApplication[],
   today: Date = new Date(),
 ): HeatmapDay[] {
+  return heatmapFromEntries(
+    applications.flatMap((application) => application.status_history),
+    today,
+  )
+}
+
+// D-254: the same heatmap, combining Job and Open Applications' Applied-date events.
+export function combinedApplicationsSentHeatmap(
+  jobApplications: JobApplication[],
+  openApplications: OpenApplication[],
+  today: Date = new Date(),
+): HeatmapDay[] {
+  return heatmapFromEntries(
+    [
+      ...jobApplications.flatMap((application) => application.status_history),
+      ...openApplications.flatMap((application) => application.status_history),
+    ],
+    today,
+  )
+}
+
+function heatmapFromEntries(allEntries: StatusHistoryEntry[], today: Date): HeatmapDay[] {
   const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))
   const start = new Date(end)
   start.setUTCDate(start.getUTCDate() - 364) // a trailing 12-month window, GitHub-heatmap style
 
   const countsByDay = new Map<string, number>()
-  for (const application of applications) {
-    for (const entry of application.status_history) {
-      if (entry.status !== 'Applied') continue
-      const key = entry.changed_at.slice(0, 10)
-      countsByDay.set(key, (countsByDay.get(key) ?? 0) + 1)
-    }
+  for (const entry of allEntries) {
+    if (entry.status !== 'Applied') continue
+    const key = entry.changed_at.slice(0, 10)
+    countsByDay.set(key, (countsByDay.get(key) ?? 0) + 1)
   }
 
   const days: HeatmapDay[] = []

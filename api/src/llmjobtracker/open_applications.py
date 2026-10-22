@@ -48,13 +48,17 @@ class StatusHistoryEntry(BaseModel):
 
 
 class OpenApplication(BaseModel):
-    """One row of the Open Applications table (D-250)."""
+    """One row of the Open Applications table (D-250). `status_history` is carried on every row
+    (not just the detail response) so the Dashboard can compute combined counts and the
+    activity heatmap client-side the same way it already does from the Job Applications list
+    (D-254) — without a second per-application fetch."""
 
     id: int
     target_name: str | None
     target_type: str | None
     status: str
     last_updated: str
+    status_history: list[StatusHistoryEntry]
     has_company_details: bool
     has_tailored_cv: bool
     has_cover_letter: bool
@@ -147,6 +151,7 @@ def list_open_applications(conn: sqlite3.Connection) -> list[OpenApplication]:
         ORDER BY last_updated DESC, a.id DESC
         """
     ).fetchall()
+    history_by_application = _status_history_by_application(conn)
     return [
         OpenApplication(
             id=row["id"],
@@ -154,6 +159,7 @@ def list_open_applications(conn: sqlite3.Connection) -> list[OpenApplication]:
             target_type=row["target_type"],
             status=row["status"],
             last_updated=row["last_updated"],
+            status_history=history_by_application.get(row["id"], []),
             has_company_details=bool(row["target_name"]),
             has_tailored_cv=bool(row["has_tailored_cv"]),
             has_cover_letter=bool(row["has_cover_letter"]),
@@ -161,6 +167,23 @@ def list_open_applications(conn: sqlite3.Connection) -> list[OpenApplication]:
         )
         for row in rows
     ]
+
+
+def _status_history_by_application(
+    conn: sqlite3.Connection,
+) -> dict[int, list[StatusHistoryEntry]]:
+    """Every Open Application's status history, grouped by id, in one query — mirrors
+    job_applications._status_history_by_application."""
+    rows = conn.execute(
+        "SELECT open_application_id, status, changed_at "
+        "FROM open_application_status_history ORDER BY changed_at"
+    ).fetchall()
+    grouped: dict[int, list[StatusHistoryEntry]] = {}
+    for row in rows:
+        grouped.setdefault(row["open_application_id"], []).append(
+            StatusHistoryEntry(status=row["status"], changed_at=row["changed_at"])
+        )
+    return grouped
 
 
 def count_open_applications(conn: sqlite3.Connection) -> int:
