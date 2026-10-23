@@ -109,7 +109,12 @@ export function GenerateListingOverlay({
     return () => {
       cancelled = true
     }
-  }, [checkJob])
+    // checkJob.status is the real trigger - useClaudeJobs() polling hands back a new object
+    // reference every tick even once the job is already done, which would otherwise re-fetch
+    // this repeatedly for no reason (AddJobOverlay.tsx's own identity effect had the same
+    // pattern, there with a real user-facing bug: it overwrote edited fields on every poll).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkJob?.status])
 
   useEffect(() => {
     if (generateJob?.status === 'done') onChanged()

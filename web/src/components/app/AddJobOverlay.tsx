@@ -202,7 +202,11 @@ export function AddJobOverlay({
     return () => {
       cancelled = true
     }
-  }, [checkJob])
+    // checkJob.status is the real trigger - see the identity effect's own comment below for why
+    // the object itself isn't a safe dependency (useClaudeJobs() polling gives a new reference
+    // every tick, which would re-fetch this repeatedly for no reason once already done).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkJob?.status])
 
   // Once the identity job finishes, read its parsed answer back and pre-fill the confirm form.
   // A rejected answer (no identifiable company/role) falls back to manual entry (D-145) - so
@@ -244,7 +248,14 @@ export function AddJobOverlay({
     return () => {
       cancelled = true
     }
-  }, [identityJob, identityJobId, extraction])
+    // useClaudeJobs() polls every few seconds and hands back a brand new `jobs` array (and so a
+    // new `identityJob` object) each time, even once the job is already "done" - depending on
+    // the object itself re-ran this effect, and so re-fetched and overwrote company/role/lane/
+    // location/portal on every poll tick while this stage was open, undoing whatever the user
+    // had just typed. identityJob.status is the real trigger; its own string value only changes
+    // when the job's actual status changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identityJob?.status, identityJobId, extraction])
 
   // The active progress tab follows whichever queued job is currently processing, the same
   // pattern AnalysisOverlay uses across one job's prompts, applied here across several jobs.

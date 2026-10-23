@@ -187,7 +187,13 @@ export function AddOpenApplicationOverlay({
     return () => {
       cancelled = true
     }
-  }, [identityJob, identityJobId])
+    // useClaudeJobs() polls every few seconds and hands back a brand new `jobs` array (and so a
+    // new `identityJob` object) each time, even once the job is already "done" - depending on
+    // the object itself re-ran this effect, and so re-fetched and overwrote the fields, on every
+    // poll tick while this stage was open. identityJob.status is the real trigger; its own
+    // string value only changes when the job's actual status changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identityJob?.status, identityJobId])
 
   async function create() {
     setBusy(true)
