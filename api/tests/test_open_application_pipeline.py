@@ -261,6 +261,13 @@ def test_cv_and_cover_letter_and_introduction_message_generate_end_to_end(db_pat
     assert job is not None
     assert job.status == "done"
     assert latest_open_application_file_of_kind(conn, application_id, "tailored_cv") is not None
+    # Regression guard (the real bug the user hit): the *sent* prompt must actually show the
+    # model the EDIT/INSERT AFTER/REMOVE/ADD ROW AFTER block syntax, not just reference it by
+    # name - FakeRunner's canned answer parses either way, so only reading the prompt itself
+    # back catches a prompt that forgot to include it.
+    cv_exchange = prompt_exchange(conn, job_id, 0)
+    assert cv_exchange is not None
+    assert "=== EDIT ===" in (cv_exchange.prompt_text or "")
 
     assert cover_letter_ready(conn, application_id) is True
     queue.set_runner(FakeRunner(text=GOOD_LETTER_ANSWER))
@@ -270,6 +277,9 @@ def test_cv_and_cover_letter_and_introduction_message_generate_end_to_end(db_pat
     assert job is not None
     assert job.status == "done"
     assert latest_open_application_file_of_kind(conn, application_id, "cover_letter") is not None
+    letter_exchange = prompt_exchange(conn, job_id, 0)
+    assert letter_exchange is not None
+    assert "=== EDIT ===" in (letter_exchange.prompt_text or "")
 
     queue.set_runner(FakeRunner(text=GOOD_INTRODUCTION_ANSWER))
     job_id = submit_generate_introduction_message(conn, queue, application_id)
@@ -280,6 +290,41 @@ def test_cv_and_cover_letter_and_introduction_message_generate_end_to_end(db_pat
     intro = latest_open_application_file_of_kind(conn, application_id, "introduction_message")
     assert intro is not None
     assert intro["subject"] == "Following up on your talent pool"
+
+
+def test_cv_and_cover_letter_revise_prompts_include_the_edit_block_syntax(db_path: Path) -> None:
+    """Same regression guard as the generate test above, for the shared revise prompt
+    (`_build_docx_revise_prompt`), which had the identical bug."""
+    queue = make_queue(db_path, FakeRunner(text=GOOD_CV_ANSWER))
+    application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
+    add_profile_documents(db_path)
+    add_master_cv(db_path, application_id)
+    add_cover_letter_template(db_path)
+
+    conn = connect(db_path)
+    submit_generate_cv(conn, queue, application_id)
+    run_all(queue)
+    queue.set_runner(FakeRunner(text=GOOD_LETTER_ANSWER))
+    submit_generate_cover_letter(conn, queue, application_id)
+    run_all(queue)
+
+    queue.set_runner(FakeRunner(text=GOOD_CV_ANSWER))
+    job_id = submit_open_application_revise_turn(
+        conn, queue, application_id, "tailored_cv", "Reword the tagline"
+    )
+    run_all(queue)
+    cv_exchange = prompt_exchange(conn, job_id, 0)
+    assert cv_exchange is not None
+    assert "=== EDIT ===" in (cv_exchange.prompt_text or "")
+
+    queue.set_runner(FakeRunner(text=GOOD_LETTER_ANSWER))
+    job_id = submit_open_application_revise_turn(
+        conn, queue, application_id, "cover_letter", "Make the opening more direct"
+    )
+    run_all(queue)
+    letter_exchange = prompt_exchange(conn, job_id, 0)
+    assert letter_exchange is not None
+    assert "=== EDIT ===" in (letter_exchange.prompt_text or "")
 
 
 def test_revise_company_details_patches_one_field(db_path: Path) -> None:
