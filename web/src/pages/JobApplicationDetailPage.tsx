@@ -1794,7 +1794,11 @@ function JobFileRevisePreview({
   open: boolean
 }) {
   const state = useFilePreview({ table: 'job_file', applicationId, id: fileId }, open)
-  return <FilePreviewBody name={name} state={state} />
+  return (
+    <div className="min-h-0 flex-1 overflow-hidden">
+      <FilePreviewBody name={name} state={state} />
+    </div>
+  )
 }
 
 function Files({

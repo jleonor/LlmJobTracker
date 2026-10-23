@@ -89,7 +89,9 @@ export function OpenApplicationReviseOverlay({
           <DialogTitle>Revise (LLM): {title}</DialogTitle>
         </DialogHeader>
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="min-h-0 overflow-y-auto rounded border border-border p-3">{leftPane}</div>
+          <div className="flex min-h-0 flex-col overflow-y-auto rounded border border-border p-3">
+            {leftPane}
+          </div>
           <div className="flex min-h-0 flex-col gap-2">
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded border border-border p-3">
               {error && <p className="text-sm text-destructive">{error}</p>}

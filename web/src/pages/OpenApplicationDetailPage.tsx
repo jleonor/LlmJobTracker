@@ -711,7 +711,7 @@ function FilePreviewPane({
 }) {
   const state = useFilePreview({ table: 'open_application_file', applicationId, id: fileId }, open)
   return (
-    <div className="min-h-full overflow-hidden rounded border border-border bg-background">
+    <div className="min-h-0 flex-1 overflow-hidden rounded border border-border bg-background">
       <FilePreviewBody name={name} state={state} />
     </div>
   )
