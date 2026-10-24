@@ -213,6 +213,7 @@ from llmjobtracker.profile_files import (
     profile_file_path,
     profile_file_text,
     reveal_in_file_manager,
+    set_manual_text,
     store_profile_file,
 )
 from llmjobtracker.profile_pipeline import (
@@ -343,6 +344,10 @@ class ListingGenerateRequest(BaseModel):
 class DuplicateCheckRequest(BaseModel):
     text: str
     source_url: str | None = None
+
+
+class ManualTextRequest(BaseModel):
+    text: str
 
 
 class IdentityRequest(BaseModel):
@@ -1931,6 +1936,19 @@ def create_app(
         if text is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         return text
+
+    @app.post(
+        "/profile/files/{file_id}/manual-text",
+        response_model=ProfileFile,
+        dependencies=[Depends(require_token)],
+    )
+    def set_profile_file_manual_text(
+        file_id: int, body: ManualTextRequest, conn: Annotated[Connection, Depends(get_db)]
+    ) -> ProfileFile:
+        try:
+            return set_manual_text(conn, db_path.parent, file_id, body.text)
+        except ProfileUploadError as error:
+            raise HTTPException(status_code=error.status, detail=error.message) from error
 
     @app.get("/profile/files/{file_id}/preview", dependencies=[Depends(require_token)])
     def profile_file_preview(

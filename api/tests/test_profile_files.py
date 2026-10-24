@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from llmjobtracker.app import TOKEN_HEADER, create_app
-from llmjobtracker.profile_files import MAX_UPLOAD_BYTES, profile_folder
+from llmjobtracker.profile_files import MAX_UPLOAD_BYTES, profile_folder, refresh_extracted_text
 from llmjobtracker.runner import FakeRunner
 from llmjobtracker.storage import connect
 
@@ -162,6 +162,108 @@ def test_cover_letter_template_is_stored_as_its_own_kind(
     response = upload(upload_client, "cover_letter_template", "letter template.docx", SYNTHETIC_CV)
     assert response.status_code == 201
     assert rows(db_path)[0]["kind"] == "cover_letter_template"
+
+
+# --- Manual text for an Additional file (D-259) ------------------------------------------------
+
+FIXTURES = Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "profile"
+
+
+def test_manual_text_is_stored_and_written_as_a_sidecar_file(
+    upload_client: TestClient, db_path: Path
+) -> None:
+    upload(
+        upload_client,
+        "additional_file",
+        "transcript.pdf",
+        (FIXTURES / "scanned_no_text.pdf").read_bytes(),
+    )
+    file_id = rows(db_path)[0]["id"]
+    assert rows(db_path)[0]["extraction_status"] == "no_text"
+
+    response = upload_client.post(
+        f"/profile/files/{file_id}/manual-text", json={"text": "Typed by the user."}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["extraction_status"] == "manual"
+
+    row = rows(db_path)[0]
+    assert row["extraction_status"] == "manual"
+    assert row["extracted_text"] == "Typed by the user."
+    stored = db_path.parent / row["stored_path"]
+    sidecar = stored.with_suffix(".manual.txt")
+    assert sidecar.read_text(encoding="utf-8") == "Typed by the user."
+
+
+def test_manual_text_is_refused_for_a_kind_other_than_additional_file(
+    upload_client: TestClient, db_path: Path
+) -> None:
+    upload(upload_client, "older_cv", "scan.pdf", (FIXTURES / "scanned_no_text.pdf").read_bytes())
+    file_id = rows(db_path)[0]["id"]
+
+    response = upload_client.post(
+        f"/profile/files/{file_id}/manual-text", json={"text": "Typed by the user."}
+    )
+
+    assert response.status_code == 400
+
+
+def test_manual_text_is_refused_once_extraction_already_worked(
+    upload_client: TestClient, db_path: Path
+) -> None:
+    upload(upload_client, "additional_file", "note.txt", b"Already readable text.")
+    file_id = rows(db_path)[0]["id"]
+    assert rows(db_path)[0]["extraction_status"] == "ok"
+
+    response = upload_client.post(
+        f"/profile/files/{file_id}/manual-text", json={"text": "Typed by the user."}
+    )
+
+    assert response.status_code == 400
+
+
+def test_manual_text_is_refused_when_empty(upload_client: TestClient, db_path: Path) -> None:
+    upload(
+        upload_client,
+        "additional_file",
+        "transcript.pdf",
+        (FIXTURES / "scanned_no_text.pdf").read_bytes(),
+    )
+    file_id = rows(db_path)[0]["id"]
+
+    response = upload_client.post(f"/profile/files/{file_id}/manual-text", json={"text": "   "})
+
+    assert response.status_code == 400
+
+
+def test_manual_text_for_an_unknown_file_is_404(upload_client: TestClient) -> None:
+    response = upload_client.post("/profile/files/999/manual-text", json={"text": "x"})
+    assert response.status_code == 404
+
+
+def test_refresh_extracted_text_leaves_a_manual_row_untouched(
+    upload_client: TestClient, db_path: Path
+) -> None:
+    upload(
+        upload_client,
+        "additional_file",
+        "transcript.pdf",
+        (FIXTURES / "scanned_no_text.pdf").read_bytes(),
+    )
+    file_id = rows(db_path)[0]["id"]
+    upload_client.post(f"/profile/files/{file_id}/manual-text", json={"text": "Typed text."})
+
+    conn = connect(db_path)
+    try:
+        refresh_extracted_text(conn, db_path.parent)
+    finally:
+        conn.close()
+
+    row = rows(db_path)[0]
+    assert row["extraction_status"] == "manual"
+    assert row["extracted_text"] == "Typed text."
 
 
 # --- reveal_in_file_manager (D-160, D-161) -----------------------------------------------------

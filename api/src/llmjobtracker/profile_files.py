@@ -22,6 +22,10 @@ from llmjobtracker.migrations import PROFILE_FILE_KINDS
 PROFILE_FOLDER_NAME: Final = "profile"
 MAX_UPLOAD_BYTES: Final = 25 * 1024 * 1024
 ALLOWED_EXTENSIONS: Final = frozenset({".pdf", ".docx", ".txt", ".md"})
+# Manual text entry (D-259) is offered for this kind only: CVs, letters and the cover letter
+# template are expected to stay text-native, so a failed extraction there is a real gap to fix by
+# re-uploading, not something to type around.
+MANUAL_TEXT_KIND: Final = "additional_file"
 # These kinds hold one file at a time (D-84, D-88, D-92). A new one, uploaded or generated,
 # replaces it.
 SINGLE_FILE_KINDS: Final = frozenset(
@@ -148,6 +152,55 @@ def store_profile_file(
         extraction_status=result.status,
         extraction_message=result.message,
         generated=False,
+    )
+
+
+def set_manual_text(
+    conn: sqlite3.Connection, data_folder: Path, file_id: int, text: str
+) -> ProfileFile:
+    """Store text the user typed in place of a failed extraction, for an Additional file only
+    (D-259). The text is written to a sidecar `.txt` file next to the original upload, so the
+    managed folder shows what was typed beside the scan it belongs to, and is also stored as the
+    row's own `extracted_text`, read by the career history prompt exactly like any other
+    extraction. `extraction_status` becomes `manual`; `refresh_extracted_text` leaves a `manual`
+    row untouched rather than overwriting it from the original file on the next profile analysis.
+    """
+    row = conn.execute(
+        "SELECT kind, extraction_status, stored_path, original_name, uploaded_at, size_bytes, "
+        "sha256, generated FROM profile_files WHERE id = ?",
+        (file_id,),
+    ).fetchone()
+    if row is None:
+        raise ProfileUploadError(404, "No such file.")
+    if row["kind"] != MANUAL_TEXT_KIND:
+        raise ProfileUploadError(400, "Manual text entry is only for Additional files.")
+    if row["extraction_status"] == "ok":
+        raise ProfileUploadError(400, "This file already has extracted text.")
+    cleaned = text.strip()
+    if not cleaned:
+        raise ProfileUploadError(400, "The text is empty.")
+
+    stored_path = Path(str(row["stored_path"]))
+    sidecar = data_folder / stored_path.with_suffix(".manual.txt")
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    sidecar.write_text(cleaned, encoding="utf-8")
+
+    with conn:
+        conn.execute(
+            "UPDATE profile_files SET extracted_text = ?, extraction_status = 'manual', "
+            "extraction_message = NULL WHERE id = ?",
+            (cleaned, file_id),
+        )
+    return ProfileFile(
+        id=file_id,
+        kind=row["kind"],
+        original_name=row["original_name"],
+        sha256=row["sha256"],
+        size_bytes=row["size_bytes"],
+        uploaded_at=row["uploaded_at"],
+        extraction_status="manual",
+        extraction_message=None,
+        generated=bool(row["generated"]),
     )
 
 
@@ -315,8 +368,15 @@ def store_generated_file(
 
 def refresh_extracted_text(conn: sqlite3.Connection, data_folder: Path) -> None:
     """Read every upload again from its stored copy (D-83). Used when an analysis starts, so a
-    file uploaded before an extraction fix is read with the fixed code."""
-    rows = conn.execute("SELECT id, stored_path FROM profile_files").fetchall()
+    file uploaded before an extraction fix is read with the fixed code.
+
+    A `manual` row (D-259) is skipped: its text was typed by the user, not extracted, and
+    re-running extraction against the original file would silently overwrite it.
+    """
+    rows = conn.execute(
+        "SELECT id, stored_path FROM profile_files "
+        "WHERE extraction_status IS NULL OR extraction_status != 'manual'"
+    ).fetchall()
     with conn:
         for row in rows:
             result = extract(data_folder / str(row["stored_path"]))
