@@ -31,14 +31,24 @@ Nothing is overwritten.
 
 ## 1. Career history
 
-Input: every master CV, every older CV, every older cover letter and the user's own career history,
-as extracted text.
+Input: every master CV, every older CV, every older cover letter, every additional file (Phase 12,
+D-256) and the user's own career history, as extracted text.
 
 Purpose: one history of the career, reconciling what the separate CVs and letters say (D-40). Where
 sources disagree, the document says so in prose (for example "the 02-18 CV gives 2019 as the end
 date; the 09-26 CV gives 2020") rather than resolving the conflict. The user reviews and edits the
 result on the Profile page. This document is the one evidentiary source for the two prompts after
 it: there is no separate Fact Sheet (D-86).
+
+Additional files (reference letters, work attestations, academic transcripts and similar, D-255)
+are read as secondary, corroborating evidence, not as a primary source: the prompt tells Claude to
+use them to support or add detail to what the CVs and letters already establish, not to build a new
+career entry from one alone (D-258).
+
+Minimum evidence: generating a career history needs at least one master CV or older CV present.
+Older cover letters and additional files are read as content once that minimum is met, but neither
+satisfies it alone (D-257) — this phase tightens what had been, in code, any evidence item (an older
+letter with no CV present was previously enough), to match what this section already said.
 
 Code checks: the answer is not empty.
 
@@ -86,12 +96,24 @@ The documents are built on each other in this order: the career history, then th
 analysis and the strategy. So a new career history makes a new questionnaire analysis and strategy,
 unless the user's own version of one of them is in place.
 
-The run refuses to start when nothing is missing, and it says what to upload. A run needs a CV or an
-own career history if it has to make the career history, and a questionnaire or an own questionnaire
-analysis if it has to make the questionnaire analysis.
+The run refuses to start when nothing is missing, and it says what to upload. A run needs a master
+CV or older CV, or an own career history, if it has to make the career history (D-257), and a
+questionnaire or an own questionnaire analysis if it has to make the questionnaire analysis.
 
 Master CVs are one kind, `master_cv`, for English and French alike (D-67). The language is not
 stored.
+
+## Additional files: manual text (Phase 12, D-259)
+
+Additional files are expected to include scans with no text layer — nothing is OCR'd (D-41), so
+extraction for one of these can come back `no_text`, `unsupported` or `failed`. For this kind only,
+the user can type the text themselves in place of extraction. The typed text becomes that file's
+`extracted_text`, read by the career history prompt exactly like any other extraction, and is also
+written to a sidecar `.txt` file next to the original upload, so the managed folder shows what was
+typed beside the scan it belongs to. The row's `extraction_status` becomes `manual`; the extraction
+re-run every profile analysis performs on every file (D-83) skips a `manual` row rather than
+overwriting it from the original file. This does not apply to any other kind — CVs, cover letters
+and the cover letter template are expected to stay text-native.
 
 ## Review
 
