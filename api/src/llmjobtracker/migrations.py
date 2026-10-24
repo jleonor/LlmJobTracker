@@ -116,13 +116,21 @@ _V5_FILE_KINDS = (
 # The cover letter template is the user's own template for letters (Phase 5 uses it, D-71).
 # Kinds as migration 9 defined them (migration 6 added the cover letter template, unchanged since).
 _V9_FILE_KINDS = (*_V5_FILE_KINDS, "cover_letter_template")
-EXTRACTION_STATUSES = ("ok", "no_text", "unsupported", "failed")
+# Statuses as migration 36 and earlier left them. Migration 37 adds "manual" (D-259).
+_V36_EXTRACTION_STATUSES = ("ok", "no_text", "unsupported", "failed")
+# "manual" is Phase 12 (D-259): the user typed the text themselves for an additional file that
+# didn't extract cleanly. No other kind ever gets this status.
+EXTRACTION_STATUSES = (*_V36_EXTRACTION_STATUSES, "manual")
 # Kinds as migration 9 defined them. The Fact Sheet is dropped as its own output (D-86).
 _V9_OUTPUT_KINDS = ("full_cv_history", "fact_sheet", "questionnaire_analysis", "strategy")
 # There is no own_fact_sheet upload kind: the career history is the one evidentiary document, and
 # there is no schema for the user's own version of an output to be converted into (D-86). Migration
 # 10 drops own_fact_sheet and the Fact Sheet output kind.
-PROFILE_FILE_KINDS = tuple(kind for kind in _V9_FILE_KINDS if kind != "own_fact_sheet")
+# Kinds as migration 10 through 36 left them.
+_V36_FILE_KINDS = tuple(kind for kind in _V9_FILE_KINDS if kind != "own_fact_sheet")
+# "additional_file" is Phase 12 (D-255/D-256): a new multi-file evidence kind for the career
+# history, added by migration 37.
+PROFILE_FILE_KINDS = (*_V36_FILE_KINDS, "additional_file")
 PROFILE_OUTPUT_KINDS = tuple(kind for kind in _V9_OUTPUT_KINDS if kind != "fact_sheet")
 FACT_STATUSES = ("unverified", "verified", "rejected")
 
@@ -1270,6 +1278,46 @@ MIGRATIONS: tuple[Migration, ...] = (
         name="add open_applications.contact_url for a link-shaped contact (Phase 11 follow-up)",
         up=("ALTER TABLE open_applications ADD COLUMN contact_url TEXT",),
         down=("ALTER TABLE open_applications DROP COLUMN contact_url",),
+    ),
+    Migration(
+        version=37,
+        name="add the additional_file profile kind and a manual extraction status (Phase 12)",
+        rebuild=True,
+        up=(
+            _profile_files_table("profile_files_new", PROFILE_FILE_KINDS),
+            "ALTER TABLE profile_files_new ADD COLUMN generated INTEGER NOT NULL DEFAULT 0",
+            """
+            INSERT INTO profile_files_new
+                (id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                 extraction_status, extraction_message, extracted_text, generated)
+            SELECT id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                   extraction_status, extraction_message, extracted_text, generated
+            FROM profile_files
+            """,
+            "DROP TABLE profile_files",
+            "ALTER TABLE profile_files_new RENAME TO profile_files",
+        ),
+        down=(
+            # additional_file rows (the only ones that can carry extraction_status = 'manual')
+            # cannot be recovered into an older kind, so they are deleted going down, the same
+            # way migration 10's own_fact_sheet rows were (irreversible, not merely hidden).
+            "DELETE FROM profile_files WHERE kind = 'additional_file'",
+            # _profile_files_table's extraction_status check always reads the live EXTRACTION_
+            # STATUSES constant, so this still permits 'manual' even going down; harmless, since
+            # the delete above means no row can carry it once this runs.
+            _profile_files_table("profile_files_old", _V36_FILE_KINDS),
+            "ALTER TABLE profile_files_old ADD COLUMN generated INTEGER NOT NULL DEFAULT 0",
+            """
+            INSERT INTO profile_files_old
+                (id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                 extraction_status, extraction_message, extracted_text, generated)
+            SELECT id, kind, original_name, stored_path, sha256, size_bytes, uploaded_at,
+                   extraction_status, extraction_message, extracted_text, generated
+            FROM profile_files
+            """,
+            "DROP TABLE profile_files",
+            "ALTER TABLE profile_files_old RENAME TO profile_files",
+        ),
     ),
 )
 
