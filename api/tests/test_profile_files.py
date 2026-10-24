@@ -266,6 +266,28 @@ def test_refresh_extracted_text_leaves_a_manual_row_untouched(
     assert row["extracted_text"] == "Typed text."
 
 
+def test_deleting_an_additional_file_also_removes_its_sidecar(
+    upload_client: TestClient, db_path: Path
+) -> None:
+    upload(
+        upload_client,
+        "additional_file",
+        "transcript.pdf",
+        (FIXTURES / "scanned_no_text.pdf").read_bytes(),
+    )
+    file_id = rows(db_path)[0]["id"]
+    upload_client.post(f"/profile/files/{file_id}/manual-text", json={"text": "Typed text."})
+    stored = db_path.parent / rows(db_path)[0]["stored_path"]
+    sidecar = stored.with_suffix(".manual.txt")
+    assert sidecar.exists()
+
+    response = upload_client.delete(f"/profile/files/{file_id}")
+
+    assert response.status_code == 200
+    assert not stored.exists()
+    assert not sidecar.exists()
+
+
 # --- reveal_in_file_manager (D-160, D-161) -----------------------------------------------------
 
 

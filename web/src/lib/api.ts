@@ -32,6 +32,7 @@ import type {
   PositioningRescoreSummary,
   ProfileFile,
   ProfileFileKind,
+  ProfileFileText,
   ProfileOutput,
   PromptExchange,
   ReviseTurn,
@@ -669,6 +670,19 @@ export async function uploadProfileFile(kind: ProfileFileKind, file: File): Prom
     throw new ApiError(await errorMessage(response), response.status)
   }
   return (await response.json()) as ProfileFile
+}
+
+export function fetchProfileFileText(id: number): Promise<ProfileFileText> {
+  return request<ProfileFileText>(`/api/profile/files/${id}/text`)
+}
+
+// Additional files only (D-259): the user's own typed text, in place of a failed extraction.
+export function setProfileFileManualText(id: number, text: string): Promise<ProfileFile> {
+  return request<ProfileFile>(`/api/profile/files/${id}/manual-text`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
 }
 
 export function startProfileAnalysis(): Promise<ClaudeJob> {

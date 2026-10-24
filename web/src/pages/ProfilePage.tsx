@@ -22,11 +22,13 @@ import {
   fetchClearLanesNotInListPreview,
   fetchLanes,
   fetchProfileFiles,
+  fetchProfileFileText,
   fetchReassignMissingLanesPreview,
   openProfileFile,
   reassignMissingLanes,
   revealProfileFile,
   saveSettings,
+  setProfileFileManualText,
   syncLanesFromStrategy,
   updateLane,
   uploadProfileFile,
@@ -60,6 +62,12 @@ const SECTIONS: { kind: ProfileFileKind; title: string; hint: string; collapsibl
     kind: 'older_letter',
     title: 'Older cover letters',
     hint: 'Evidence for the career history.',
+    collapsible: true,
+  },
+  {
+    kind: 'additional_file',
+    title: 'Additional files',
+    hint: 'Reference letters, work attestations, academic transcripts and similar. Secondary, corroborating evidence for the career history, read alongside your CVs and letters.',
     collapsible: true,
   },
   {
@@ -412,6 +420,14 @@ function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
+  // Additional files only (D-259): nothing is OCR'd, so a scan with no text layer can be typed
+  // in by hand instead. "manual" is already-typed text, re-openable to fix a typo.
+  const needsManualText = file.kind === 'additional_file' && file.extraction_status !== 'ok'
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualLoading, setManualLoading] = useState(false)
+  const [manualText, setManualText] = useState('')
+  const [manualBusy, setManualBusy] = useState(false)
+  const [manualError, setManualError] = useState<string | null>(null)
 
   async function open() {
     setBusy(true)
@@ -460,6 +476,38 @@ function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void
     } catch (failure) {
       setError(failure instanceof ApiError ? failure.message : 'The file could not be removed.')
       setBusy(false)
+    }
+  }
+
+  async function openManualEditor() {
+    setManualError(null)
+    setManualOpen(true)
+    if (file.extraction_status !== 'manual') {
+      setManualText('')
+      return
+    }
+    setManualLoading(true)
+    try {
+      const current = await fetchProfileFileText(file.id)
+      setManualText(current.text)
+    } catch {
+      // The box opens empty; the user can still retype it.
+    } finally {
+      setManualLoading(false)
+    }
+  }
+
+  async function saveManualText() {
+    setManualBusy(true)
+    setManualError(null)
+    try {
+      await setProfileFileManualText(file.id, manualText)
+      setManualOpen(false)
+      onChanged()
+    } catch (failure) {
+      setManualError(failure instanceof ApiError ? failure.message : 'The text could not be saved.')
+    } finally {
+      setManualBusy(false)
     }
   }
 
@@ -519,6 +567,51 @@ function FileRow({ file, onChanged }: { file: ProfileFile; onChanged: () => void
         <p role="alert" className="text-xs text-destructive">
           {error}
         </p>
+      )}
+      {needsManualText && !manualOpen && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>
+            {file.extraction_status === 'manual'
+              ? 'Typed by you.'
+              : file.extraction_message ?? 'No text could be read from this file.'}
+          </span>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs"
+            onClick={() => void openManualEditor()}
+          >
+            {file.extraction_status === 'manual' ? 'Edit the typed text' : 'Type the text'}
+          </Button>
+        </div>
+      )}
+      {needsManualText && manualOpen && (
+        <div className="flex flex-col gap-2">
+          <Textarea
+            value={manualText}
+            onChange={(event) => setManualText(event.target.value)}
+            placeholder="Type what this file says, for the career history to read."
+            disabled={manualLoading || manualBusy}
+            className="min-h-24 text-sm"
+          />
+          {manualError && (
+            <p role="alert" className="text-xs text-destructive">
+              {manualError}
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              disabled={manualBusy || manualLoading || !manualText.trim()}
+              onClick={() => void saveManualText()}
+            >
+              {manualBusy ? 'Saving...' : 'Save'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setManualOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
       )}
       <FilePreview
         source={{ table: 'profile_file', id: file.id }}

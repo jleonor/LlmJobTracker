@@ -297,7 +297,11 @@ def delete_profile_file(conn: sqlite3.Connection, data_folder: Path, file_id: in
         raise ProfileUploadError(404, "No such file.")
     with conn:
         conn.execute("DELETE FROM profile_files WHERE id = ?", (file_id,))
-    (data_folder / str(row["stored_path"])).unlink(missing_ok=True)
+    stored_path = Path(str(row["stored_path"]))
+    (data_folder / stored_path).unlink(missing_ok=True)
+    # The manual-text sidecar (D-259), if this row ever had one, belongs with the file it
+    # annotates and is never referenced on its own once the row is gone.
+    (data_folder / stored_path.with_suffix(".manual.txt")).unlink(missing_ok=True)
     return ProfileFile(
         id=file_id,
         kind=row["kind"],

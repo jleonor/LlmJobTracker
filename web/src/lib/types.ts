@@ -208,7 +208,8 @@ export type AuthStatus = {
   detail: string
 }
 
-// One uploaded profile file (Profile page). The kinds follow migration 3.
+// One uploaded profile file (Profile page). The kinds follow migration 3 (additional_file added
+// by migration 37, D-255).
 export type ProfileFileKind =
   | 'master_cv'
   | 'older_cv'
@@ -219,6 +220,7 @@ export type ProfileFileKind =
   | 'own_questionnaire_analysis'
   | 'own_strategy'
   | 'cover_letter_template'
+  | 'additional_file'
 
 export type ProfileFile = {
   id: number
@@ -230,6 +232,14 @@ export type ProfileFile = {
   extraction_status: string | null
   extraction_message: string | null
   generated: boolean
+}
+
+// GET /profile/files/{id}/text - the file's full extracted (or manually typed, D-259) text.
+export type ProfileFileText = {
+  id: number
+  extraction_status: string | null
+  extraction_message: string | null
+  text: string
 }
 
 // The approved, named list of positioning directions a Job Application's lane field picks from
