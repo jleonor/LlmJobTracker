@@ -11,7 +11,7 @@ from llmjobtracker.app import TOKEN_HEADER, create_app
 from llmjobtracker.claude_job_queue import ClaudeJobQueue
 from llmjobtracker.claude_jobs import get_claude_job
 from llmjobtracker.langgraph_runner import LangGraphRunner
-from llmjobtracker.profile_files import store_profile_file
+from llmjobtracker.profile_files import set_manual_text, store_profile_file
 from llmjobtracker.profile_pipeline import (
     DEFAULT_RULES_PATH,
     INSTRUCTIONS,
@@ -221,6 +221,64 @@ def test_the_analysis_needs_a_questionnaire_and_a_cv(db_path: Path) -> None:
     store(db_path, "questionnaire", "q.txt", b"Some answers.")
     with pytest.raises(ProfileNotReady, match="CV"):
         start(db_path, queue)
+
+
+def test_an_older_letter_alone_no_longer_satisfies_the_evidence_gate(
+    db_path: Path, questionnaire_id: int
+) -> None:
+    # D-257: tightened from "any evidence item" to "a master CV or an older CV specifically".
+    store(db_path, "older_letter", "letter.txt", b"A cover letter with no CV alongside it.")
+    queue = make_queue(db_path, CannedRunner({}))
+    with pytest.raises(ProfileNotReady, match="CV"):
+        start(db_path, queue)
+
+
+def test_an_additional_file_alone_does_not_satisfy_the_evidence_gate(
+    db_path: Path, questionnaire_id: int
+) -> None:
+    store(db_path, "additional_file", "transcript.txt", b"An academic transcript, no CV.")
+    queue = make_queue(db_path, CannedRunner({}))
+    with pytest.raises(ProfileNotReady, match="CV"):
+        start(db_path, queue)
+
+
+def test_an_additional_file_feeds_the_career_history_prompt_as_secondary_evidence(
+    db_path: Path, cv_id: int, questionnaire_id: int
+) -> None:
+    additional_id = store(
+        db_path, "additional_file", "transcript.txt", b"A transcript confirming the degree."
+    )
+    runner = CannedRunner(good_answers(cv_id))
+    queue = make_queue(db_path, runner)
+    start(db_path, queue)
+    run_all(queue)
+
+    history_prompt = runner.prompts[0]
+    assert f"FILE {additional_id} | additional_file |" in history_prompt
+    assert "secondary, corroborating evidence" in history_prompt
+
+
+def test_manually_typed_additional_file_text_reaches_the_prompt(
+    db_path: Path, cv_id: int, questionnaire_id: int
+) -> None:
+    additional_id = store(
+        db_path,
+        "additional_file",
+        "transcript.pdf",
+        (FIXTURES / "scanned_no_text.pdf").read_bytes(),
+    )
+    conn = connect(db_path)
+    try:
+        set_manual_text(conn, db_path.parent, additional_id, "Typed: BSc Economics, 2015.")
+    finally:
+        conn.close()
+
+    runner = CannedRunner(good_answers(cv_id))
+    queue = make_queue(db_path, runner)
+    start(db_path, queue)
+    run_all(queue)
+
+    assert "Typed: BSc Economics, 2015." in runner.prompts[0]
 
 
 def test_a_second_analysis_is_refused_while_one_is_unfinished(

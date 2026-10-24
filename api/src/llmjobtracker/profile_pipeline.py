@@ -28,7 +28,9 @@ JOB_KIND: Final = "profile_analysis"
 JOB_LABEL: Final = "Profile analysis"
 PROMPT_KINDS: Final = ("full_cv_history", "questionnaire_analysis", "strategy")
 CV_KINDS: Final = ("master_cv", "older_cv")
-EVIDENCE_KINDS: Final = (*CV_KINDS, "older_letter", "own_full_cv_history")
+# "additional_file" (Phase 12, D-256) is read in as content alongside everything else here, but
+# never satisfies the minimum-evidence gate below on its own (D-257) - only CV_KINDS does.
+EVIDENCE_KINDS: Final = (*CV_KINDS, "older_letter", "own_full_cv_history", "additional_file")
 # The user's own version of an output, if they uploaded one (D-68). It is used as-is, not
 # reformatted: there is no schema left to convert it into (D-86).
 OWN_KINDS: Final[dict[str, str]] = {
@@ -63,7 +65,10 @@ INSTRUCTIONS: Final[dict[str, str]] = {
         "date is given, include it; where sources disagree (on a date, a title, anything), say so "
         "in the text, in words, rather than silently choosing one. Say inline, in words, which "
         "file a claim comes from where it matters (for example 'per the 09-26 CV'). Use only what "
-        "the files say."
+        "the files say. A file marked 'additional_file' below is secondary, corroborating "
+        "evidence: use it to support or add detail to a role, achievement or skill the CVs and "
+        "letters already establish, not as a primary source to build a new career entry from on "
+        "its own."
     ),
     "questionnaire_analysis": (
         "Analyse the questionnaire below against the career history and write the report. Cover: "
@@ -133,7 +138,8 @@ class InputFile:
 
 
 def usable_files(conn: sqlite3.Connection, kinds: tuple[str, ...]) -> list[InputFile]:
-    """Uploaded files of these kinds whose text was read (extraction_status ok).
+    """Uploaded files of these kinds with readable text: extraction_status 'ok', or 'manual'
+    (D-259, additional_file only - the user typed the text themselves).
 
     A generated file (D-84) is never one of these: it is a rendering of an output for the user
     to read, not a source, so it must not feed back into the next prompt as if it were evidence.
@@ -142,7 +148,7 @@ def usable_files(conn: sqlite3.Connection, kinds: tuple[str, ...]) -> list[Input
     rows = conn.execute(
         f"""
         SELECT id, kind, original_name, sha256, extracted_text FROM profile_files
-        WHERE extraction_status = 'ok' AND generated = 0 AND kind IN ({placeholders})
+        WHERE extraction_status IN ('ok', 'manual') AND generated = 0 AND kind IN ({placeholders})
         ORDER BY id
         """,
         kinds,
@@ -290,9 +296,13 @@ def submit_profile_analysis(
         raise ProfileNotReady(
             "Upload your questionnaire, or your own questionnaire analysis, first."
         )
-    evidence = usable_files(conn, EVIDENCE_KINDS)
-    if plan["full_cv_history"] == "generate" and not evidence:
-        raise ProfileNotReady("Upload a CV with readable text, or your own career history, first.")
+    # The minimum is a master CV or an older CV specifically (D-257) - an older letter or an
+    # additional file is read as content once this is met, but neither satisfies it alone.
+    if plan["full_cv_history"] == "generate" and not usable_files(conn, CV_KINDS):
+        raise ProfileNotReady(
+            "Upload a master CV or an older CV with readable text, or your own career history, "
+            "first."
+        )
     unfinished = conn.execute(
         """
         SELECT 1 FROM claude_jobs
