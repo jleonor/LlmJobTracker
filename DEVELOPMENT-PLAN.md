@@ -4,7 +4,7 @@ Phases 0 through 11 are done; `main` is fast-forwarded through `phase-11-open-ap
 
 Phase 12 (Profile: additional files) closed out 2026-10-26: the "Additional files" upload kind, its manual-text fallback, the tightened career-history gate, and Revise (LLM) context selection across profile/job application/open application were all confirmed, on the user's go in chat, alongside the checks already passing.
 
-**Current phase: 13 (Shell/Electron).** Narrowed on 2026-10-26 (D-264 to D-267) from the original Shell/hardening/in-app-browser scope to the Electron shell alone, plus an Export Data button in Settings; backups, the run log, and "Open LLM with browser" are dropped (the latter replaced by Phase 7's existing "Open LLM app"). A new Phase 14 (Packaging and installers) now follows it for making the app a downloadable, cross-platform build (D-268). Phase 13's scope is set below; its step list has not been drafted yet (rule 7).
+**Current phase: 13 (Shell/Electron).** Narrowed on 2026-10-26 (D-264 to D-267) from the original Shell/hardening/in-app-browser scope to the Electron shell alone, plus an Export Data button in Settings; backups, the run log, and "Open LLM with browser" are dropped (the latter replaced by Phase 7's existing "Open LLM app"). Phase 14 (Dashboard time slider and stale-application tracking, D-270) and Phase 15 (Packaging and installers, D-268) now follow it. Phase 13's scope is set below; its step list has not been drafted yet (rule 7).
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -34,10 +34,11 @@ This plan says what gets built, in what order, and how we know a phase is done. 
 | 11 | Open Applications | A second application type for talent pools, unsolicited CV drops and cold outreach, with its own table, Company details, and a lighter LLM pipeline (Tailored CV, Cover letter, Introduction message) |
 | 12 | Profile: additional files | The Profile page's Your files section gets an "Additional files" upload kind (reference letters, work attestations, academic transcripts and similar), fed as extra evidence into career-history generation and its Revise (LLM) chat |
 | 13 | Shell (Electron) | The app runs as its own Electron window, starting and stopping the backend; an "Export Data" button in Settings |
-| 14 | Packaging and installers | A standalone, downloadable build, installable on Windows and macOS |
+| 14 | Dashboard time slider and stale-application tracking | A date slider that redefines the whole Dashboard's "now"; Active/Cold application tracking; a corrected heatmap color ramp |
+| 15 | Packaging and installers | A standalone, downloadable build, installable on Windows and macOS |
 | Parked | Not scheduled | Job workspace's revision-chain model, Emails and chat, Question memory, board view, browser assist, managed agent loop, form filling, the real spreadsheet dry-run/apply import, the font/UI audit, the Memory function, "Add story" (D-142, D-179, D-185, D-235, D-236) |
 
-Phases 5 to 12 were reordered on 2026-10-13 (D-179), from a planning discussion with the user about what to build after Phase 4. The previous Phase 5 (Job workspace's remaining scope), Phase 6 (Emails and chat), Phase 7 (Question memory) and part of the old Phase 8 (board view) are not dropped — they move to Parked, to be rescheduled once Phase 6's technical debt audit decides where each resumes (D-185). "Public release" (updating `README.md` and making the GitHub repo public) is a checklist item after Phase 9, not a numbered phase, matching how the user wants it sequenced. Phase 10 (Memory function) was dropped to Parked on 2026-10-18 (D-236), alongside a new "Add story" idea, both pending a future agent-based system; Dashboard moved up from 11 to 10, and Shell/hardening moved up from 12 to 11. Open Applications was inserted as a new phase on 2026-10-22 (D-248), from a planning discussion with the user about what to build after Dashboard closed: it is numbered 11, and Shell, hardening, and in-app LLM + browser moves from 11 to 12. Profile: additional files was inserted as a new phase on 2026-10-24 (D-255), from a planning discussion with the user about what to build after Open Applications closed: it is numbered 12, and Shell, hardening, and in-app LLM + browser moves from 12 to 13. On 2026-10-26, while planning Phase 13 in detail, it was narrowed to the Electron shell alone and renamed "Shell (Electron)"; backups, the run log, and "Open LLM with browser" were dropped from its scope (D-264 to D-267), and a new Phase 14, Packaging and installers, was inserted after it to cover making the app a downloadable, installable build for Windows and macOS (D-268).
+Phases 5 to 12 were reordered on 2026-10-13 (D-179), from a planning discussion with the user about what to build after Phase 4. The previous Phase 5 (Job workspace's remaining scope), Phase 6 (Emails and chat), Phase 7 (Question memory) and part of the old Phase 8 (board view) are not dropped — they move to Parked, to be rescheduled once Phase 6's technical debt audit decides where each resumes (D-185). "Public release" (updating `README.md` and making the GitHub repo public) is a checklist item after Phase 9, not a numbered phase, matching how the user wants it sequenced. Phase 10 (Memory function) was dropped to Parked on 2026-10-18 (D-236), alongside a new "Add story" idea, both pending a future agent-based system; Dashboard moved up from 11 to 10, and Shell/hardening moved up from 12 to 11. Open Applications was inserted as a new phase on 2026-10-22 (D-248), from a planning discussion with the user about what to build after Dashboard closed: it is numbered 11, and Shell, hardening, and in-app LLM + browser moves from 11 to 12. Profile: additional files was inserted as a new phase on 2026-10-24 (D-255), from a planning discussion with the user about what to build after Open Applications closed: it is numbered 12, and Shell, hardening, and in-app LLM + browser moves from 12 to 13. On 2026-10-26, while planning Phase 13 in detail, it was narrowed to the Electron shell alone and renamed "Shell (Electron)"; backups, the run log, and "Open LLM with browser" were dropped from its scope (D-264 to D-267), and a new phase, Packaging and installers, was inserted after it to cover making the app a downloadable, installable build for Windows and macOS (D-268). Also on 2026-10-26, a further new phase, Dashboard time slider and stale-application tracking, was inserted ahead of Packaging and installers (numbered 14, pushing Packaging and installers to 15), from a planning discussion about Dashboard improvements the user wanted built alongside Phase 13's unrelated Electron work (D-270).
 
 ---
 
@@ -1204,7 +1205,7 @@ Done when
 **Goal:** the app runs as its own desktop window instead of a browser tab, with the backend's lifecycle managed by the shell.
 
 Scope (narrowed 2026-10-26, D-264 to D-267, from the original Phase 13 scope set by D-248/D-255)
-- Electron shell that starts and stops the backend (D-17), replacing the current dev-server/browser-tab workflow with the app's own window. Still assumes Python/`uv`/Node and the `claude`/`codex` CLIs are installed on the machine (D-264) — making the app installable without that is Phase 14.
+- Electron shell that starts and stops the backend (D-17), replacing the current dev-server/browser-tab workflow with the app's own window. Still assumes Python/`uv`/Node and the `claude`/`codex` CLIs are installed on the machine (D-264) — making the app installable without that is Phase 15.
 - The launch-token handshake (D-43) moves from `scripts/dev.py` to the Electron main process, which creates the token and starts the backend the same way.
 - An "Export Data" button in Settings (D-265), reusing the existing `export_llm_bundle.py` full-project export (every job's files, every profile document, a full database snapshot) without its deep-link "open the LLM app" step — a manual, on-demand backup.
 
@@ -1213,7 +1214,7 @@ Out of scope (dropped, not deferred, from the original Phase 13 scope)
 - The run log (each Claude/Codex call's token count and cost, log redaction, a secrets scan) (D-267).
 - "Open LLM with browser" (D-266) — "Open LLM app" (Phase 7) already covers the need; the fuller in-app browser pane will not be built.
 
-Step list (approved in chat 2026-10-26). `run.ps1`'s existing browser-mode flow (and `-Seed`) stays exactly as it is; dev-mode Electron is a second way to open the same dev stack, not a replacement. Since Electron, in dev mode, points at the same Vite dev server the browser does today, the existing proxy already injects `X-Launch-Token` (`vite.config.ts`) — no new token-handling code is needed here. That only arrives in Phase 14, once the window loads the built static files with no dev-server proxy in front.
+Step list (approved in chat 2026-10-26). `run.ps1`'s existing browser-mode flow (and `-Seed`) stays exactly as it is; dev-mode Electron is a second way to open the same dev stack, not a replacement. Since Electron, in dev mode, points at the same Vite dev server the browser does today, the existing proxy already injects `X-Launch-Token` (`vite.config.ts`) — no new token-handling code is needed here. That only arrives in Phase 15, once the window loads the built static files with no dev-server proxy in front.
 
 1. Cut `phase-13-shell` from `main` (D-61). Add an `electron/` folder (main + preload process) and the `electron` dev dependency.
 2. Electron main process, dev mode only: given a URL and a ready signal (passed in via env/args), open a `BrowserWindow` at that URL once it responds. No token handling needed — the Vite proxy already does it.
@@ -1238,11 +1239,32 @@ Done when
 
 ---
 
-## Phase 14: Packaging and installers
+## Phase 14: Dashboard time slider and stale-application tracking
+
+**Goal:** the Dashboard can show its own past, not just its present, and surfaces applications that have gone stale rather than only those explicitly marked dead.
+
+Scope (inserted 2026-10-26, D-270, from a planning discussion with the user about Dashboard improvements wanted while Phase 13 was being built)
+- A date slider above the existing slicers (D-271): a single point-in-time cursor, day granularity, from the earliest "Identified" date to today, defaulting to today. It redefines "now" for the whole page - which applications exist yet, and each one's status as of that date - overriding the slicers' current exemption for the whole-history rate tiles and the Alive/Dead/Total tiles (D-241 no longer applies once this ships). Match score and lane are not historized, so a past date still shows their current values (D-272).
+- "Applications sent rate" (renamed from today's "Applications sent", D-273) stays a rate; a new "Applications sent" tile is a plain count (Job Applications with an Applied-status entry by the slider's date).
+- Two more new tiles, both Job-Application-only (D-274): "Active applications" and "Cold applications" (with a secondary description line, matching Dead's existing style), each counting the same thing its table view does (below). "Alive" gains a secondary description line the same way Dead already has one.
+- The "Active applications" table view's filter gains a last-updated-within-30-days condition, computed fresh at selection time; a new "Cold applications" view (non-Dead, including Identified, last updated more than 30 days ago), computed the same way (D-275).
+- The "Applications sent" calendar heatmap's colors: a dedicated sequential ramp (not the reused, wrongly-indexed `MATCH_SCORE_RAMP`), zero staying `var(--muted)`, ramping up to a bright, near-white step at the busiest day (D-276, proposed - the exact brightest hex is still open).
+
+Step list: not yet drafted (rule 7).
+
+Done when
+- [ ] Moving the slider changes every card and chart on the page to match that date, confirmed against a few different past dates.
+- [ ] The Active applications and Cold applications table views and Dashboard cards agree with each other's counts.
+- [ ] The Applications sent heatmap reads as a clear, correctly-directed gradient (busiest day brightest, no activity matching the empty-cell look).
+- [ ] The user's go or no-go.
+
+---
+
+## Phase 15: Packaging and installers
 
 **Goal:** the app is downloadable and installable like an ordinary desktop application, on both Windows and macOS, with no separate Python/Node install required.
 
-Scope (inserted 2026-10-26, D-268, from a planning discussion with the user about what Phase 13 should and shouldn't cover)
+Scope (inserted 2026-10-26, D-268, from a planning discussion with the user about what Phase 13 should and shouldn't cover; renumbered from 14 to 15 by D-270's insertion)
 - Bundle the FastAPI backend into a standalone executable (candidate: PyInstaller) per OS, so the installed app needs no separate Python/`uv` on the user's machine. The `claude`/`codex` CLIs remain a separate, user-installed dependency either way (D-19), since the app's own installer doesn't install them.
 - Electron Builder (or Forge) producing a Windows installer (`.exe`/`.msi`) and a macOS `.dmg`/`.pkg`.
 - macOS fix to `storage.py`'s `data_dir()`: today's non-Windows fallback (`Path.home() / "AppData" / "Local"`) is wrong on macOS; it needs the macOS-idiomatic `~/Library/Application Support/LlmJobTracker`.
