@@ -1,0 +1,13 @@
+{
+  "name": "llmjobtracker-electron",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Dev-mode Electron shell for LlmJobTracker (Phase 13). Starts the API and the web dev server, then opens them in their own window instead of the system browser.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^45.0.0"
+  }
+}
