@@ -6,6 +6,7 @@ import type {
   ClaudeJob,
   CreateJobApplicationRequest,
   CreateOpenApplicationRequest,
+  DataExported,
   DuplicateListingMatch,
   FilePreviewData,
   JobApplication,
@@ -475,6 +476,11 @@ export function runLlmCheck(): Promise<RunResult> {
 // desktop app the selected backend (D-195) points at.
 export function openLlmApp(): Promise<LlmAppOpened> {
   return request<LlmAppOpened>('/api/llm-app/open', { method: 'POST' })
+}
+
+// "Export Data" (D-265, Phase 13): the same export, as a manual backup, without opening anything.
+export function exportData(): Promise<DataExported> {
+  return request<DataExported>('/api/data/export', { method: 'POST' })
 }
 
 // Whether each backend's desktop app is installed (D-210) - checked fresh each call, so the

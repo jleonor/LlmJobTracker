@@ -114,3 +114,45 @@ def test_llm_app_status_route_reports_both_backends(
 def test_llm_app_status_route_without_token_is_rejected(db_path: Path, token: str) -> None:
     with TestClient(create_app(token, db_path, FakeRunner())) as bare:
         assert bare.get("/llm-app/status").status_code == 401
+
+
+def test_export_data_builds_the_bundle_without_opening_anything(
+    client: TestClient, db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    export_target = db_path.parent / "export-target"
+    client.put("/settings", json={"user_name": "YourName", "llm_export_path": str(export_target)})
+    opened: list[str] = []
+    monkeypatch.setattr(webbrowser, "open", opened.append)
+
+    response = client.post("/data/export")
+
+    assert response.status_code == 200
+    bundle_path = Path(response.json()["bundle_path"])
+    assert bundle_path == export_target
+    assert (bundle_path / "seed.md").exists()
+    assert (bundle_path / "tracker.db").exists()
+    assert opened == []
+
+
+def test_export_data_works_regardless_of_whether_any_llm_app_is_installed(
+    client: TestClient, db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    export_target = db_path.parent / "export-target"
+    client.put("/settings", json={"user_name": "YourName", "llm_export_path": str(export_target)})
+    monkeypatch.setattr(
+        app_module,
+        "llm_app_status",
+        lambda: {
+            "claude_code": LlmAppStatus(installed=False, detail="Not installed."),
+            "codex": LlmAppStatus(installed=False, detail="Not installed."),
+        },
+    )
+
+    response = client.post("/data/export")
+
+    assert response.status_code == 200
+
+
+def test_export_data_without_token_is_rejected(db_path: Path, token: str) -> None:
+    with TestClient(create_app(token, db_path, FakeRunner())) as bare:
+        assert bare.post("/data/export").status_code == 401

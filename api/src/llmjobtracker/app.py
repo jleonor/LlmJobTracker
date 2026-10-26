@@ -301,6 +301,10 @@ class LlmAppOpened(BaseModel):
     bundle_path: str
 
 
+class DataExported(BaseModel):
+    bundle_path: str
+
+
 class LaneCreate(BaseModel):
     name: str
     description: str | None = None
@@ -1855,6 +1859,18 @@ def create_app(
         )
         webbrowser.open(link)
         return LlmAppOpened(backend=backend, bundle_path=str(bundle_root))
+
+    @app.post("/data/export", response_model=DataExported, dependencies=[Depends(require_token)])
+    def export_data(conn: Annotated[Connection, Depends(get_db)]) -> DataExported:
+        """A manual, on-demand backup (D-265, Phase 13): the same full-project export "Open LLM
+        app" builds - every job's files, every profile document, a full database snapshot -
+        without the deep-link step, so it works regardless of which backend's desktop app is
+        installed."""
+        try:
+            bundle_root = export_llm_bundle(conn, db_path.parent)
+        except LlmExportBundleBusy as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        return DataExported(bundle_path=str(bundle_root))
 
     @app.get("/claude-jobs", response_model=list[ClaudeJob], dependencies=[Depends(require_token)])
     def claude_jobs(conn: Annotated[Connection, Depends(get_db)]) -> list[ClaudeJob]:

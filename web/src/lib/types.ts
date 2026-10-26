@@ -180,6 +180,11 @@ export type LlmAppOpened = {
   bundle_path: string
 }
 
+// "Export Data" (D-265, Phase 13): the same export, without opening anything.
+export type DataExported = {
+  bundle_path: string
+}
+
 // Whether a backend's desktop app is installed (D-210), mirroring AuthStatus's shape (D-203).
 export type LlmAppStatus = {
   installed: boolean
