@@ -230,6 +230,47 @@ export function averageMatchScoreForLane(
   return scores.reduce((total, score) => total + score, 0) / scores.length
 }
 
+// --- As-of-date snapshot (Phase 14, D-271): the date slider redefines "now" for the whole page --
+
+// The earliest "Identified" event across the given applications (Job or Open, or both lists
+// concatenated) - the date slider's lower bound. null when nothing has ever been Identified yet.
+export function earliestIdentifiedDate<T extends { status_history: StatusHistoryEntry[] }>(
+  applications: T[],
+): string | null {
+  let earliest: string | null = null
+  for (const application of applications) {
+    for (const entry of application.status_history) {
+      if (entry.status !== 'Identified') continue
+      if (earliest === null || entry.changed_at < earliest) earliest = entry.changed_at
+    }
+  }
+  return earliest
+}
+
+// Rebuilds the given (Job or Open) applications as they looked on `asOfDate` (a day, "YYYY-MM-DD"):
+// an application not yet Identified by then is dropped entirely, and a kept one's `status` and
+// `last_updated` are overridden to its latest status_history entry at or before that day - every
+// other field (match score, lane, ...) is not historized and so still reads as of today (D-272).
+// Everything downstream (applySlicers, proportionByStage, combinedTotals, ...) keeps working
+// unmodified against the result, since only these two fields change shape.
+export function snapshotAsOf<
+  T extends { status: string; last_updated: string; status_history: StatusHistoryEntry[] },
+>(applications: T[], asOfDate: string): T[] {
+  const snapshot: T[] = []
+  for (const application of applications) {
+    let latest: StatusHistoryEntry | null = null
+    let identifiedByThen = false
+    for (const entry of application.status_history) {
+      if (entry.changed_at.slice(0, 10) > asOfDate) continue
+      if (entry.status === 'Identified') identifiedByThen = true
+      if (latest === null || entry.changed_at > latest.changed_at) latest = entry
+    }
+    if (!identifiedByThen || latest === null) continue // didn't exist yet as of asOfDate
+    snapshot.push({ ...application, status: latest.status, last_updated: latest.changed_at })
+  }
+  return snapshot
+}
+
 // --- Identified -> Applied lead time -------------------------------------------------------
 
 function earliestDateFor(application: JobApplication, status: string): string | null {

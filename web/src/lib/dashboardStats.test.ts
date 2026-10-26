@@ -13,11 +13,13 @@ import {
   combinedWholeHistoryRates,
   distinctLanes,
   distinctLocations,
+  earliestIdentifiedDate,
   foldToOther,
   matchScoreBucket,
   proportionByLane,
   proportionByMatchScoreBucket,
   proportionByStage,
+  snapshotAsOf,
   wholeHistoryRates,
 } from './dashboardStats'
 
@@ -376,5 +378,80 @@ describe('combinedApplicationsSentHeatmap', () => {
     ]
     const heatmap = combinedApplicationsSentHeatmap(jobApplications, openApplications, today)
     expect(heatmap[heatmap.length - 1]).toEqual({ date: '2026-10-18', count: 2 })
+  })
+})
+
+describe('earliestIdentifiedDate', () => {
+  it('is null when nothing has ever been Identified', () => {
+    expect(earliestIdentifiedDate([application({ status_history: [] })])).toBeNull()
+  })
+
+  it('is the earliest Identified entry across every application', () => {
+    const applications = [
+      application({
+        id: 1,
+        status_history: [{ status: 'Identified', changed_at: '2026-09-15T00:00:00Z' }],
+      }),
+      application({
+        id: 2,
+        status_history: [{ status: 'Identified', changed_at: '2026-08-01T00:00:00Z' }],
+      }),
+    ]
+    expect(earliestIdentifiedDate(applications)).toBe('2026-08-01T00:00:00Z')
+  })
+})
+
+describe('snapshotAsOf', () => {
+  it('drops an application not yet Identified by the given date', () => {
+    const applications = [
+      application({ status_history: [{ status: 'Identified', changed_at: '2026-10-15T00:00:00Z' }] }),
+    ]
+    expect(snapshotAsOf(applications, '2026-10-10')).toEqual([])
+  })
+
+  it('keeps an application Identified by the given date, with its status as of then', () => {
+    const applications = [
+      application({
+        id: 1,
+        status: 'Interview',
+        last_updated: '2026-10-20T00:00:00Z',
+        status_history: [
+          { status: 'Identified', changed_at: '2026-10-01T00:00:00Z' },
+          { status: 'Applied', changed_at: '2026-10-05T00:00:00Z' },
+          { status: 'Screening', changed_at: '2026-10-12T00:00:00Z' },
+          { status: 'Interview', changed_at: '2026-10-20T00:00:00Z' },
+        ],
+      }),
+    ]
+
+    const snapshot = snapshotAsOf(applications, '2026-10-10')
+
+    expect(snapshot).toHaveLength(1)
+    expect(snapshot[0].status).toBe('Applied')
+    expect(snapshot[0].last_updated).toBe('2026-10-05T00:00:00Z')
+  })
+
+  it('works the same way for Open Applications', () => {
+    const applications = [
+      openApplication({
+        status_history: [{ status: 'Identified', changed_at: '2026-10-01T00:00:00Z' }],
+      }),
+    ]
+    const snapshot = snapshotAsOf(applications, '2026-10-01')
+    expect(snapshot).toHaveLength(1)
+    expect(snapshot[0].status).toBe('Identified')
+  })
+
+  it('on the exact as-of day, keeps that day\'s own status change', () => {
+    const applications = [
+      application({
+        status_history: [
+          { status: 'Identified', changed_at: '2026-10-01T00:00:00Z' },
+          { status: 'Applied', changed_at: '2026-10-10T23:00:00Z' },
+        ],
+      }),
+    ]
+    const snapshot = snapshotAsOf(applications, '2026-10-10')
+    expect(snapshot[0].status).toBe('Applied')
   })
 })
