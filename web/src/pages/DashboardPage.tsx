@@ -279,49 +279,32 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
         locationOptions={locationOptions}
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* One row (Phase 14): the rate tiles, the job+open/alive+dead totals (D-254, always the
+          full, unsliced counts), and the Active/Cold tiles (D-274, Job-Application-only, each
+          matching its own table view below exactly, D-275) - no secondary description lines,
+          by request. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-9">
         <StatTile
           label="Identified → Applied"
           value={leadTimeDays === null ? '—' : `${leadTimeDays.toFixed(1)} days`}
-          secondary="average, job applications with both dates"
         />
         <StatTile
           label="Applications identified"
           value={rates === null ? '—' : `${rates.identifiedPerDay.toFixed(2)} / day`}
-          secondary={rates === null ? undefined : `${rates.identifiedPerWeek.toFixed(1)} / week`}
         />
         <StatTile
           label="Applications sent rate"
           value={rates === null ? '—' : `${rates.appliedPerDay.toFixed(2)} / day`}
-          secondary={rates === null ? undefined : `${rates.appliedPerWeek.toFixed(1)} / week`}
         />
-      </div>
-
-      {/* D-254: job + open totals, and the Alive/Dead split by the shared end-state set
-          (Rejected, Withdrawn, Expired) - always the full, unsliced counts, like the rate
-          tiles above. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
         <StatTile label="Total applications" value={String(totals.total)} />
-        <StatTile label="Job applications" value={String(totals.totalJobApplications)} />
-        <StatTile label="Open applications" value={String(totals.totalOpenApplications)} />
         <StatTile
-          label="Alive"
-          value={String(totals.alive)}
-          secondary="Identified, Applied, Screening, Interview or Offer"
+          label="Job / Open"
+          value={`${totals.totalJobApplications} / ${totals.totalOpenApplications}`}
         />
-        <StatTile label="Dead" value={String(totals.dead)} secondary="Rejected, Withdrawn or Expired" />
-      </div>
-
-      {/* Phase 14 (D-274): Job-Application-only, each matching its own table view below exactly
-          (D-275) - Open Applications have no view system to mirror. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatTile label="Alive / Dead" value={`${totals.alive} / ${totals.dead}`} />
         <StatTile label="Applications sent" value={String(applicationsSentCount)} />
         <StatTile label="Active applications" value={String(activeCount)} />
-        <StatTile
-          label="Cold applications"
-          value={String(coldCount)}
-          secondary="Not Rejected, Withdrawn or Expired; no update in 30+ days"
-        />
+        <StatTile label="Cold applications" value={String(coldCount)} />
       </div>
 
       {/* 3 columns x 2 rows: lane spans both rows in column 1; stage and match score fill row 1's
