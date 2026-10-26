@@ -59,6 +59,27 @@ function stopTree(child) {
 
 let apiProcess = null
 let webProcess = null
+let shuttingDown = false
+
+function spawnWebServer(env, spawnOptions) {
+  if (IS_WINDOWS) {
+    // npm's Windows launcher is a .cmd file - Node's spawn needs shell:true to run one
+    // directly (EINVAL otherwise, a well-known Node-on-Windows limitation). Passed as one
+    // command string, not args+shell:true, to avoid Node's "arguments not escaped" warning
+    // for that combination.
+    return spawn('npm run dev -- --port 5173 --strictPort', {
+      cwd: WEB_DIR,
+      env,
+      ...spawnOptions,
+      shell: true,
+    })
+  }
+  return spawn('npm', ['run', 'dev', '--', '--port', '5173', '--strictPort'], {
+    cwd: WEB_DIR,
+    env,
+    ...spawnOptions,
+  })
+}
 
 function startBackendAndWebServer() {
   const python = apiPython()
@@ -71,15 +92,24 @@ function startBackendAndWebServer() {
   const spawnOptions = IS_WINDOWS ? { detached: false } : { detached: true }
 
   apiProcess = spawn(python, ['-m', 'llmjobtracker'], { cwd: API_DIR, env, ...spawnOptions })
-  webProcess = spawn(
-    IS_WINDOWS ? 'npm.cmd' : 'npm',
-    ['run', 'dev', '--', '--port', '5173', '--strictPort'],
-    { cwd: WEB_DIR, env, ...spawnOptions }
-  )
+  webProcess = spawnWebServer(env, spawnOptions)
 
   for (const [name, child] of [['API', apiProcess], ['web', webProcess]]) {
     child.stdout?.on('data', (chunk) => process.stdout.write(`[${name}] ${chunk}`))
     child.stderr?.on('data', (chunk) => process.stderr.write(`[${name}] ${chunk}`))
+    // Without this, an unhandled 'error' event (e.g. the executable not found) throws
+    // synchronously and crashes the whole main process before any cleanup can run, leaving
+    // the other child orphaned - caught live while building this (D-17's "stops the backend"
+    // promise failing exactly when it mattered most, on a spawn error).
+    child.on('error', (error) => {
+      console.error(`[${name}] failed to start:`, error)
+      quitAndCleanUp()
+    })
+    child.on('exit', (code, signal) => {
+      if (shuttingDown) return
+      console.error(`[${name}] exited unexpectedly (code ${code}, signal ${signal})`)
+      quitAndCleanUp()
+    })
   }
 }
 
@@ -88,6 +118,13 @@ function stopBackendAndWebServer() {
   stopTree(webProcess)
   apiProcess = null
   webProcess = null
+}
+
+function quitAndCleanUp() {
+  if (shuttingDown) return
+  shuttingDown = true
+  stopBackendAndWebServer()
+  app.quit()
 }
 
 async function createWindow() {
@@ -101,12 +138,12 @@ async function createWindow() {
 app.whenReady().then(() => {
   createWindow().catch((error) => {
     console.error(error)
-    app.quit()
+    quitAndCleanUp()
   })
 })
 
 app.on('window-all-closed', () => {
-  app.quit()
+  quitAndCleanUp()
 })
 
 app.on('will-quit', () => {
