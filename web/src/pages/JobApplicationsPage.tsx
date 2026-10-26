@@ -301,7 +301,9 @@ export function JobApplicationsPage({
     setColumnVisibility(visibilityFor(view.columns))
     setColumnSizing({})
     setSort(view.sort)
-    setFilters(view.filters)
+    // Active/Cold applications' filters are relative to today (Phase 14, D-275) - resolved here,
+    // at selection time, so the 30-day cutoff is always fresh rather than a stored constant.
+    setFilters(typeof view.filters === 'function' ? view.filters(new Date()) : view.filters)
   }
 
   function reloadApplications() {

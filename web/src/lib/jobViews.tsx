@@ -1,16 +1,18 @@
-import { Activity, Archive, CalendarClock, History, Home, ListChecks, Send, type LucideIcon } from 'lucide-react'
+import { Activity, Archive, CalendarClock, History, Home, ListChecks, Send, Snowflake, type LucideIcon } from 'lucide-react'
 
 import type { Filters, SortState } from '@/components/app/JobsTableFilters'
 import { DEFAULT_COLUMN_IDS, type ColumnId } from '@/lib/jobColumns'
+import { STATUS_ORDER } from '@/lib/types'
 
-// D-227/D-230: Default plus six predefined views. Each one's columns/sort/filter apply
-// atomically when selected (JobApplicationsPage.switchView); resizing, reordering or using
-// "Select columns" afterward forks into an implicit Custom view instead of changing the
-// predefined one's own definition.
+// D-227/D-230: Default plus predefined views. Each one's columns/sort/filter apply atomically
+// when selected (JobApplicationsPage.switchView); resizing, reordering or using "Select columns"
+// afterward forks into an implicit Custom view instead of changing the predefined one's own
+// definition.
 export type ViewId =
   | 'default'
   | 'to_apply_to'
   | 'active_applications'
+  | 'cold_applications'
   | 'dead_applications'
   | 'upcoming_actions'
   | 'processing_status'
@@ -22,7 +24,11 @@ export type JobView = {
   icon: LucideIcon
   columns: readonly ColumnId[]
   sort: SortState
-  filters: Filters
+  // A plain Filters object for most views; a function for one whose filter is relative to today
+  // (Active/Cold applications' 30-day recency condition, Phase 14 D-275) - resolved at selection
+  // time (JobApplicationsPage.switchView), never baked into a stored constant, so it never goes
+  // stale.
+  filters: Filters | ((now: Date) => Filters)
 }
 
 function statusFilter(statuses: string[]): Filters {
@@ -35,6 +41,21 @@ function statusFilter(statuses: string[]): Filters {
 const HAS_NEXT_ACTION_DATE: Filters = {
   next_action_date: { kind: 'date', from: '1970-01-01', to: null },
 }
+
+// Phase 14 (D-275): Active/Cold's 30-day recency cutoff, as a "YYYY-MM-DD" day string.
+const STALE_AFTER_DAYS = 30
+
+function daysAgoDateKey(now: Date, days: number): string {
+  const date = new Date(now)
+  date.setUTCDate(date.getUTCDate() - days)
+  return date.toISOString().slice(0, 10)
+}
+
+// The three dead end states (Rejected, Withdrawn, Expired) - "non-Dead" for Cold applications
+// means every other status, Identified included.
+const NON_DEAD_STATUSES = STATUS_ORDER.filter(
+  (status) => !['Rejected', 'Withdrawn', 'Expired'].includes(status),
+)
 
 export const JOB_VIEWS: readonly JobView[] = [
   {
@@ -57,9 +78,25 @@ export const JOB_VIEWS: readonly JobView[] = [
     id: 'active_applications',
     label: 'Active applications',
     icon: Activity,
-    columns: ['company', 'role_title', 'lane', 'status', 'location', 'match_score'],
+    columns: ['company', 'role_title', 'lane', 'status', 'last_updated', 'location', 'match_score'],
     sort: { column: 'match_score', direction: 'desc' },
-    filters: statusFilter(['Applied', 'Screening', 'Interview', 'Offer']),
+    // D-275: in progress (Applied through Offer) AND touched within the last 30 days.
+    filters: (now) => ({
+      ...statusFilter(['Applied', 'Screening', 'Interview', 'Offer']),
+      last_updated: { kind: 'date', from: daysAgoDateKey(now, STALE_AFTER_DAYS), to: null },
+    }),
+  },
+  {
+    id: 'cold_applications',
+    label: 'Cold applications',
+    icon: Snowflake,
+    columns: ['company', 'role_title', 'lane', 'status', 'last_updated', 'location', 'match_score'],
+    sort: { column: 'last_updated', direction: 'asc' },
+    // D-275: any non-Dead status (Identified included) untouched for more than 30 days.
+    filters: (now) => ({
+      ...statusFilter(NON_DEAD_STATUSES),
+      last_updated: { kind: 'date', from: null, to: daysAgoDateKey(now, STALE_AFTER_DAYS) },
+    }),
   },
   {
     id: 'dead_applications',
