@@ -160,9 +160,11 @@ from llmjobtracker.open_application_pipeline import (
 )
 from llmjobtracker.open_application_research import (
     InvalidResearchItem,
+    ResearchItem,
     ResearchItemInput,
     ResearchItemPreview,
     extract_research_items_preview,
+    list_research_items,
 )
 from llmjobtracker.open_application_revise_turns import OpenApplicationReviseTurn
 from llmjobtracker.open_application_revise_turns import (
@@ -1534,6 +1536,18 @@ def create_app(
         if detail is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         return detail
+
+    @app.get(
+        "/open-applications/{application_id}/research-items",
+        response_model=list[ResearchItem],
+        dependencies=[Depends(require_token)],
+    )
+    def open_application_research_items_route(
+        application_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> list[ResearchItem]:
+        if get_open_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return list_research_items(conn, application_id)
 
     @app.delete(
         "/open-applications/{application_id}",

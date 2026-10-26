@@ -19,6 +19,7 @@ import {
   deleteOpenApplication,
   deleteOpenApplicationFile,
   downloadOpenApplicationFile,
+  fetchOpenApplicationResearchItems,
   fetchProfileFiles,
   fetchProfileOutputs,
   generateOpenApplicationCoverLetter,
@@ -35,6 +36,7 @@ import type {
   OpenApplicationDetail,
   OpenApplicationEdit,
   OpenApplicationFile,
+  OpenApplicationResearchItem,
   OpenApplicationTargetType,
   ProfileFile,
   StatusHistoryEntry,
@@ -181,6 +183,21 @@ function CompanyDetails({
   const [editOpen, setEditOpen] = useState(false)
   const [reviseOpen, setReviseOpen] = useState(false)
   const hasData = Boolean(application.target_name)
+  // Read fresh each time the overlay opens, for the clickable research-item badges (D-260,
+  // D-261) - this page otherwise never needs the saved research items themselves.
+  const [researchItems, setResearchItems] = useState<OpenApplicationResearchItem[]>([])
+  useEffect(() => {
+    if (!reviseOpen) return
+    let cancelled = false
+    fetchOpenApplicationResearchItems(application.id)
+      .then((items) => {
+        if (!cancelled) setResearchItems(items)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [reviseOpen, application.id])
 
   return (
     <Section
@@ -220,12 +237,23 @@ function CompanyDetails({
         sectionKind="company_details"
         title="Company details"
         leftPane={<CompanyDetailsPane application={application} />}
+        contextItems={researchItems.map((item) => ({
+          id: item.id,
+          label: `Research ${item.position}: ${researchItemLabel(item)}`,
+        }))}
         open={reviseOpen}
         onOpenChange={setReviseOpen}
         onChanged={onChanged}
       />
     </Section>
   )
+}
+
+// A short label for a research-item badge: the URL itself, or the first few words of pasted
+// text, truncated so a long item doesn't blow out the Context row's layout.
+function researchItemLabel(item: OpenApplicationResearchItem): string {
+  const text = item.source_type === 'url' ? item.content : item.content.trim()
+  return text.length > 28 ? `${text.slice(0, 28)}...` : text
 }
 
 // Contact as the user asked: an email renders as a clickable mailto: link, and a contact URL

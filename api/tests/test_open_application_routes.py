@@ -30,6 +30,32 @@ def test_create_with_a_research_item_creates_the_row(client: TestClient) -> None
     assert len(detail["status_history"]) == 1
 
 
+def test_research_items_route_lists_what_was_saved(client: TestClient) -> None:
+    created = client.post(
+        "/open-applications",
+        json={
+            "research_items": [
+                {"source_type": "text", "content": "Acme is hiring data analysts."},
+                {"source_type": "text", "content": "Acme just raised a Series B."},
+            ]
+        },
+    ).json()
+    application_id = created["application_id"]
+
+    response = client.get(f"/open-applications/{application_id}/research-items")
+
+    assert response.status_code == 200
+    items = response.json()
+    assert len(items) == 2
+    assert [item["position"] for item in items] == [1, 2]
+    assert items[0]["content"] == "Acme is hiring data analysts."
+
+
+def test_research_items_for_a_missing_application_404s(client: TestClient) -> None:
+    response = client.get("/open-applications/999/research-items")
+    assert response.status_code == 404
+
+
 def test_intake_extract_reads_pasted_text(client: TestClient) -> None:
     response = client.post(
         "/open-applications/intake/extract",

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { RunTrace } from '@/components/app/RunTrace'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ApiError, fetchOpenApplicationReviseTurns, postOpenApplicationReviseTurn } from '@/lib/api'
@@ -12,11 +13,31 @@ import type { ReviseTurn } from '@/lib/types'
 const POLL_MS = 4000
 const ACTIVE_POLL_MS = 1000
 
+// What each section's chat turn reads (mirrors profileDocuments.ts's PROFILE_DOCUMENT_CONTEXT
+// and JobReviseOverlay's own JOB_REVISE_CONTEXT), shown as chips - this overlay had none before
+// (dropped when it was built from a copy of JobReviseOverlay, D-263). Company details' own
+// research items aren't listed here - they're individually-clickable badges built from
+// `contextItems` instead (D-260, D-261), the same pattern Application history's filed
+// emails/Additional files use.
+const OPEN_APPLICATION_REVISE_CONTEXT: Record<string, string[]> = {
+  tailored_cv: ['Master CV', 'Career history', 'Questionnaire report', 'Strategy', 'Company details'],
+  cover_letter: [
+    'Cover letter template',
+    'Reference cover letter',
+    'Career history',
+    'Questionnaire report',
+    'Strategy',
+    'Company details',
+  ],
+  introduction_message: ['Career history', 'Questionnaire report', 'Strategy', 'Company details'],
+}
+
 export function OpenApplicationReviseOverlay({
   applicationId,
   sectionKind,
   title,
   leftPane,
+  contextItems,
   open,
   onOpenChange,
   onChanged,
@@ -25,6 +46,9 @@ export function OpenApplicationReviseOverlay({
   sectionKind: string
   title: string
   leftPane: ReactNode
+  // Individually-clickable context badges (Company details' research items, D-260, D-261).
+  // Omitted for every other section.
+  contextItems?: { id: number; label: string }[]
   open: boolean
   onOpenChange: (open: boolean) => void
   onChanged: () => void
@@ -33,6 +57,20 @@ export function OpenApplicationReviseOverlay({
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
+  // Chosen fresh each time, reset once sent - nothing is remembered between turns (D-260).
+  const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set())
+
+  function toggleExcluded(id: number) {
+    setExcludedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
 
   const reload = useCallback(() => {
     fetchOpenApplicationReviseTurns(applicationId, sectionKind)
@@ -72,8 +110,9 @@ export function OpenApplicationReviseOverlay({
     setSending(true)
     setError(null)
     try {
-      await postOpenApplicationReviseTurn(applicationId, sectionKind, text)
+      await postOpenApplicationReviseTurn(applicationId, sectionKind, text, Array.from(excludedIds))
       setMessage('')
+      setExcludedIds(new Set())
       reload()
     } catch (failure) {
       setError(failure instanceof ApiError ? failure.message : 'The message could not be sent.')
@@ -93,6 +132,35 @@ export function OpenApplicationReviseOverlay({
             {leftPane}
           </div>
           <div className="flex min-h-0 flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+              <span>Context:</span>
+              {(OPEN_APPLICATION_REVISE_CONTEXT[sectionKind] ?? []).map((label) => (
+                <Badge key={label} variant="outline" className="rounded-sm font-mono text-[10px] font-normal">
+                  {label}
+                </Badge>
+              ))}
+              {(contextItems ?? []).map((item) => {
+                const excluded = excludedIds.has(item.id)
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => toggleExcluded(item.id)}
+                    aria-pressed={!excluded}
+                    title={excluded ? 'Excluded from this message' : 'Included in this message'}
+                  >
+                    <Badge
+                      variant="outline"
+                      className={`rounded-sm font-mono text-[10px] font-normal ${
+                        excluded ? 'text-muted-foreground/50 line-through' : ''
+                      }`}
+                    >
+                      {item.label}
+                    </Badge>
+                  </button>
+                )
+              })}
+            </div>
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded border border-border p-3">
               {error && <p className="text-sm text-destructive">{error}</p>}
               {turns.length === 0 && (

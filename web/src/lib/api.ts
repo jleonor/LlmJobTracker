@@ -27,6 +27,7 @@ import type {
   OpenApplicationEdit,
   OpenApplicationFile,
   OpenApplicationIdentityAnswer,
+  OpenApplicationResearchItem,
   OpenApplicationResearchItemPreview,
   ParsedModelPrice,
   PositioningRescoreSummary,
@@ -930,6 +931,12 @@ export function fetchOpenApplications(): Promise<OpenApplication[]> {
 
 export function fetchOpenApplicationDetail(id: number): Promise<OpenApplicationDetailData> {
   return request<OpenApplicationDetailData>(`/api/open-applications/${id}`)
+}
+
+export function fetchOpenApplicationResearchItems(
+  id: number,
+): Promise<OpenApplicationResearchItem[]> {
+  return request<OpenApplicationResearchItem[]>(`/api/open-applications/${id}/research-items`)
 }
 
 // "Add Open Application"'s final "Create" step (D-251, revised): the wizard has already resolved
