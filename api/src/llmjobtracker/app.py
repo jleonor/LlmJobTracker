@@ -1665,6 +1665,17 @@ def create_app(
         path = _open_application_file_or_404(conn, files_root, application_id, file_id)
         open_in_default_app(path)
 
+    @app.post(
+        "/open-applications/{application_id}/files/{file_id}/reveal",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_token)],
+    )
+    def reveal_open_application_file(
+        application_id: int, file_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> None:
+        path = _open_application_file_or_404(conn, files_root, application_id, file_id)
+        reveal_in_file_manager(path)
+
     @app.get(
         "/open-applications/{application_id}/files/{file_id}/download",
         dependencies=[Depends(require_token)],

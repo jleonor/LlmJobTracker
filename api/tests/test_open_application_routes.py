@@ -2,7 +2,12 @@
 pipeline internals already covered by test_open_application_pipeline.py.
 """
 
+from pathlib import Path
+
+import pytest
 from fastapi.testclient import TestClient
+
+import llmjobtracker.app as app_module
 
 
 def test_list_is_empty_on_a_new_database(client: TestClient) -> None:
@@ -171,6 +176,35 @@ def test_upload_an_additional_file(client: TestClient) -> None:
 
     removed = client.delete(f"/open-applications/{application_id}/files/{file['id']}")
     assert removed.status_code == 200
+
+
+def test_reveal_shows_the_copy_in_the_file_manager(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    application_id = created["application_id"]
+    file = client.post(
+        f"/open-applications/{application_id}/files/other",
+        headers={"X-File-Name": "notes.txt"},
+        content=b"some notes",
+    ).json()
+    revealed: list[Path] = []
+    monkeypatch.setattr(app_module, "reveal_in_file_manager", revealed.append)
+
+    response = client.post(f"/open-applications/{application_id}/files/{file['id']}/reveal")
+
+    assert response.status_code == 204
+    assert len(revealed) == 1
+    assert revealed[0].name == "notes.txt"
+
+
+def test_reveal_of_a_missing_file_404s(client: TestClient) -> None:
+    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    application_id = created["application_id"]
+
+    response = client.post(f"/open-applications/{application_id}/files/999/reveal")
+
+    assert response.status_code == 404
 
 
 def test_upload_rejects_a_non_other_kind(client: TestClient) -> None:

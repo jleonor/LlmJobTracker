@@ -1077,6 +1077,25 @@ export function downloadOpenApplicationFile(
   return downloadFile(`/api/open-applications/${applicationId}/files/${fileId}/download`, name)
 }
 
+// Reveals one of an Open Application's own files in the system's file manager, the same way
+// revealJobFile does.
+export async function revealOpenApplicationFile(
+  applicationId: number,
+  fileId: number,
+): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(`/api/open-applications/${applicationId}/files/${fileId}/reveal`, {
+      method: 'POST',
+    })
+  } catch {
+    throw new ApiError('The API is not reachable on 127.0.0.1:8765.', null)
+  }
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status)
+  }
+}
+
 export async function deleteOpenApplicationFile(applicationId: number, fileId: number): Promise<void> {
   let response: Response
   try {
