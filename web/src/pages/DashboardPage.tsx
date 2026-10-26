@@ -279,11 +279,7 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
         locationOptions={locationOptions}
       />
 
-      {/* One row (Phase 14): the rate tiles, the job+open/alive+dead totals (D-254, always the
-          full, unsliced counts), and the Active/Cold tiles (D-274, Job-Application-only, each
-          matching its own table view below exactly, D-275) - no secondary description lines,
-          by request. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-9">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatTile
           label="Identified → Applied"
           value={leadTimeDays === null ? '—' : `${leadTimeDays.toFixed(1)} days`}
@@ -296,6 +292,12 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
           label="Applications sent rate"
           value={rates === null ? '—' : `${rates.appliedPerDay.toFixed(2)} / day`}
         />
+      </div>
+
+      {/* Phase 14: the job+open/alive+dead totals (D-254, always the full, unsliced counts), and
+          the Active/Cold tiles (D-274, Job-Application-only, each matching its own table view
+          below exactly, D-275) - no secondary description lines, by request. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <StatTile label="Total applications" value={String(totals.total)} />
         <StatTile
           label="Job / Open"
