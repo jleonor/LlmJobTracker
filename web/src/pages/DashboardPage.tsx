@@ -16,9 +16,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Slider } from '@/components/ui/slider'
 import { BACKEND_LABELS, MODEL_FIELD } from '@/lib/backends'
 import { CATEGORICAL_CHART_COLORS, MATCH_SCORE_RAMP, NOT_SCORED_COLOR } from '@/lib/chartPalette'
 import {
+  addDaysToDateKey,
   applyStageSlicer,
   applySlicers,
   averageDaysIdentifiedToApplied,
@@ -27,14 +29,18 @@ import {
   combinedProportionByStage,
   combinedTotals,
   combinedWholeHistoryRates,
+  daysBetweenDateKeys,
   distinctLanes,
   distinctLocations,
+  earliestIdentifiedDate,
   EMPTY_SLICERS,
   foldToOther,
   MATCH_SCORE_BUCKETS,
   NOT_SCORED_BUCKET,
   proportionByLane,
   proportionByMatchScoreBucket,
+  snapshotAsOf,
+  toDateKey,
   type CountEntry,
   type DashboardSlicers,
 } from '@/lib/dashboardStats'
@@ -82,6 +88,9 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   // primary thing this page is for.
   const [openApplications, setOpenApplications] = useState<OpenApplication[]>([])
   const [slicers, setSlicers] = useState<DashboardSlicers>(EMPTY_SLICERS)
+  // The date slider (Phase 14, D-271): defaults to today, independent of the data's own earliest-
+  // identified bound below, so it never needs re-syncing once the applications finish loading.
+  const [asOfDate, setAsOfDate] = useState(() => toDateKey(new Date()))
   const [lanes, setLanes] = useState<Lane[]>([])
   const [overview, setOverview] = useState<LaneOverview>({
     summary: null,
@@ -154,12 +163,37 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
     () => (state.kind === 'ready' ? state.applications : []),
     [state],
   )
-  // The whole-history rate stats always read the full, unsliced list (D-241) - every other
-  // chart below reads `sliced`.
-  const sliced = useMemo(() => applySlicers(allApplications, slicers), [allApplications, slicers])
 
-  const laneOptions = useMemo(() => distinctLanes(allApplications), [allApplications])
-  const locationOptions = useMemo(() => distinctLocations(allApplications), [allApplications])
+  // The date slider (Phase 14, D-271): bounds from the earliest Identified date (raw, full
+  // history - never the already-truncated snapshot below) to today. A lazy useState initializer
+  // (runs exactly once), not useMemo, since computing a Date directly during render is impure.
+  const [todayKey] = useState(() => toDateKey(new Date()))
+  const minDateKey = useMemo(() => {
+    const earliest = earliestIdentifiedDate([...allApplications, ...openApplications])
+    return earliest ? earliest.slice(0, 10) : todayKey
+  }, [allApplications, openApplications, todayKey])
+  const maxDayIndex = useMemo(
+    () => daysBetweenDateKeys(minDateKey, todayKey),
+    [minDateKey, todayKey],
+  )
+  const dayIndex = Math.min(maxDayIndex, Math.max(0, daysBetweenDateKeys(minDateKey, asOfDate)))
+
+  // D-271: every chart and card below reads this as-of-date snapshot, not the raw lists - this
+  // is what makes the slider redefine "now" for the whole page, superseding D-241's old slicer
+  // exemption for the whole-history rate and Alive/Dead/Total tiles.
+  const asOfApplications = useMemo(
+    () => snapshotAsOf(allApplications, asOfDate),
+    [allApplications, asOfDate],
+  )
+  const asOfOpenApplications = useMemo(
+    () => snapshotAsOf(openApplications, asOfDate),
+    [openApplications, asOfDate],
+  )
+
+  const sliced = useMemo(() => applySlicers(asOfApplications, slicers), [asOfApplications, slicers])
+
+  const laneOptions = useMemo(() => distinctLanes(asOfApplications), [asOfApplications])
+  const locationOptions = useMemo(() => distinctLocations(asOfApplications), [asOfApplications])
 
   const laneEntries = useMemo(
     () => foldToOther(proportionByLane(sliced), MAX_LANE_BARS, 'Other lanes'),
@@ -170,8 +204,8 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   // unfiltered when Stage isn't set, same as the Job list's own applySlicers would for a
   // dimension it doesn't touch.
   const slicedOpen = useMemo(
-    () => applyStageSlicer(openApplications, slicers.stage),
-    [openApplications, slicers.stage],
+    () => applyStageSlicer(asOfOpenApplications, slicers.stage),
+    [asOfOpenApplications, slicers.stage],
   )
   const stageEntries = useMemo(
     () => combinedProportionByStage(sliced, slicedOpen),
@@ -180,16 +214,16 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   const matchScoreEntries = useMemo(() => proportionByMatchScoreBucket(sliced), [sliced])
   const leadTimeDays = useMemo(() => averageDaysIdentifiedToApplied(sliced), [sliced])
   const rates = useMemo(
-    () => combinedWholeHistoryRates(allApplications, openApplications),
-    [allApplications, openApplications],
+    () => combinedWholeHistoryRates(asOfApplications, asOfOpenApplications),
+    [asOfApplications, asOfOpenApplications],
   )
   const heatmap = useMemo(
     () => combinedApplicationsSentHeatmap(sliced, slicedOpen),
     [sliced, slicedOpen],
   )
   const totals = useMemo(
-    () => combinedTotals(allApplications, openApplications),
-    [allApplications, openApplications],
+    () => combinedTotals(asOfApplications, asOfOpenApplications),
+    [asOfApplications, asOfOpenApplications],
   )
 
   if (state.kind === 'loading') {
@@ -202,6 +236,15 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-semibold">Dashboard</h1>
+
+      <AsOfDateSlider
+        asOfDate={asOfDate}
+        dayIndex={dayIndex}
+        maxDayIndex={maxDayIndex}
+        minDateKey={minDateKey}
+        todayKey={todayKey}
+        onChange={setAsOfDate}
+      />
 
       <SlicerBar
         slicers={slicers}
@@ -312,7 +355,51 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   )
 }
 
-// --- Slicers (D-241: these filter every chart above except the whole-history rate stats) -------
+// --- As-of-date slider (Phase 14, D-271) ----------------------------------------------------
+
+function AsOfDateSlider({
+  asOfDate,
+  dayIndex,
+  maxDayIndex,
+  minDateKey,
+  todayKey,
+  onChange,
+}: {
+  asOfDate: string
+  dayIndex: number
+  maxDayIndex: number
+  minDateKey: string
+  todayKey: string
+  onChange: (next: string) => void
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded border border-border bg-card p-4">
+      <div className="flex items-center justify-between">
+        <Label>Dashboard as of</Label>
+        <span className="font-mono text-xs text-foreground">{asOfDate}</span>
+      </div>
+      <Slider
+        value={[dayIndex]}
+        min={0}
+        max={Math.max(maxDayIndex, 1)}
+        disabled={maxDayIndex === 0}
+        onValueChange={(value) => {
+          const [index] = value as number[]
+          onChange(addDaysToDateKey(minDateKey, index))
+        }}
+      />
+      <div className="flex items-center justify-between font-mono text-xs text-muted-foreground">
+        <span>{minDateKey} (earliest identified)</span>
+        <span>{todayKey} (today)</span>
+      </div>
+    </div>
+  )
+}
+
+// --- Slicers (D-241 narrowed by D-271: these still filter only the sliced charts, exempting the
+// whole-history rate and Alive/Dead/Total tiles - the new date slider above is different in kind
+// and DOES affect those tiles, since it changes which applications exist at all, not which ones
+// among today's count to show) -------------------------------------------------------------------
 
 const ALL_VALUE = '__all__'
 
