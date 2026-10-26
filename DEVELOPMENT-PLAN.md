@@ -2,7 +2,9 @@
 
 Phases 0 through 11 are done; `main` is fast-forwarded through `phase-11-open-applications` (D-61), plus one further fix commit applied directly to `main` after that fast-forward. Phase 9's font/UI audit moved to Parked rather than being built (D-235), on the user's explicit choice when closing the phase; `planning/phase-9-audit-notes.md` was never written, its information captured in `DECISIONS.md` instead. The Memory function, previously Phase 10, moved to Parked alongside a new "Add story" idea, pending a future agent-based system (D-236); Dashboard and Shell/hardening each moved up one number as a result. Phase 10 (Dashboard) closed out 2026-10-21, with Analyze lanes, Summarize lanes and both re-score actions confirmed against real data. Phase 11 (Open Applications) closed out 2026-10-24: Company details' chat-revise, and a real Tailored CV, Cover letter and Introduction message generated and revised, were confirmed live against a real Open Application.
 
-**Current phase: 12 (Profile: Additional files).** A new phase, inserted ahead of Shell/hardening and numbered 12; Shell, hardening, and in-app LLM + browser moves from 12 to 13 (D-255). It adds an "Additional files" upload kind to the Profile page's Your files section — reference letters, work attestations, academic transcripts and similar supporting material — fed as extra evidence into career-history generation and its Revise (LLM) chat only (D-256); the questionnaire analysis and strategy continue to read only the career history, not these files directly. Phase 12's scope is set below; its step list has not been drafted yet (rule 7).
+Phase 12 (Profile: additional files) closed out 2026-10-26: the "Additional files" upload kind, its manual-text fallback, the tightened career-history gate, and Revise (LLM) context selection across profile/job application/open application were all confirmed, on the user's go in chat, alongside the checks already passing.
+
+**Current phase: 13 (Shell/Electron).** Narrowed on 2026-10-26 (D-264 to D-267) from the original Shell/hardening/in-app-browser scope to the Electron shell alone, plus an Export Data button in Settings; backups, the run log, and "Open LLM with browser" are dropped (the latter replaced by Phase 7's existing "Open LLM app"). A new Phase 14 (Packaging and installers) now follows it for making the app a downloadable, cross-platform build (D-268). Phase 13's scope is set below; its step list has not been drafted yet (rule 7).
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -31,10 +33,11 @@ This plan says what gets built, in what order, and how we know a phase is done. 
 | 10 | Dashboard | Slicer-driven charts, a calendar heatmap, per-lane strengths/weaknesses, and the re-score actions moved from Settings |
 | 11 | Open Applications | A second application type for talent pools, unsolicited CV drops and cold outreach, with its own table, Company details, and a lighter LLM pipeline (Tailored CV, Cover letter, Introduction message) |
 | 12 | Profile: additional files | The Profile page's Your files section gets an "Additional files" upload kind (reference letters, work attestations, academic transcripts and similar), fed as extra evidence into career-history generation and its Revise (LLM) chat |
-| 13 | Shell and hardening | Electron shell, backups, run log, and an in-app LLM + browser pane |
+| 13 | Shell (Electron) | The app runs as its own Electron window, starting and stopping the backend; an "Export Data" button in Settings |
+| 14 | Packaging and installers | A standalone, downloadable build, installable on Windows and macOS |
 | Parked | Not scheduled | Job workspace's revision-chain model, Emails and chat, Question memory, board view, browser assist, managed agent loop, form filling, the real spreadsheet dry-run/apply import, the font/UI audit, the Memory function, "Add story" (D-142, D-179, D-185, D-235, D-236) |
 
-Phases 5 to 12 were reordered on 2026-10-13 (D-179), from a planning discussion with the user about what to build after Phase 4. The previous Phase 5 (Job workspace's remaining scope), Phase 6 (Emails and chat), Phase 7 (Question memory) and part of the old Phase 8 (board view) are not dropped — they move to Parked, to be rescheduled once Phase 6's technical debt audit decides where each resumes (D-185). "Public release" (updating `README.md` and making the GitHub repo public) is a checklist item after Phase 9, not a numbered phase, matching how the user wants it sequenced. Phase 10 (Memory function) was dropped to Parked on 2026-10-18 (D-236), alongside a new "Add story" idea, both pending a future agent-based system; Dashboard moved up from 11 to 10, and Shell/hardening moved up from 12 to 11. Open Applications was inserted as a new phase on 2026-10-22 (D-248), from a planning discussion with the user about what to build after Dashboard closed: it is numbered 11, and Shell, hardening, and in-app LLM + browser moves from 11 to 12. Profile: additional files was inserted as a new phase on 2026-10-24 (D-255), from a planning discussion with the user about what to build after Open Applications closed: it is numbered 12, and Shell, hardening, and in-app LLM + browser moves from 12 to 13.
+Phases 5 to 12 were reordered on 2026-10-13 (D-179), from a planning discussion with the user about what to build after Phase 4. The previous Phase 5 (Job workspace's remaining scope), Phase 6 (Emails and chat), Phase 7 (Question memory) and part of the old Phase 8 (board view) are not dropped — they move to Parked, to be rescheduled once Phase 6's technical debt audit decides where each resumes (D-185). "Public release" (updating `README.md` and making the GitHub repo public) is a checklist item after Phase 9, not a numbered phase, matching how the user wants it sequenced. Phase 10 (Memory function) was dropped to Parked on 2026-10-18 (D-236), alongside a new "Add story" idea, both pending a future agent-based system; Dashboard moved up from 11 to 10, and Shell/hardening moved up from 12 to 11. Open Applications was inserted as a new phase on 2026-10-22 (D-248), from a planning discussion with the user about what to build after Dashboard closed: it is numbered 11, and Shell, hardening, and in-app LLM + browser moves from 11 to 12. Profile: additional files was inserted as a new phase on 2026-10-24 (D-255), from a planning discussion with the user about what to build after Open Applications closed: it is numbered 12, and Shell, hardening, and in-app LLM + browser moves from 12 to 13. On 2026-10-26, while planning Phase 13 in detail, it was narrowed to the Electron shell alone and renamed "Shell (Electron)"; backups, the run log, and "Open LLM with browser" were dropped from its scope (D-264 to D-267), and a new Phase 14, Packaging and installers, was inserted after it to cover making the app a downloadable, installable build for Windows and macOS (D-268).
 
 ---
 
@@ -1182,35 +1185,70 @@ reopening steps 1-6, following D-104's pattern.
     CV's or Cover letter's corrected badges.
 
 Done when
-- [ ] An Additional file with readable text is uploaded, and a real career-history generation draws on it alongside the existing CVs/letters (screenshot). (2026-10-24: covered by `test_an_additional_file_feeds_the_career_history_prompt_as_secondary_evidence` with `FakeRunner` — asserts the file's text and the secondary-evidence instruction both reach the built prompt. Not yet run against the real Claude Code CLI; the dev database already has a real master CV loaded, so this needs only an Additional file upload and a live "Run profile analysis" click to confirm.)
+- [x] An Additional file with readable text is uploaded, and a real career-history generation draws on it alongside the existing CVs/letters (screenshot). (2026-10-24: covered by `test_an_additional_file_feeds_the_career_history_prompt_as_secondary_evidence` with `FakeRunner` — asserts the file's text and the secondary-evidence instruction both reach the built prompt. Closed 2026-10-26 on the user's confirmation in chat; not independently re-verified against the real Claude Code CLI this session.)
 - [x] A scanned Additional file with no extractable text lets the user type the text manually; it is saved, and visible as "Typed by you" with a working re-edit (screenshot). (2026-10-24: verified live in the browser pane against the real dev database — uploaded `scanned_no_text.pdf` as an Additional file, got "This PDF has no text layer..." with a Type the text link, typed a transcript sentence, saved, saw "Typed by you. / Edit the typed text", reopened it and confirmed the textarea came back pre-filled with the saved text. Survival across a second profile analysis run is covered by `test_refresh_extracted_text_leaves_a_manual_row_untouched` and `test_manually_typed_additional_file_text_reaches_the_prompt`, not yet exercised with a real second live run.)
 - [x] The sidecar `.txt` file for a manually-typed Additional file exists next to the original upload (screenshot/log). (2026-10-24: confirmed on disk at `profile/additional_file/<sha256>.manual.txt` next to the `.pdf`, with the exact typed content, after the live browser test above. Deleting the file was also checked live and via `test_deleting_an_additional_file_also_removes_its_sidecar` — a real gap found live, where delete only removed the original upload and left the sidecar behind, now fixed.)
-- [ ] Generation is blocked when only an older cover letter or only an Additional file is present and no CV has been uploaded (screenshot of the rejection message). (2026-10-24: covered by `test_an_older_letter_alone_no_longer_satisfies_the_evidence_gate` and `test_an_additional_file_alone_does_not_satisfy_the_evidence_gate`. Not screenshotted live, since the real dev database already has a master CV loaded and this would mean removing it to demonstrate.)
+- [x] Generation is blocked when only an older cover letter or only an Additional file is present and no CV has been uploaded (screenshot of the rejection message). (2026-10-24: covered by `test_an_older_letter_alone_no_longer_satisfies_the_evidence_gate` and `test_an_additional_file_alone_does_not_satisfy_the_evidence_gate`. Closed 2026-10-26 on the user's confirmation in chat; not screenshotted live, since the real dev database already has a master CV loaded and this would mean removing it to demonstrate.)
 - [x] `python scripts/check.py` is green and a personal-data scan of the phase's commits is clean. (2026-10-24: `python scripts/check.py` — 7 of 7 steps pass, 802 backend tests, 51 frontend tests. Every commit's diff and message on `phase-12-additional-files`, plus the Phase 11/12 planning-doc commit on `main`, scanned for the user's name/email: no matches outside git's own `Author:` line.)
-- [ ] The career-history Revise turn that originally failed with "material is too large for one prompt" succeeds once Older CVs and Older cover letters are unchecked (screenshot). (2026-10-26: the mechanism is covered end to end by `test_excluding_a_kind_leaves_its_files_out_of_a_career_history_revise` (`FakeRunner`), and the click-to-exclude UI was confirmed live — toggling a career-history badge correctly flips its `aria-pressed`/greyed state. Not yet re-run against the user's real oversized evidence with a live Claude call, since the dev database currently has no career-history document to revise and seeding one directly was declined as an unsafe write to real data.)
+- [x] The career-history Revise turn that originally failed with "material is too large for one prompt" succeeds once Older CVs and Older cover letters are unchecked (screenshot). (2026-10-26: the mechanism is covered end to end by `test_excluding_a_kind_leaves_its_files_out_of_a_career_history_revise` (`FakeRunner`), and the click-to-exclude UI was confirmed live — toggling a career-history badge correctly flips its `aria-pressed`/greyed state. Closed on the user's confirmation in chat; not re-run against the user's real oversized evidence with a live Claude call, since the dev database currently has no career-history document to revise and seeding one directly was declined as an unsafe write to real data.)
 - [x] Excluding one filed email and one job-level Additional file from an Application history Revise turn leaves them out of what the model sees, with everything else unaffected (screenshot). (2026-10-26: covered by `test_application_history_revise_can_exclude_one_email_and_one_additional_file`, and confirmed live against a real (synthetic seed) application — uploaded a real Additional file through the dev proxy, opened Revise, saw its badge, clicked it, and confirmed the button's accessible state read "Excluded from this message" with the greyed/strikethrough style. Test file cleaned up afterward.)
 - [x] Excluding one research item from a Company details Revise turn leaves it out, with everything else unaffected (screenshot). (2026-10-26: covered by `test_company_details_revise_can_exclude_one_research_item`, and confirmed live against a real seeded Open Application — the Context row showed "Research 1: ..." (previously nothing), and clicking it flipped to "Excluded from this message".)
 - [x] The Open Application Revise overlay shows a Context row for every section (screenshot), where today it shows none. (2026-10-26: confirmed live — Company details now shows its research-item badge; the other three sections' static badges were added in code and verified by TypeScript/lint, not individually screenshotted live this round.)
-- [ ] Tailored CV's and Cover letter's Context badges (job application) show the Master CV / template / reference letter they actually read (screenshot). Not screenshotted live this round; the label-list change itself is a one-line data change with no new logic, verified by code review and the app's type-checked build.
+- [x] Tailored CV's and Cover letter's Context badges (job application) show the Master CV / template / reference letter they actually read (screenshot). Closed 2026-10-26 on the user's confirmation in chat; not screenshotted live this round, since the label-list change itself is a one-line data change with no new logic, verified by code review and the app's type-checked build.
 - [x] `python scripts/check.py` is green and a personal-data scan of this batch's commits is clean. (2026-10-26: `python scripts/check.py` — 7 of 7 steps pass, 815 backend tests, 51 frontend tests. Every commit's diff and message from this batch scanned for the user's name/email: no matches outside git's own `Author:` line.)
 
 ---
 
-## Phase 13: Shell, hardening, and in-app LLM + browser
+## Phase 13: Shell (Electron)
 
-**Goal:** the app runs as its own desktop window, is safe for daily use, and a job page can open a split chat/browser pane for help applying to a listing directly.
+**Goal:** the app runs as its own desktop window instead of a browser tab, with the backend's lifecycle managed by the shell.
 
-Scope
-- Electron shell that starts and stops the backend (D-17).
-- Backup: copy the database and managed files on a schedule; a restore drill.
-- Run log: each Claude/Codex call with its token count and cost. Log redaction and a secrets scan.
-- "Open LLM with browser": a button on the job page opening a split view — chat on one side, an in-app browser on the other — so the user can log into a job portal with the LLM's help reading and acting on the page. This is the fuller version of Phase 7's "Open LLM app", and revisits the parked "Apply with AI" idea (D-14, narrowed by D-184) now that it runs inside the app's own shell.
+Scope (narrowed 2026-10-26, D-264 to D-267, from the original Phase 13 scope set by D-248/D-255)
+- Electron shell that starts and stops the backend (D-17), replacing the current dev-server/browser-tab workflow with the app's own window. Still assumes Python/`uv`/Node and the `claude`/`codex` CLIs are installed on the machine (D-264) — making the app installable without that is Phase 14.
+- The launch-token handshake (D-43) moves from `scripts/dev.py` to the Electron main process, which creates the token and starts the backend the same way.
+- An "Export Data" button in Settings (D-265), reusing the existing `export_llm_bundle.py` full-project export (every job's files, every profile document, a full database snapshot) without its deep-link "open the LLM app" step — a manual, on-demand backup.
+
+Out of scope (dropped, not deferred, from the original Phase 13 scope)
+- Backups on a schedule with a restore drill (D-265) — superseded by the manual Export Data button above.
+- The run log (each Claude/Codex call's token count and cost, log redaction, a secrets scan) (D-267).
+- "Open LLM with browser" (D-266) — "Open LLM app" (Phase 7) already covers the need; the fuller in-app browser pane will not be built.
+
+Step list (approved in chat 2026-10-26). `run.ps1`'s existing browser-mode flow (and `-Seed`) stays exactly as it is; dev-mode Electron is a second way to open the same dev stack, not a replacement. Since Electron, in dev mode, points at the same Vite dev server the browser does today, the existing proxy already injects `X-Launch-Token` (`vite.config.ts`) — no new token-handling code is needed here. That only arrives in Phase 14, once the window loads the built static files with no dev-server proxy in front.
+
+1. Cut `phase-13-shell` from `main` (D-61). Add an `electron/` folder (main + preload process) and the `electron` dev dependency.
+2. Electron main process, dev mode only: given a URL and a ready signal (passed in via env/args), open a `BrowserWindow` at that URL once it responds. No token handling needed — the Vite proxy already does it.
+3. `run.ps1` gets an `-Electron` switch: the same venv/seed/backend/Vite startup as today, but launches the Electron shell instead of the system browser, and tears down the backend/Vite process tree when the Electron window closes (reusing `scripts/dev.py`'s existing orphan-free shutdown).
+4. Backend: `POST /data/export` route, calling `export_llm_bundle` directly (no deep link, no installed-app check), returning the bundle path.
+5. Frontend: an "Export Data" button on the Settings page, wired to the new route, showing the resulting folder.
+6. Checks: `python scripts/check.py`; a screenshot of `run.ps1 -Electron` opening the app in its own window; confirmation `run.ps1` (browser mode) is unaffected; confirmation closing the Electron window leaves no orphan process; a screenshot of Export Data producing a bundle.
 
 Done when
-- [ ] The restore drill recovers a deleted database.
-- [ ] Secrets and personal-data scans are clean.
-- [ ] "Open LLM with browser" opens the split view and the LLM can read the page the user navigated to.
-- [ ] A week of real use, and the user's go or no-go.
+- [ ] The app starts and stops cleanly as an Electron window, with no orphan backend process left behind (matching Phase 1's own browser-mode check).
+- [ ] `run.ps1` (browser mode) still works exactly as before.
+- [ ] The Export Data button produces the same bundle "Open LLM app" does, minus the deep-link step.
+- [ ] A week of real use in the Electron shell, and the user's go or no-go.
+
+---
+
+## Phase 14: Packaging and installers
+
+**Goal:** the app is downloadable and installable like an ordinary desktop application, on both Windows and macOS, with no separate Python/Node install required.
+
+Scope (inserted 2026-10-26, D-268, from a planning discussion with the user about what Phase 13 should and shouldn't cover)
+- Bundle the FastAPI backend into a standalone executable (candidate: PyInstaller) per OS, so the installed app needs no separate Python/`uv` on the user's machine. The `claude`/`codex` CLIs remain a separate, user-installed dependency either way (D-19), since the app's own installer doesn't install them.
+- Electron Builder (or Forge) producing a Windows installer (`.exe`/`.msi`) and a macOS `.dmg`/`.pkg`.
+- macOS fix to `storage.py`'s `data_dir()`: today's non-Windows fallback (`Path.home() / "AppData" / "Local"`) is wrong on macOS; it needs the macOS-idiomatic `~/Library/Application Support/LlmJobTracker`.
+- Apple notarization for the macOS build, so Gatekeeper doesn't block it on a fresh machine. Needs a paid Apple Developer account.
+- A download page (outside this repo) where the user offers the installers, with donations — not part of this phase's "done when" list, since it isn't code in this repo.
+- Verifying the macOS build on real macOS hardware (open question: what hardware is available for this — see D-268's discussion).
+
+Step list: not yet drafted (rule 7).
+
+Done when
+- [ ] A Windows installer produces a working, installed app with no separate Python/Node install.
+- [ ] A macOS installer produces a working, installed app on real macOS hardware, notarized, with no Gatekeeper block.
+- [ ] The app's data directory lands in the right OS-idiomatic place on both platforms.
+- [ ] The user's go or no-go on the resulting installers.
 
 ---
 
@@ -1229,7 +1267,7 @@ Not a numbered phase — a checklist revisited once the user judges the above is
 - **Emails and chat**: the "Add email" button, parsed `.eml`/`.msg` filed to a job, Claude proposing status/next-action changes from an email with Confirm, and a general chat panel. Still wanted — CLAUDE.md's own description of the app includes "the record of emails." Revisit scheduling during Phase 6 (D-185).
 - **Question memory**: SQLite keyword search (and FAISS if needed) so an answered clarifying question is found again instead of asked twice. Still wanted. Revisit scheduling during Phase 6 (D-185).
 - **Board view** (Kanban, D-02): a kanban alternative to the table. Distinct from the Dashboard (Phase 10), which is an analytics view, not a table replacement.
-- **Apply with AI** (browser beside a job, D-14): the narrower, read-only version is now scheduled as Phase 7's "Open LLM app"; the fuller in-app version is Phase 13's "Open LLM with browser" (D-184).
+- **Apply with AI** (browser beside a job, D-14): the narrower, read-only version shipped as Phase 7's "Open LLM app". The fuller in-app browser-pane version, once planned as Phase 13's "Open LLM with browser", is dropped outright rather than rescheduled (D-266) — "Open LLM app" already covers the need.
 - **Managed agent loop** (replacing one step with our own loop, to compare). A learning goal, worth another look once Phase 7's second runner exists. Optional, with its own design note.
 - **Form filling and auto-submission.** Out of scope.
 - **Font/UI audit** (Phase 9's original scope, D-235): one consistent font and a reviewed, modern layout across the Job Applications table, the Job Application page, the Profile page and the LLM history page. Never started. Done when: a written audit lists every font currently in use and where; one consistent font choice is applied across the table and all four pages; each layout issue the audit found is either fixed or explicitly deferred with a reason.
