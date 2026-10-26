@@ -1229,7 +1229,17 @@ unhandled child-process `'error'` event crashes the whole Electron main process 
 bypassing cleanup and orphaning whichever child had already started - both children now get
 `'error'`/`'exit'` handlers that tear everything down and quit. The user confirmed the window
 itself opens and works. A follow-up batch (D-269) added the window's title, taskbar icon, and
-removed the default menu bar, appended here rather than as a new step list.
+removed the default menu bar, appended here rather than as a new step list. Two small unrelated
+fixes landed alongside this phase's work rather than as their own phase: the Open Application
+file rows now match Job Application's (an icon Download button and a Show in folder button,
+replacing a plain text "Download" button and the missing reveal action), and every link the app
+opens (job postings, portal URLs) now goes through `shell.openExternal` instead of Electron
+opening a second copy of its own shell window. A further batch (D-278), from images and a list of
+requests the user supplied: a new window/taskbar icon from the user's own briefcase artwork; the
+Windows title bar replaced with a `titleBarOverlay` colored to match the app's navbar, with
+`nativeTheme` following the system theme; `AppShell.tsx`'s header spanning the full window width
+(title, the user's white logo, LLM status) instead of the sidebar having its own boxed-in title
+cell; and a thin scrollbar that's invisible until actively scrolling.
 
 Done when
 - [ ] The app starts and stops cleanly as an Electron window, with no orphan backend process left behind (matching Phase 1's own browser-mode check).
