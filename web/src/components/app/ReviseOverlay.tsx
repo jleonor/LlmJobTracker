@@ -6,7 +6,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ApiError, fetchProfileOutputs, fetchReviseTurns, postReviseTurn } from '@/lib/api'
-import { PROFILE_DOCUMENT_CONTEXT, PROFILE_DOCUMENT_TITLES } from '@/lib/profileDocuments'
+import {
+  CAREER_HISTORY_EVIDENCE_GROUPS,
+  PROFILE_DOCUMENT_CONTEXT,
+  PROFILE_DOCUMENT_TITLES,
+} from '@/lib/profileDocuments'
 import type { ProfileOutput, ReviseTurn } from '@/lib/types'
 
 // How often the conversation is read back while the overlay is open (useClaudeJobs.ts's own
@@ -36,6 +40,9 @@ export function ReviseOverlay({
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
+  // Career history only (D-260, D-261): evidence groups unchecked for the next message. Chosen
+  // fresh each time - reset once sent, not remembered between turns.
+  const [excludedKinds, setExcludedKinds] = useState<Set<string>>(new Set())
 
   const reload = useCallback(() => {
     fetchReviseTurns(outputKind)
@@ -74,14 +81,27 @@ export function ReviseOverlay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doneSignature])
 
+  function toggleExcluded(kind: string) {
+    setExcludedKinds((current) => {
+      const next = new Set(current)
+      if (next.has(kind)) {
+        next.delete(kind)
+      } else {
+        next.add(kind)
+      }
+      return next
+    })
+  }
+
   async function send() {
     const text = message.trim()
     if (!text) return
     setSending(true)
     setError(null)
     try {
-      await postReviseTurn(outputKind, text)
+      await postReviseTurn(outputKind, text, Array.from(excludedKinds))
       setMessage('')
+      setExcludedKinds(new Set())
       reload()
     } catch (failure) {
       setError(failure instanceof ApiError ? failure.message : 'The message could not be sent.')
@@ -107,11 +127,33 @@ export function ReviseOverlay({
           <div className="flex min-h-0 flex-col gap-2">
             <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
               <span>Context:</span>
-              {(PROFILE_DOCUMENT_CONTEXT[outputKind] ?? []).map((label) => (
-                <Badge key={label} variant="outline" className="rounded-sm font-mono text-[10px] font-normal">
-                  {label}
-                </Badge>
-              ))}
+              {outputKind === 'full_cv_history'
+                ? CAREER_HISTORY_EVIDENCE_GROUPS.map((group) => {
+                    const excluded = excludedKinds.has(group.kind)
+                    return (
+                      <button
+                        key={group.kind}
+                        type="button"
+                        onClick={() => toggleExcluded(group.kind)}
+                        aria-pressed={!excluded}
+                        title={excluded ? 'Excluded from this message' : 'Included in this message'}
+                      >
+                        <Badge
+                          variant="outline"
+                          className={`rounded-sm font-mono text-[10px] font-normal ${
+                            excluded ? 'text-muted-foreground/50 line-through' : ''
+                          }`}
+                        >
+                          {group.label}
+                        </Badge>
+                      </button>
+                    )
+                  })
+                : (PROFILE_DOCUMENT_CONTEXT[outputKind] ?? []).map((label) => (
+                    <Badge key={label} variant="outline" className="rounded-sm font-mono text-[10px] font-normal">
+                      {label}
+                    </Badge>
+                  ))}
             </div>
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded border border-border p-3">
               {error && <p className="text-sm text-destructive">{error}</p>}

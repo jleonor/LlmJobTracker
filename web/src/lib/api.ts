@@ -791,12 +791,17 @@ export function fetchReviseTurns(outputKind: string): Promise<ReviseTurn[]> {
   return request<ReviseTurn[]>(`/api/profile/revise/${outputKind}/turns`)
 }
 
-// Sends one chat message, which queues a new Claude Job for it (D-106).
-export function postReviseTurn(outputKind: string, message: string): Promise<ReviseTurn> {
+// Sends one chat message, which queues a new Claude Job for it (D-106). `excludedKinds`
+// (D-260, D-261) is career history only - the evidence groups to leave out of this one turn.
+export function postReviseTurn(
+  outputKind: string,
+  message: string,
+  excludedKinds?: string[],
+): Promise<ReviseTurn> {
   return request<ReviseTurn>(`/api/profile/revise/${outputKind}/turns`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, excluded_kinds: excludedKinds?.length ? excludedKinds : null }),
   })
 }
 
@@ -812,16 +817,23 @@ export function fetchJobReviseTurns(
 
 // `attachmentJobFileId` is a job_files row already filed before this call (D-138, Application
 // history only so far) - the file itself is uploaded through uploadJobFile, not here.
+// `excludedJobFileIds` (D-260, D-261) is Application history only - a filed email or Additional
+// file to leave out of this one turn.
 export function postJobReviseTurn(
   applicationId: number,
   sectionKind: string,
   message: string,
   attachmentJobFileId?: number,
+  excludedJobFileIds?: number[],
 ): Promise<ReviseTurn> {
   return request<ReviseTurn>(`/api/job-applications/${applicationId}/revise/${sectionKind}/turns`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, attachment_job_file_id: attachmentJobFileId ?? null }),
+    body: JSON.stringify({
+      message,
+      attachment_job_file_id: attachmentJobFileId ?? null,
+      excluded_job_file_ids: excludedJobFileIds?.length ? excludedJobFileIds : null,
+    }),
   })
 }
 
@@ -1117,17 +1129,25 @@ export function fetchOpenApplicationReviseTurns(
   )
 }
 
+// `excludedResearchItemIds` (D-260, D-261) is Company details only - a research item to leave
+// out of this one turn.
 export function postOpenApplicationReviseTurn(
   applicationId: number,
   sectionKind: string,
   message: string,
+  excludedResearchItemIds?: number[],
 ): Promise<ReviseTurn> {
   return request<ReviseTurn>(
     `/api/open-applications/${applicationId}/revise/${sectionKind}/turns`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        message,
+        excluded_research_item_ids: excludedResearchItemIds?.length
+          ? excludedResearchItemIds
+          : null,
+      }),
     },
   )
 }
