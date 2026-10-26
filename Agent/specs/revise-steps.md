@@ -23,12 +23,22 @@ In this order:
 1. **Writing rules** in force (the user's own, or `Agent/rules/honesty.md`) — same as every
    profile prompt.
 2. **Context files**, fixed per kind, the same inputs that kind's generating prompt uses:
-   - `revise_own_full_cv_history`: every master CV, older CV, older cover letter (extracted text).
+   - `revise_own_full_cv_history`: every master CV, older CV, older cover letter and additional
+     file (extracted text, D-256) — four groups by kind.
    - `revise_own_questionnaire_analysis`: the questionnaire, and the current career history.
    - `revise_own_strategy`: the current questionnaire analysis, and the current career history.
    These are the files the chat UI lists as "in context" for that conversation (the brainstorm's
    #4). They are read fresh each turn, the same as a generating run — a revise answers from the
    current state of its sources, not a snapshot taken when the conversation started.
+   For `revise_own_full_cv_history` only, the user may uncheck any of the four groups before
+   sending a turn (D-260, D-261): the excluded group's files are left out of this one turn's
+   prompt entirely, the same as if they had never been uploaded. The choice is per turn, made
+   fresh each time the overlay is used — nothing is remembered between turns, and it has no effect
+   on the generating prompt (`profile-steps.md`), which always reads every group. The excluded set
+   is stored on the turn itself (`revise_turns.excluded_context`, a JSON array of kinds), read back
+   when the job actually runs, the same deferred-build timing this spec already uses. The other two
+   kinds have no groups to exclude — the questionnaire is a single-file kind, and the career
+   history/questionnaire analysis entries are single required documents, not a pool.
 3. **The current document** (the latest version in `profile_outputs` for that kind), in full.
 4. **The conversation transcript so far**: each prior user message, in order. The model's own
    prior replies are not replayed as separate turns — each prior reply's effect is already visible

@@ -84,12 +84,22 @@ partial apply.
 What goes into the prompt: the job description; the application's `status_history`
 (`status_history_block`, a shared, public helper of `job_pipeline.py`, D-177 — the same way
 `email_blocks` already is); the application's already-filed emails, read the same way
-`generate_application_history` already reads them (`email_blocks`); this turn's attachment, if any
-(its own labelled block, read fresh each turn — `.eml`/`.msg` through the same email-text parsing,
-anything else through `extraction.py`'s general-purpose `extract()`, since only the listing kind is
-extracted at upload time); the current `notes`, `next_action` and `due_date`; the conversation so
-far; the new message. `notes` was never part of the prompt before D-177 (D-127: user-only) — now
-patched the same `unchanged`/`none`/value way as the other two.
+`generate_application_history` already reads them (`email_blocks`); the application's own
+Additional files (Files section, job_files kind `other`), read the same way (`additional_files_block`,
+D-262 — these now get `extraction_status`/`extracted_text` stored at upload time, widened from the
+listing-only extraction every other kind used to have); this turn's attachment, if any (its own
+labelled block, read fresh each turn — `.eml`/`.msg` through the same email-text parsing, anything
+else through `extraction.py`'s general-purpose `extract()`); the current `notes`, `next_action` and
+`due_date`; the conversation so far; the new message. `notes` was never part of the prompt before
+D-177 (D-127: user-only) — now patched the same `unchanged`/`none`/value way as the other two.
+
+The user may uncheck any individual filed email or Additional file before sending a turn (D-260,
+D-261) — unlike career history's four coarse groups, each of these pools is usually small enough to
+list and exclude one at a time. The excluded set (a list of `job_files.id`) is stored on the turn
+(`job_revise_turns.excluded_context`, a JSON array), read back when the job runs, and has no effect
+on `generate_application_history`, which always reads every email and Additional file. No other
+section has a group to exclude: `job_details`, `positioning`, `tailored_cv`, `cover_letter` and
+`interview_prep` each read single required documents or a single chosen file, not a pool.
 
 The answer patches all three fields independently:
 

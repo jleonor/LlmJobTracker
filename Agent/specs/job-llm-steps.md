@@ -369,12 +369,17 @@ guarantee it).
 
 **Inputs:** Job details' `description`; the application's own `status_history` (oldest first,
 `status_history_block`, public — shared with the chat's own prompt the same way `email_blocks`
-already is); and the plain text of the application's filed emails (`job_files` kinds `eml`/`msg`).
-Unlike the listing, an email's text is **not** stored in `extracted_text` (`files.md`'s
-`EXTRACTED_KINDS` stays `{listing}`) — it is read fresh each run straight from the stored
-`.eml`/`.msg` bytes, the same parsing `file_preview.py` already does for a preview, reduced to
-plain text instead of sanitised HTML (a small, prompt-only helper; an email is never previewed
-through this path, so it does not need HTML or the iframe sandbox D-107's preview does).
+already is); the plain text of the application's filed emails (`job_files` kinds `eml`/`msg`); and
+the application's own Additional files (`job_files` kind `other`, `additional_files_block`, D-262).
+An email's text is still **not** stored in `extracted_text` — it is read fresh each run straight
+from the stored `.eml`/`.msg` bytes, the same parsing `file_preview.py` already does for a preview,
+reduced to plain text instead of sanitised HTML (a small, prompt-only helper; an email is never
+previewed through this path, so it does not need HTML or the iframe sandbox D-107's preview does).
+An Additional file, unlike an email, *is* stored in `extracted_text`, at upload time, the same way
+the listing always has been (`files.md`'s `EXTRACTED_KINDS` widens from `{listing}` to
+`{listing, other}`, D-262) — `additional_files_block` reads it straight from the row rather than
+re-extracting. This one-shot generate always reads every filed email and every Additional file in
+full; only the chat's own revise turns (`job-revise-steps.md`) can exclude one (D-260, D-261).
 
 **Purpose (revised, D-177 — supersedes the original "notes is deliberately excluded" design
 below):** `notes`/`next_action`/`due_date`, all three now written on completion. `notes` is a

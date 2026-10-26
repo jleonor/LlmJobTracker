@@ -137,6 +137,16 @@ never through chat, for the same reason it is never inferred by Generate. An ans
 `FIELD PATCH` blocks at all is rejected as a no-op turn, the same rule `job-revise-steps.md`'s
 Job details grammar uses.
 
+The user may uncheck any individual research item before sending a revise turn (D-260, D-261) — up
+to 5 exist per application, few enough to list and exclude one at a time, the same granularity
+`job-revise-steps.md`'s Application history uses for filed emails and Additional files. The
+excluded set (a list of `open_application_research_items.id`) is stored on the turn
+(`open_application_revise_turns.excluded_context`, a JSON array), read back when the job runs, and
+has no effect on `generate_open_application_company_details`, which always reads every research
+item. No other Open Application section has a group to exclude: Tailored CV, Cover letter and
+Introduction message each read Company details' already-composed text and the three profile
+documents, not the raw research items directly.
+
 ## 2. Tailored CV (`generate_open_application_cv`)
 
 **Gate:** a Master CV selected, the three LLM profile documents (career history, questionnaire

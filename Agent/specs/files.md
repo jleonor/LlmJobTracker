@@ -45,10 +45,11 @@ One row per file. Columns:
 `profile_files` has, added once a job's own files become prompt input — the Listing file is read
 by Job details and Positioning analysis (`job-llm-steps.md`). Extraction runs the same code-only
 rules as `profile_files`' (pypdf/python-docx/text; HTML gets the same readability extraction
-`job-llm-steps.md`'s Listing step uses). Only `listing` is extracted today; the other kinds are
-written by a generation step (Tailored CV, Cover letter, the positioning breakdown — Phase 5)
-that stores extracted text directly, or are never read back as input (Additional files, Emails
-beyond the Application history step that already reads them as files, not as `extracted_text`).
+`job-llm-steps.md`'s Listing step uses). `listing` and `other` (Additional files, D-262) are
+extracted at upload time; the remaining kinds are written by a generation step (Tailored CV, Cover
+letter, the positioning breakdown — Phase 5) that stores extracted text directly, or are read fresh
+each run rather than stored (Emails: Application history reads a filed `.eml`/`.msg` as files, not
+through `extracted_text`, `job-llm-steps.md` §4).
 
 ## Preview, Open and Upload (D-109, D-111, D-112, D-116)
 
