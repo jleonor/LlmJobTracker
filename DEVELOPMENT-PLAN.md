@@ -1222,6 +1222,14 @@ Step list (approved in chat 2026-10-26). `run.ps1`'s existing browser-mode flow 
 5. Frontend: an "Export Data" button on the Settings page, wired to the new route, showing the resulting folder.
 6. Checks: `python scripts/check.py`; a screenshot of `run.ps1 -Electron` opening the app in its own window; confirmation `run.ps1` (browser mode) is unaffected; confirmation closing the Electron window leaves no orphan process; a screenshot of Export Data producing a bundle.
 
+Built 2026-10-26. Steps 1-5 as planned. Live-testing step 3 found and fixed two real bugs in
+`electron/main.js`: spawning `npm.cmd` on Windows without `shell: true` throws `EINVAL`, and an
+unhandled child-process `'error'` event crashes the whole Electron main process synchronously,
+bypassing cleanup and orphaning whichever child had already started - both children now get
+`'error'`/`'exit'` handlers that tear everything down and quit. The user confirmed the window
+itself opens and works. A follow-up batch (D-269) added the window's title, taskbar icon, and
+removed the default menu bar, appended here rather than as a new step list.
+
 Done when
 - [ ] The app starts and stops cleanly as an Electron window, with no orphan backend process left behind (matching Phase 1's own browser-mode check).
 - [ ] `run.ps1` (browser mode) still works exactly as before.
