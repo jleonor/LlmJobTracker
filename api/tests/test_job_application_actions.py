@@ -68,7 +68,7 @@ def test_upload_stores_the_file_under_the_managed_folder(client: TestClient, db_
     assert [f["id"] for f in detail["files"]] == [body["id"]]
 
 
-def test_an_uploaded_listing_is_extracted_but_other_kinds_are_not(
+def test_an_uploaded_listing_or_additional_file_is_extracted_but_other_kinds_are_not(
     client: TestClient, db_path: Path
 ) -> None:
     app_id = add_application(db_path, "Acme Inc", "Analyst")
@@ -81,12 +81,22 @@ def test_an_uploaded_listing_is_extracted_but_other_kinds_are_not(
     assert listing["extraction_status"] == "ok"
     assert listing["extraction_message"] is None
 
+    # "other" is Additional files (the Files subsection) - also extracted at upload time (D-262),
+    # so its content can feed Application history's Revise context.
     other = client.post(
         f"/job-applications/{app_id}/files/other",
         headers={"X-File-Name": "notes.txt"},
         content=b"Reminder: follow up Friday.",
     ).json()
-    assert other["extraction_status"] is None
+    assert other["extraction_status"] == "ok"
+
+    # A kind that still isn't prompt input (D-109) gets no extraction.
+    unextracted = client.post(
+        f"/job-applications/{app_id}/files/tailored_cv",
+        headers={"X-File-Name": "draft.txt"},
+        content=b"A draft CV, not actually generated here.",
+    ).json()
+    assert unextracted["extraction_status"] is None
 
     conn = connect(db_path)
     try:
@@ -94,15 +104,20 @@ def test_an_uploaded_listing_is_extracted_but_other_kinds_are_not(
         assert text is not None
         assert "Senior Data Analyst" in text.text
         assert "Accept all" not in text.text
-        assert job_file_text(conn, other["id"]) is not None
-        assert job_file_text(conn, other["id"]).text == ""  # type: ignore[union-attr]
+        other_text = job_file_text(conn, other["id"])
+        assert other_text is not None
+        assert other_text.text == "Reminder: follow up Friday."
+        unextracted_text = job_file_text(conn, unextracted["id"])
+        assert unextracted_text is not None
+        assert unextracted_text.text == ""
     finally:
         conn.close()
 
     detail = client.get(f"/job-applications/{app_id}").json()
     by_id = {f["id"]: f for f in detail["files"]}
     assert by_id[listing["id"]]["extraction_status"] == "ok"
-    assert by_id[other["id"]]["extraction_status"] is None
+    assert by_id[other["id"]]["extraction_status"] == "ok"
+    assert by_id[unextracted["id"]]["extraction_status"] is None
 
 
 def test_an_unreadable_listing_upload_is_kept_and_reported(

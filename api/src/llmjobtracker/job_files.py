@@ -22,10 +22,12 @@ MAX_UPLOAD_BYTES: Final = 25 * 1024 * 1024
 ALLOWED_EXTENSIONS: Final = frozenset(
     {".pdf", ".docx", ".txt", ".md", ".eml", ".msg", ".html", ".htm"}
 )
-# Only the listing is read back as prompt input today (job-llm-steps.md, Job details and
-# Positioning analysis). Extracting every kind would mean extracting .eml/.msg too, which
-# file_preview.py already parses for its own purpose at preview time, not at upload time.
-EXTRACTED_KINDS: Final = frozenset({"listing"})
+# The listing (job-llm-steps.md, Job details and Positioning analysis) and Additional files
+# (job-llm-steps.md §4, D-262 — Application history's Revise context) are read back as prompt
+# input and get their text stored at upload time. .eml/.msg are deliberately left out: extract()
+# doesn't know how to parse them, and file_preview.py/email_blocks already parse them for their
+# own purposes (preview, and a prompt's email text) directly from the stored bytes.
+EXTRACTED_KINDS: Final = frozenset({"listing", "other"})
 
 
 class JobFileUploadError(Exception):
@@ -347,8 +349,8 @@ def store_job_file(
     Unlike profile_files.store_profile_file, the file keeps its own readable name on disk
     (files.md: "the folder holds real, openable files with readable names... not generated ids"),
     not a content hash — a clash with an existing name gets a short suffix instead of overwriting.
-    Only an EXTRACTED_KINDS upload (the listing) is read for its text (D-122): a Job
-    Application's other files aren't prompt input yet (D-109).
+    Only an EXTRACTED_KINDS upload (the listing, and Additional files since D-262) is read for
+    its text; every other kind isn't prompt input (D-109).
     """
     if kind not in JOB_FILE_KINDS:
         raise JobFileUploadError(400, f"Unknown file kind: {kind}.")
