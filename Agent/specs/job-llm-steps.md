@@ -610,12 +610,21 @@ Also written from the reference folder (D-129). The real letters are consistentl
 <role>", "Dear <company/recruiter> Team,", an opening naming the role and a genuine thesis for
 applying, two or three evidence paragraphs grounded in specific real work, one paragraph that
 names an actual gap plainly and pivots to a transferable strength, and a short forward-looking
-close with an available-start date. Checked directly against several real letters: colons, em
+close (D-269: no stated available-start date - see below). Checked directly against several real letters: colons, em
 dashes, en dashes and semicolons used as sentence punctuation **never** appear - zero occurrences
 - while hyphens inside compound words (multi-tenant, end-to-end) are unaffected. This matches
 `Writing rules.md` in the reference folder, which is reasonably the ancestor of this app's own
 `writing_rules` profile upload (D-23) - the mechanical no-colon/no-dash/no-semicolon rule is
 already in force for anyone who has uploaded it, not re-specified here as a separate rule.
+
+**The closing no longer asks for a stated available-start date (D-269).** The original
+instruction, matching the reference folder's real letters, asked for one. Found live: with no
+"today" reference in the prompt and an existing letter shown for voice (D-161 - see below), the
+model had nothing to anchor a fresh date to and kept echoing whatever date the reference letter
+happened to state, producing stale dates in new letters generated well after that date had
+passed. Removed rather than fixed with a computed date, since the reference folder's own letters
+are written once per real application near the actual start date, not regenerated repeatedly
+against a moving "today" the way this app's letters are - the instruction doesn't transfer.
 
 **The letter is written in the job description's own language (D-165), stated explicitly in the
 prompt - French listing, French letter; English listing, English letter - rather than left
@@ -669,7 +678,7 @@ Write five to six short paragraphs, about 250 to 320 words in total, one page: a
 the role and a genuine reason for applying; two or three evidence paragraphs grounded in specific
 real work; one paragraph that names an actual gap between this person's background and the role
 plainly, then pivots to a transferable strength, never glossing over it; a short forward-looking
-closing with an available-start date.
+closing.
 
 You have no tools and cannot read any file yourself. The EXISTING COVER LETTER section below is
 the most relevant letter already written for this person (the same company if one exists, the

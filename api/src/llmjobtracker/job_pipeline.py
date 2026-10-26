@@ -449,7 +449,7 @@ Write five to six short paragraphs, about 250 to 320 words in total, one page: a
 the role and a genuine reason for applying; two or three evidence paragraphs grounded in specific
 real work; one paragraph that names an actual gap between this person's background and the role
 plainly, then pivots to a transferable strength, never glossing over it; a short forward-looking
-closing with an available-start date.
+closing.
 
 Write the whole letter in the same language as the JOB DESCRIPTION below (French listing, French
 letter; English listing, English letter) - never translate it to the language the career history,
