@@ -1105,6 +1105,9 @@ Scope
 - The career-history generation gate is tightened: generating a career history now requires at least one master CV or older CV present; an older cover letter or an Additional file never satisfies this gate alone (D-257, narrows the gate `submit_profile_analysis` has used since Phase 2).
 - Additional files only: when extraction yields no usable text (a scanned letter or transcript with no text layer — nothing is OCR'd, D-41), the user can type the text themselves. It is stored as that file's extracted text (read by the career-history prompt exactly like any other extraction) and also written to a sidecar `.txt` file next to the original upload, visible and openable alongside it (D-259). This is specific to Additional files — CVs, letters and the cover letter template are expected to stay text-native.
 - No new document is produced from these files alone, and no per-fact verification step (matches D-85/D-86's honesty-by-review pattern, not the dropped Fact Sheet's per-claim model).
+- Revise (LLM) context selection (D-260, D-261), raised by hitting a real "material is too large for one prompt" error reviving the career history once Additional files were in the mix: a Revise message may exclude part of its context, chosen fresh each time it is sent, never persisted, and never affecting the first Generate (LLM) (which always uses full context). Three spots get this, matching the only three real file-pools found in an audit of every prompt builder in the app: Career history's four evidence groups (Master CVs, Older CVs, Older cover letters, Additional files, coarse since some can hold dozens of files); Application history's filed emails and job-level Additional files, each individually (job application); Company details' research items, individually, at most 5 (open application).
+- Job Application's own Additional files (D-262) gain real extracted text, stored at upload time the same way Listing already works, so they have something for Application history's Revise context to read - today they have none.
+- A Context-badge accuracy pass elsewhere (D-263), with no toggle behavior, keeping the existing badge presentation rather than a new UI: Tailored CV's and Cover letter's badges (job application) gain the Master CV, the template, and (for Cover letter) the auto-picked reference letter they actually read but don't currently show; the Open Application Revise overlay gets its entirely-missing Context row back, matching the other two overlays' pattern.
 
 Step list (drafted 2026-10-24, awaiting approval)
 
@@ -1115,12 +1118,81 @@ Step list (drafted 2026-10-24, awaiting approval)
 5. Frontend: `ProfileFileKind` (`types.ts`) gains `'additional_file'`; `ProfilePage.tsx`'s `SECTIONS` gets a new collapsible entry ("Additional files", placed after Older cover letters), wired to the existing generic upload/list/preview/delete flow with no new component needed for that part. `FileRow` gains a manual-text affordance — a textarea and Save button, shown only for an `additional_file` row whose `extraction_status` isn't `ok` — calling the new endpoint, and a distinct "Typed by you" state once `extraction_status` is `manual` (replacing the "no text"/error message FileRow already shows for other kinds).
 6. Checks: `python scripts/check.py`; personal-data scan; screenshots of an Additional file with real extractable text being generated into the career history, a scanned Additional file with no text layer where manual text is typed, saved, and then visible as a sidecar `.txt` next to the original in Show in folder, the stricter gate blocking a generation attempt with only an older cover letter (or only an Additional file) and no CV present, and a real career-history Revise (LLM) turn drawing on an Additional file's content.
 
+Step list, continued (added 2026-10-26, D-260 to D-263): Revise (LLM) context selection, raised
+by a real "material is too large for one prompt" failure reviving the career history once
+Additional files were in the mix, generalized across profile, job application and open
+application after an audit of every prompt builder in the app. Appended here rather than
+reopening steps 1-6, following D-104's pattern.
+
+7. Update the three revise specs: `Agent/specs/revise-steps.md` (career history's four evidence
+   groups, D-261), `Agent/specs/job-revise-steps.md` (Application history's filed emails and
+   job-level Additional files, individually; D-262's upload-time extraction), and
+   `Agent/specs/open-application-llm-steps.md` (Company details' research items, individually).
+   Each spec states the exclusion is per-turn, Revise only, never persisted (D-260). Docs only.
+8. Migration 38: `revise_turns.excluded_context`, `job_revise_turns.excluded_context`,
+   `open_application_revise_turns.excluded_context` - one nullable `TEXT` column per table (a JSON
+   array of kind strings for career history, or file/research-item ids for the other two),
+   interpreted by that system's own pipeline code, not constrained in SQL. Tests: applies and
+   rolls back on a copy of the dev database and an empty one.
+9. Backend (`job_files.py`): `EXTRACTED_KINDS` widens from `{"listing"}` to `{"listing", "other"}`
+   (D-262) - a Job Application's own Additional files get `extraction_status`/`extracted_text`
+   stored at upload time, the same path `listing` already uses. Tests: an uploaded Additional file
+   gets real extracted text; an unreadable one gets a `no_text`/`failed` status like any other kind.
+10. Backend (`revise_pipeline.py`): `submit_revise_turn` gains an optional `excluded_kinds`
+    (meaningful for `full_cv_history` only), stored on the turn; `inputs_for`'s `full_cv_history`
+    case reads it and filters `EVIDENCE_KINDS` before calling `usable_files`. `POST
+    /profile/revise/full_cv_history/turns` passes the field through. Tests with `FakeRunner`: an
+    excluded group's files are absent from the built prompt, an included one's are present,
+    omitting the field behaves exactly as before (regression safety for every other output kind).
+11. Backend (`job_pipeline.py`, `job_revise_pipeline.py`): `email_blocks` gains an optional
+    `excluded_ids` filter; a new `additional_files_block` (mirrors `email_blocks`' shape, reads
+    the kind-`other` rows' stored `extracted_text` from D-262) gets the same.
+    `submit_job_revise_turn` gains an optional `excluded_job_file_ids`, meaningful for
+    `application_history` only, stored on the turn and passed to both blocks when
+    `_build_application_history_revise_prompt` runs. `POST
+    /job-applications/{id}/revise/application_history/turns` passes the field through. Tests with
+    `FakeRunner`: an excluded email or Additional file is absent from the built prompt, others
+    remain, omitting the field changes nothing.
+12. Backend (`open_application_pipeline.py`): `concatenated_research_text` gains an optional
+    `excluded_ids` filter; `submit_open_application_revise_turn` gains an optional
+    `excluded_research_item_ids`, meaningful for `company_details` only, stored on the turn and
+    passed through by `build_company_details_revise_prompt`. The route passes the field through.
+    Tests with `FakeRunner`: an excluded research item is absent from the built prompt, others
+    remain, omitting the field changes nothing.
+13. Frontend (`ReviseOverlay.tsx`, `profileDocuments.ts`): `full_cv_history`'s four badges
+    (`profileDocuments.ts` also finally gains "Additional files" in its label list, the staleness
+    D-256 left behind) become clickable/greyable, their excluded set sent with the message;
+    `questionnaire_analysis`/`strategy` keep their current, already-accurate, non-interactive
+    badges (D-263).
+14. Frontend (`JobReviseOverlay.tsx`): `application_history`'s "Filed emails" badge becomes one
+    clickable badge per actual filed email, plus a new badge per job-level Additional file, read
+    from the Job Application page's own already-fetched file list rather than a new endpoint;
+    every other section keeps static badges, with `tailored_cv`'s and `cover_letter`'s label lists
+    corrected to add the Master CV, the template, and (for Cover letter) the reference letter
+    (D-263).
+15. Frontend (`OpenApplicationReviseOverlay.tsx`): gains the Context row it's missing entirely
+    today - static, accurate badges for every section (D-263), and for `company_details`, one
+    clickable badge per actual research item, read from the Open Application page's own
+    already-fetched data.
+16. Checks: `python scripts/check.py`; personal-data scan; a screenshot of the career history
+    Revise turn that originally failed now succeeding once Older CVs and Older cover letters are
+    unchecked; a screenshot of an Application history Revise excluding one filed email and one
+    Additional file; a screenshot of a Company details Revise excluding one research item; a
+    screenshot of the Open Application overlay's restored Context row; a screenshot of Tailored
+    CV's or Cover letter's corrected badges.
+
 Done when
 - [ ] An Additional file with readable text is uploaded, and a real career-history generation draws on it alongside the existing CVs/letters (screenshot). (2026-10-24: covered by `test_an_additional_file_feeds_the_career_history_prompt_as_secondary_evidence` with `FakeRunner` — asserts the file's text and the secondary-evidence instruction both reach the built prompt. Not yet run against the real Claude Code CLI; the dev database already has a real master CV loaded, so this needs only an Additional file upload and a live "Run profile analysis" click to confirm.)
 - [x] A scanned Additional file with no extractable text lets the user type the text manually; it is saved, and visible as "Typed by you" with a working re-edit (screenshot). (2026-10-24: verified live in the browser pane against the real dev database — uploaded `scanned_no_text.pdf` as an Additional file, got "This PDF has no text layer..." with a Type the text link, typed a transcript sentence, saved, saw "Typed by you. / Edit the typed text", reopened it and confirmed the textarea came back pre-filled with the saved text. Survival across a second profile analysis run is covered by `test_refresh_extracted_text_leaves_a_manual_row_untouched` and `test_manually_typed_additional_file_text_reaches_the_prompt`, not yet exercised with a real second live run.)
 - [x] The sidecar `.txt` file for a manually-typed Additional file exists next to the original upload (screenshot/log). (2026-10-24: confirmed on disk at `profile/additional_file/<sha256>.manual.txt` next to the `.pdf`, with the exact typed content, after the live browser test above. Deleting the file was also checked live and via `test_deleting_an_additional_file_also_removes_its_sidecar` — a real gap found live, where delete only removed the original upload and left the sidecar behind, now fixed.)
 - [ ] Generation is blocked when only an older cover letter or only an Additional file is present and no CV has been uploaded (screenshot of the rejection message). (2026-10-24: covered by `test_an_older_letter_alone_no_longer_satisfies_the_evidence_gate` and `test_an_additional_file_alone_does_not_satisfy_the_evidence_gate`. Not screenshotted live, since the real dev database already has a master CV loaded and this would mean removing it to demonstrate.)
 - [x] `python scripts/check.py` is green and a personal-data scan of the phase's commits is clean. (2026-10-24: `python scripts/check.py` — 7 of 7 steps pass, 802 backend tests, 51 frontend tests. Every commit's diff and message on `phase-12-additional-files`, plus the Phase 11/12 planning-doc commit on `main`, scanned for the user's name/email: no matches outside git's own `Author:` line.)
+- [ ] The career-history Revise turn that originally failed with "material is too large for one prompt" succeeds once Older CVs and Older cover letters are unchecked (screenshot).
+- [ ] Excluding one filed email and one job-level Additional file from an Application history Revise turn leaves them out of what the model sees, with everything else unaffected (screenshot).
+- [ ] Excluding one research item from a Company details Revise turn leaves it out, with everything else unaffected (screenshot).
+- [ ] The Open Application Revise overlay shows a Context row for every section (screenshot), where today it shows none.
+- [ ] Tailored CV's and Cover letter's Context badges (job application) show the Master CV / template / reference letter they actually read (screenshot).
+- [ ] `python scripts/check.py` is green and a personal-data scan of this batch's commits is clean.
 
 ---
 
