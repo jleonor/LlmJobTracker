@@ -446,6 +446,8 @@ class OpenApplicationIdentityRequest(BaseModel):
 
 class OpenApplicationReviseTurnCreate(BaseModel):
     message: str
+    # Company details only (D-260, D-261) - research items to leave out of this one turn.
+    excluded_research_item_ids: list[int] | None = None
 
 
 class OpenApplicationReviseTurnView(BaseModel):
@@ -1780,7 +1782,12 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         try:
             job_id = submit_open_application_revise_turn(
-                conn, queue, application_id, section_kind, body.message
+                conn,
+                queue,
+                application_id,
+                section_kind,
+                body.message,
+                body.excluded_research_item_ids,
             )
         except OpenApplicationReviseNotReady as error:
             raise HTTPException(

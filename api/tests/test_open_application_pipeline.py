@@ -25,7 +25,7 @@ from llmjobtracker.open_application_pipeline import (
     submit_generate_introduction_message,
     submit_open_application_revise_turn,
 )
-from llmjobtracker.open_application_research import ResearchItemInput
+from llmjobtracker.open_application_research import ResearchItemInput, replace_research_items
 from llmjobtracker.open_applications import (
     count_open_applications,
     get_open_application_detail,
@@ -349,3 +349,69 @@ def test_revise_company_details_patches_one_field(db_path: Path) -> None:
     assert detail is not None
     assert detail.why_this_company == "They just raised a Series B."
     assert detail.target_name == "Acme Talent Pool"  # unmentioned fields stay as they were
+
+
+def test_company_details_revise_reads_every_research_item_by_default(db_path: Path) -> None:
+    queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
+    application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
+    conn = connect(db_path)
+    replace_research_items(
+        conn,
+        application_id,
+        [
+            ResearchItemInput(source_type="text", content="They raised a Series B in 2026."),
+            ResearchItemInput(source_type="text", content="They are hiring for a remote team."),
+        ],
+    )
+    conn.commit()
+
+    queue.set_runner(
+        FakeRunner(
+            text="=== FIELD PATCH ===\nFIELD: OTHER_NOTES\nVALUE: Noted.\n=== END FIELD PATCH ===\n"
+        )
+    )
+    job_id = submit_open_application_revise_turn(
+        conn, queue, application_id, "company_details", "Anything new?"
+    )
+    run_all(queue)
+
+    exchange = prompt_exchange(conn, job_id, 0)
+    assert exchange is not None
+    assert "They raised a Series B in 2026." in (exchange.prompt_text or "")
+    assert "They are hiring for a remote team." in (exchange.prompt_text or "")
+
+
+def test_company_details_revise_can_exclude_one_research_item(db_path: Path) -> None:
+    queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
+    application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
+    conn = connect(db_path)
+    items = replace_research_items(
+        conn,
+        application_id,
+        [
+            ResearchItemInput(source_type="text", content="They raised a Series B in 2026."),
+            ResearchItemInput(source_type="text", content="They are hiring for a remote team."),
+        ],
+    )
+    conn.commit()
+    excluded_id = items[0].id
+
+    queue.set_runner(
+        FakeRunner(
+            text="=== FIELD PATCH ===\nFIELD: OTHER_NOTES\nVALUE: Noted.\n=== END FIELD PATCH ===\n"
+        )
+    )
+    job_id = submit_open_application_revise_turn(
+        conn,
+        queue,
+        application_id,
+        "company_details",
+        "Anything new?",
+        [excluded_id],
+    )
+    run_all(queue)
+
+    exchange = prompt_exchange(conn, job_id, 0)
+    assert exchange is not None
+    assert "They raised a Series B in 2026." not in (exchange.prompt_text or "")
+    assert "They are hiring for a remote team." in (exchange.prompt_text or "")

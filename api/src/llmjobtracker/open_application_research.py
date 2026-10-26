@@ -144,13 +144,26 @@ def list_research_items(conn: sqlite3.Connection, application_id: int) -> list[R
     ]
 
 
-def concatenated_research_text(conn: sqlite3.Connection, application_id: int) -> str:
+def concatenated_research_text(
+    conn: sqlite3.Connection,
+    application_id: int,
+    excluded_ids: frozenset[int] = frozenset(),
+) -> str:
     """Every research item's extracted text, in position order, unlabeled (D-251) — what a
-    prompt builder reads as this application's RESEARCH block."""
+    prompt builder reads as this application's RESEARCH block.
+
+    `excluded_ids` (D-260, D-261) lets a Company details Revise turn leave specific research
+    items out of this one turn's prompt; the default (nothing excluded) is what the generating
+    prompt always uses.
+    """
     rows = conn.execute(
-        "SELECT extracted_text FROM open_application_research_items "
+        "SELECT id, extracted_text FROM open_application_research_items "
         "WHERE open_application_id = ? ORDER BY position",
         (application_id,),
     ).fetchall()
-    texts = [str(row["extracted_text"]) for row in rows if row["extracted_text"]]
+    texts = [
+        str(row["extracted_text"])
+        for row in rows
+        if row["extracted_text"] and row["id"] not in excluded_ids
+    ]
     return "\n\n---\n\n".join(texts)

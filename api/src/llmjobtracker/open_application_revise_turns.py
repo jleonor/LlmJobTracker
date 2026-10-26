@@ -18,6 +18,9 @@ class OpenApplicationReviseTurn:
     claude_job_id: int
     message: str
     created_at: str
+    # A JSON array of excluded research_item ids for this one turn (D-260, D-261) - Company
+    # details only, never persisted beyond the turn, null for every other section.
+    excluded_context: str | None
 
 
 _TABLE: TurnTable[OpenApplicationReviseTurn] = TurnTable(
@@ -29,6 +32,7 @@ _TABLE: TurnTable[OpenApplicationReviseTurn] = TurnTable(
         "claude_job_id",
         "message",
         "created_at",
+        "excluded_context",
     ),
     scope_columns=("open_application_id", "section_kind"),
     build=lambda row: OpenApplicationReviseTurn(**dict(row)),
@@ -41,11 +45,12 @@ def create_turn(
     section_kind: str,
     claude_job_id: int,
     message: str,
+    excluded_context: str | None = None,
 ) -> int:
     return _TABLE.create(
         conn,
-        ("open_application_id", "section_kind", "claude_job_id", "message"),
-        (open_application_id, section_kind, claude_job_id, message),
+        ("open_application_id", "section_kind", "claude_job_id", "message", "excluded_context"),
+        (open_application_id, section_kind, claude_job_id, message, excluded_context),
     )
 
 

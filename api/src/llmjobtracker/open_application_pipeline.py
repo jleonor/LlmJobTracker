@@ -5,6 +5,7 @@ Chained onto job_revise_pipeline.make_pipeline the same way every other pipeline
 app chains onto the next (D-123's pattern) - one queue instance, hand-composed in app.py.
 """
 
+import json
 import re
 import sqlite3
 from pathlib import Path
@@ -900,7 +901,10 @@ def submit_open_application_revise_turn(
     application_id: int,
     section_kind: str,
     message: str,
+    excluded_research_item_ids: list[int] | None = None,
 ) -> int:
+    """`excluded_research_item_ids` (D-260, D-261) is Company details only - a research item to
+    leave out of this one turn, ignored for every other section."""
     if section_kind not in SECTION_KINDS:
         raise ValueError(f"Unknown section kind: {section_kind}")
     if section_kind == "company_details" and not company_details_ready(conn, application_id):
@@ -916,6 +920,9 @@ def submit_open_application_revise_turn(
     cleaned = message.strip()
     if not cleaned:
         raise ValueError("The message is empty.")
+    excluded_context = None
+    if section_kind == "company_details" and excluded_research_item_ids:
+        excluded_context = json.dumps(excluded_research_item_ids)
     kind = revise_kind_for(section_kind)
     job_id = queue.submit(
         conn,
@@ -924,7 +931,7 @@ def submit_open_application_revise_turn(
         [(kind, "")],
         open_application_id=application_id,
     )
-    create_turn(conn, application_id, section_kind, job_id, cleaned)
+    create_turn(conn, application_id, section_kind, job_id, cleaned, excluded_context)
     return job_id
 
 
@@ -987,8 +994,12 @@ def build_company_details_revise_prompt(
     if detail is None:
         raise PromptRejected("This Open Application no longer exists.")
     messages = prior_messages(conn, application_id, "company_details", turn.id)
+    excluded: frozenset[int] = frozenset(
+        json.loads(turn.excluded_context) if turn.excluded_context else ()
+    )
     text = _COMPANY_DETAILS_REVISE_PROMPT.format(
-        research=concatenated_research_text(conn, application_id) or "(no research items)",
+        research=concatenated_research_text(conn, application_id, excluded)
+        or "(no research items)",
         target_name=detail.target_name or "",
         target_type=detail.target_type or "",
         contact_name=detail.contact_name or "",
