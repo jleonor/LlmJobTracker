@@ -15,6 +15,8 @@ import {
   distinctLocations,
   earliestIdentifiedDate,
   foldToOther,
+  isActiveApplication,
+  isColdApplication,
   matchScoreBucket,
   proportionByLane,
   proportionByMatchScoreBucket,
@@ -453,5 +455,58 @@ describe('snapshotAsOf', () => {
     ]
     const snapshot = snapshotAsOf(applications, '2026-10-10')
     expect(snapshot[0].status).toBe('Applied')
+  })
+})
+
+describe('isActiveApplication', () => {
+  const now = new Date('2026-10-26T00:00:00Z')
+
+  it('is true for an in-progress status updated within 30 days', () => {
+    expect(isActiveApplication(application({ status: 'Applied', last_updated: '2026-10-10T00:00:00Z' }), now)).toBe(
+      true,
+    )
+  })
+
+  it('is false once untouched for more than 30 days', () => {
+    expect(isActiveApplication(application({ status: 'Applied', last_updated: '2026-09-01T00:00:00Z' }), now)).toBe(
+      false,
+    )
+  })
+
+  it('is false for Identified, even if recently touched', () => {
+    expect(
+      isActiveApplication(application({ status: 'Identified', last_updated: '2026-10-25T00:00:00Z' }), now),
+    ).toBe(false)
+  })
+
+  it('is false for a dead end state', () => {
+    expect(isActiveApplication(application({ status: 'Rejected', last_updated: '2026-10-25T00:00:00Z' }), now)).toBe(
+      false,
+    )
+  })
+})
+
+describe('isColdApplication', () => {
+  const now = new Date('2026-10-26T00:00:00Z')
+
+  it('is true for a non-dead status untouched for more than 30 days, Identified included', () => {
+    expect(isColdApplication(application({ status: 'Identified', last_updated: '2026-09-01T00:00:00Z' }), now)).toBe(
+      true,
+    )
+    expect(isColdApplication(application({ status: 'Applied', last_updated: '2026-09-01T00:00:00Z' }), now)).toBe(
+      true,
+    )
+  })
+
+  it('is false when recently touched', () => {
+    expect(isColdApplication(application({ status: 'Applied', last_updated: '2026-10-10T00:00:00Z' }), now)).toBe(
+      false,
+    )
+  })
+
+  it('is false for a dead end state, however stale', () => {
+    expect(isColdApplication(application({ status: 'Expired', last_updated: '2026-01-01T00:00:00Z' }), now)).toBe(
+      false,
+    )
   })
 })

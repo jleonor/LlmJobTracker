@@ -209,6 +209,30 @@ export function combinedTotals(
   }
 }
 
+// --- Active / Cold applications (Phase 14, D-274/D-275): Job-Application-only, matching their
+// own table views exactly, so the Dashboard cards and the tracker's saved views always agree ---
+
+const ACTIVE_STATUSES = new Set(['Applied', 'Screening', 'Interview', 'Offer'])
+const STALE_AFTER_DAYS = 30
+
+function daysSinceLastUpdated(application: JobApplication, now: Date): number {
+  return (now.getTime() - new Date(application.last_updated).getTime()) / (1000 * 60 * 60 * 24)
+}
+
+// Applied through Offer (not Identified, not a dead end state) and touched within the last 30
+// days. Not a strict complement of isColdApplication: Identified is neither Active nor Cold until
+// it goes stale.
+export function isActiveApplication(application: JobApplication, now: Date = new Date()): boolean {
+  if (!ACTIVE_STATUSES.has(application.status)) return false
+  return daysSinceLastUpdated(application, now) <= STALE_AFTER_DAYS
+}
+
+// Any non-dead status (Identified included) untouched for more than 30 days.
+export function isColdApplication(application: JobApplication, now: Date = new Date()): boolean {
+  if (END_STATUSES.has(application.status)) return false
+  return daysSinceLastUpdated(application, now) > STALE_AFTER_DAYS
+}
+
 export function proportionByMatchScoreBucket(applications: JobApplication[]): CountEntry[] {
   const counts = countBy(applications, (application) => matchScoreBucket(application.match_score))
   return sortedEntries(counts, MATCH_SCORE_BUCKETS)
