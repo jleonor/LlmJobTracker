@@ -7,9 +7,11 @@ import { LlmHistoryPage } from '@/pages/LlmHistoryPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { queueLabel, useClaudeJobs } from '@/lib/useClaudeJobs'
+import { useScrollbarAutoHide } from '@/lib/scrollbarAutoHide'
 import { useSettings } from '@/lib/useSettings'
 
 function App() {
+  useScrollbarAutoHide()
   const [screen, setScreen] = useState<Screen>('jobs')
   // Clicking "Job Applications" while it's already the current screen doesn't change `screen`
   // (same value, no re-render for that reason) - this signal gives JobApplicationsPage something

@@ -119,3 +119,40 @@
     @apply font-mono;
     }
 }
+
+/* Electron window dragging (AppShell's top bar, under the Windows titleBarOverlay,
+   electron/main.js) - a plain CSS property, inert in a regular browser. */
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Invisible-until-scrolling scrollbar (Chromium, which Electron and this app's own dev target
+   both are): a thin thumb only, no visible track/background behind it. The ".scrolling" class
+   is toggled by useScrollbarAutoHide (lib/scrollbarAutoHide.ts) while an element is actively
+   scrolling, not on hover - plain CSS alone has no "currently scrolling" selector. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.scrolling {
+  scrollbar-color: var(--border) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.scrolling::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+}

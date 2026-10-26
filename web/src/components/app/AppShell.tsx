@@ -25,46 +25,51 @@ type Props = {
 
 export function AppShell({ children, current, onNavigate, queueText, userName }: Props) {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <aside className="fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border bg-card">
-        <div className="flex h-14 items-center border-b border-border px-4">
+    <div className="flex h-screen flex-col bg-background text-foreground">
+      {/* The full-width top bar: title/logo left, LLM status right - no more boxed-in sidebar
+          header cell (D-278). app-drag-region/app-no-drag (index.css) make this strip the
+          Electron window's own draggable title bar, under the Windows titleBarOverlay
+          (electron/main.js) - harmless, inert properties outside Electron. */}
+      <header className="app-drag-region flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <img src="/logo-white.svg" alt="" className="size-6 shrink-0" aria-hidden="true" />
           <span className="truncate text-lg font-semibold tracking-tight">{userName}'s Job Tracker</span>
         </div>
-        <nav className="flex flex-col gap-0.5 p-2" aria-label="Main">
-          {NAV.map(({ label, icon: Icon, screen }) => {
-            const active = screen === current
-            return (
-              <button
-                key={label}
-                type="button"
-                onClick={() => onNavigate(screen)}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'flex items-center gap-2 rounded px-3 py-2 text-left text-sm transition-colors',
-                  active
-                    ? 'border-l-2 border-primary bg-secondary pl-[10px] font-semibold text-foreground'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                )}
-              >
-                <Icon className="size-4" aria-hidden="true" />
-                {label}
-              </button>
-            )
-          })}
-        </nav>
-      </aside>
+        <button
+          type="button"
+          onClick={() => onNavigate('queue')}
+          className="app-no-drag shrink-0 font-mono text-xs text-muted-foreground hover:text-foreground"
+        >
+          {queueText}
+        </button>
+      </header>
 
-      <div className="pl-64">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-end gap-4 border-b border-border bg-card/90 px-6 backdrop-blur">
-          <button
-            type="button"
-            onClick={() => onNavigate('queue')}
-            className="font-mono text-xs text-muted-foreground hover:text-foreground"
-          >
-            {queueText}
-          </button>
-        </header>
-        <main className="p-6">{children}</main>
+      <div className="flex flex-1 overflow-hidden">
+        <aside className="w-64 shrink-0 overflow-y-auto border-r border-border bg-card">
+          <nav className="flex flex-col gap-0.5 p-2" aria-label="Main">
+            {NAV.map(({ label, icon: Icon, screen }) => {
+              const active = screen === current
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => onNavigate(screen)}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'flex items-center gap-2 rounded px-3 py-2 text-left text-sm transition-colors',
+                    active
+                      ? 'border-l-2 border-primary bg-secondary pl-[10px] font-semibold text-foreground'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                  )}
+                >
+                  <Icon className="size-4" aria-hidden="true" />
+                  {label}
+                </button>
+              )
+            })}
+          </nav>
+        </aside>
+        <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>
   )

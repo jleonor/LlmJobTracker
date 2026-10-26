@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1024" height="1024" viewBox="125 120 760 760" role="img" aria-labelledby="title desc">
+  <title id="title">ApplyHub white briefcase icon</title>
+  <desc id="desc">A solid white outlined briefcase with a clasp, diagonal flap, and four-point AI sparkle on a transparent background.</desc>
+  <!-- Handle -->
+  <path d="M 347 345 V 283 C 347 254 370 230 398 230 H 578 C 606 230 626 252 626 283 V 345"
+        fill="none" stroke="#FFFFFF" stroke-width="41" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Outer silhouette, intentionally open at lower right for the sparkle -->
+  <path d="M 564 751 H 267 C 228 751 198 721 198 683 V 414 C 198 377 226 347 264 347 H 710 C 747 347 776 377 776 413 V 511"
+        fill="none" stroke="#FFFFFF" stroke-width="41" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Flap seam -->
+  <path d="M 200 499 L 436 541" fill="none" stroke="#FFFFFF" stroke-width="37" stroke-linecap="butt"/>
+  <!-- Central clasp -->
+  <rect x="418" y="494" width="139" height="89" rx="24" fill="#FFFFFF"/>
+  <!-- AI sparkle -->
+  <path d="M 683 486
+           C 693 486 697 500 703 522
+           C 718 581 728 589 772 607
+           C 789 614 804 618 816 622
+           C 833 626 833 646 816 652
+           C 803 657 787 661 771 667
+           C 729 684 717 697 703 747
+           C 697 768 694 787 682 787
+           C 669 787 667 770 661 750
+           C 646 701 634 684 590 667
+           C 574 661 558 656 546 651
+           C 530 646 530 628 546 622
+           C 562 616 577 612 593 605
+           C 634 588 645 571 661 518
+           C 667 497 672 486 683 486 Z"
+        fill="#FFFFFF"/>
+</svg>

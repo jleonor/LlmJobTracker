@@ -6,7 +6,7 @@
 // (web/vite.config.ts) - no token handling is needed here. That only arrives in Phase 14, once
 // the window loads the built static files with no dev-server proxy in front.
 
-const { app, BrowserWindow, Menu, shell } = require('electron')
+const { app, BrowserWindow, Menu, shell, nativeTheme } = require('electron')
 const { spawn, execFile } = require('node:child_process')
 const crypto = require('node:crypto')
 const http = require('node:http')
@@ -20,9 +20,18 @@ const WEB_URL = 'http://127.0.0.1:5173/'
 const IS_WINDOWS = process.platform === 'win32'
 const WINDOW_TITLE = 'LLM Job Tracker'
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png')
+// The app's own --card/--foreground tokens (web/src/index.css) - kept in sync by hand, since the
+// native title bar overlay can't read CSS. Used for the Windows titleBarOverlay below so the
+// native strip matches the web page's own header exactly.
+const NAVBAR_COLOR = '#181c21'
+const NAVBAR_SYMBOL_COLOR = '#e0e2e9'
 
 // No File/Edit/View/Window menu bar - this is a single-purpose app shell, not a document editor.
 Menu.setApplicationMenu(null)
+// Windows draws the titleBarOverlay's window-control glyphs per the OS's own light/dark setting
+// when this is 'system' - matches the system theme (the page content itself stays dark-only for
+// now, D-17's phase).
+nativeTheme.themeSource = 'system'
 
 function apiPython() {
   const relative = IS_WINDOWS ? ['Scripts', 'python.exe'] : ['bin', 'python']
@@ -141,6 +150,17 @@ async function createWindow() {
     height: 900,
     title: WINDOW_TITLE,
     icon: ICON_PATH,
+    backgroundColor: NAVBAR_COLOR,
+    // Windows/Linux only (BrowserWindow ignores titleBarOverlay elsewhere): hides the native
+    // title text/strip, keeping just the min/max/close controls, overlaid in the navbar's own
+    // color - the web page's own header (AppShell.tsx) becomes the rest of that strip, draggable.
+    // macOS has no equivalent color-themed overlay; revisit there during Phase 15's packaging.
+    ...(IS_WINDOWS
+      ? {
+          titleBarStyle: 'hidden',
+          titleBarOverlay: { color: NAVBAR_COLOR, symbolColor: NAVBAR_SYMBOL_COLOR, height: 56 },
+        }
+      : {}),
   })
   window.removeMenu()
   // The page's own <title>("LlmJobTracker") would otherwise replace this once it loads.
