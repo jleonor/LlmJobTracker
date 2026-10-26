@@ -409,7 +409,10 @@ function AsOfDateSlider({
         max={Math.max(maxDayIndex, 1)}
         disabled={maxDayIndex === 0}
         onValueChange={(value) => {
-          const [index] = value as number[]
+          // A single-thumb Slider calls back with a bare number, not a one-element array (only
+          // multi-thumb sliders do that) - found live, destructuring it as an array threw on
+          // every drag, so the date never actually changed.
+          const index = Array.isArray(value) ? value[0] : value
           onChange(addDaysToDateKey(minDateKey, index))
         }}
       />
