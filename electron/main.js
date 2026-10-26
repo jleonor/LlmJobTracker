@@ -6,7 +6,7 @@
 // (web/vite.config.ts) - no token handling is needed here. That only arrives in Phase 14, once
 // the window loads the built static files with no dev-server proxy in front.
 
-const { app, BrowserWindow, Menu } = require('electron')
+const { app, BrowserWindow, Menu, shell } = require('electron')
 const { spawn, execFile } = require('node:child_process')
 const crypto = require('node:crypto')
 const http = require('node:http')
@@ -145,6 +145,22 @@ async function createWindow() {
   window.removeMenu()
   // The page's own <title>("LlmJobTracker") would otherwise replace this once it loads.
   window.on('page-title-updated', (event) => event.preventDefault())
+
+  // Job postings, portal links, etc. (target="_blank") should open in the user's own browser,
+  // not another copy of this app's own shell window.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  // A plain (same-window) link to an outside site is treated the same way, so it can't
+  // navigate this app's own window away from itself either.
+  window.webContents.on('will-navigate', (event, url) => {
+    if (new URL(url).origin !== new URL(WEB_URL).origin) {
+      event.preventDefault()
+      shell.openExternal(url)
+    }
+  })
+
   await window.loadURL(WEB_URL)
 }
 
