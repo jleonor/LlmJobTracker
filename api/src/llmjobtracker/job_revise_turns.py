@@ -23,6 +23,9 @@ class JobReviseTurn:
     message: str
     attachment_job_file_id: int | None
     created_at: str
+    # A JSON array of excluded job_files ids for this one turn (D-260, D-261) - Application
+    # history only, never persisted beyond the turn, null for every other section.
+    excluded_context: str | None
 
 
 _TABLE: TurnTable[JobReviseTurn] = TurnTable(
@@ -35,6 +38,7 @@ _TABLE: TurnTable[JobReviseTurn] = TurnTable(
         "message",
         "attachment_job_file_id",
         "created_at",
+        "excluded_context",
     ),
     scope_columns=("job_application_id", "section_kind"),
     build=lambda row: JobReviseTurn(**dict(row)),
@@ -48,6 +52,7 @@ def create_turn(
     claude_job_id: int,
     message: str,
     attachment_job_file_id: int | None = None,
+    excluded_context: str | None = None,
 ) -> int:
     return _TABLE.create(
         conn,
@@ -57,8 +62,16 @@ def create_turn(
             "claude_job_id",
             "message",
             "attachment_job_file_id",
+            "excluded_context",
         ),
-        (job_application_id, section_kind, claude_job_id, message, attachment_job_file_id),
+        (
+            job_application_id,
+            section_kind,
+            claude_job_id,
+            message,
+            attachment_job_file_id,
+            excluded_context,
+        ),
     )
 
 

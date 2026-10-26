@@ -21,6 +21,7 @@ from llmjobtracker.job_files import list_job_files, store_job_file
 from llmjobtracker.job_pipeline import (
     JobStepNotReady,
     RequirementScore,
+    additional_files_block,
     application_history_ready,
     clear_positioning,
     compute_match_score,
@@ -147,6 +148,14 @@ def add_listing(db_path: Path, app_id: int, text: str) -> None:
             "Job Listing.txt",
             text.encode("utf-8"),
         )
+    finally:
+        conn.close()
+
+
+def add_additional_file(db_path: Path, app_id: int, name: str, content: bytes) -> int:
+    conn = connect(db_path)
+    try:
+        return store_job_file(conn, db_path.parent / "files", app_id, "other", name, content).id
     finally:
         conn.close()
 
@@ -832,6 +841,60 @@ def test_generate_application_history_end_to_end_writes_notes_too(
         assert row["due_date"] == "2026-10-20"
     finally:
         conn.close()
+
+
+def test_generate_application_history_reads_additional_files_too(db_path: Path) -> None:
+    """D-262: a Job Application's own Additional files are extracted at upload time and read by
+    this step the same way filed emails already are."""
+    app_id = add_application(db_path)
+    fill_job_details(db_path, app_id, ["Strong SQL"])
+    add_additional_file(db_path, app_id, "notes.txt", b"Recruiter mentioned a start date of Nov 3.")
+    answer_text = (
+        "=== NOTES ===\nIdentified; the recruiter mentioned a Nov 3 start date.\n"
+        "=== END NOTES ===\n\n"
+        "=== NEXT ACTION ===\n=== END NEXT ACTION ===\n\n"
+        "=== DUE DATE ===\n=== END DUE DATE ===\n"
+    )
+    runner = FakeRunner(text=answer_text)
+    queue = make_queue(db_path, runner)
+    conn = connect(db_path)
+    try:
+        submit_generate_application_history(conn, queue, app_id)
+    finally:
+        conn.close()
+    run_all(queue)
+
+    assert "Recruiter mentioned a start date of Nov 3." in runner.prompts[0]
+
+
+def test_additional_files_block_truncates_an_oversized_file(db_path: Path) -> None:
+    app_id = add_application(db_path)
+    long_text = "Filler. " * 10_000  # well over _MAX_ADDITIONAL_FILE_CHARS
+    add_additional_file(db_path, app_id, "big.txt", long_text.encode())
+
+    conn = connect(db_path)
+    try:
+        block = additional_files_block(conn, app_id)
+    finally:
+        conn.close()
+
+    assert "truncated" in block
+    assert len(block) < len(long_text)
+
+
+def test_additional_files_block_excludes_the_given_ids(db_path: Path) -> None:
+    app_id = add_application(db_path)
+    excluded_id = add_additional_file(db_path, app_id, "a.txt", b"Content A.")
+    add_additional_file(db_path, app_id, "b.txt", b"Content B.")
+
+    conn = connect(db_path)
+    try:
+        block = additional_files_block(conn, app_id, frozenset({excluded_id}))
+    finally:
+        conn.close()
+
+    assert "Content A." not in block
+    assert "Content B." in block
 
 
 def test_generate_application_history_leaves_next_action_and_due_date_untouched_when_empty(

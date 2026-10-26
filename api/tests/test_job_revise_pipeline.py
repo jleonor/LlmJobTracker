@@ -107,11 +107,18 @@ def submit(
     section_kind: str,
     message: str,
     attachment_job_file_id: int | None = None,
+    excluded_job_file_ids: list[int] | None = None,
 ) -> int:
     conn = connect(db_path)
     try:
         return submit_job_revise_turn(
-            conn, queue, app_id, section_kind, message, attachment_job_file_id
+            conn,
+            queue,
+            app_id,
+            section_kind,
+            message,
+            attachment_job_file_id,
+            excluded_job_file_ids,
         )
     finally:
         conn.close()
@@ -626,6 +633,97 @@ def test_an_attached_other_file_is_read_with_the_general_extractor(db_path: Path
     run_all(queue)
 
     assert "Recruiter said to follow up by the 5th." in runner.prompts[0]
+
+
+def test_application_history_revise_reads_emails_and_additional_files_by_default(
+    db_path: Path,
+) -> None:
+    app_id = add_application(db_path)
+    fill_application_history(db_path, app_id, "Wait for a reply.", None)
+    conn = connect(db_path)
+    try:
+        eml = (
+            b"From: recruiter@acme.example\r\n"
+            b"Date: Mon, 10 Oct 2026 09:00:00 +0000\r\n"
+            b"Subject: Interview scheduled\r\n"
+            b"Content-Type: text/plain; charset=utf-8\r\n"
+            b"\r\n"
+            b"Can you do Thursday at 2pm?\r\n"
+        )
+        store_job_file(conn, db_path.parent / "files", app_id, "eml", "Interview.eml", eml)
+        store_job_file(
+            conn,
+            db_path.parent / "files",
+            app_id,
+            "other",
+            "notes.txt",
+            b"Recruiter said to follow up by the 5th.",
+        )
+    finally:
+        conn.close()
+    runner = FakeRunner(text=history_answer())
+    queue = make_queue(db_path, runner)
+
+    submit(db_path, queue, app_id, "application_history", "Anything new?")
+    run_all(queue)
+
+    assert "Can you do Thursday at 2pm?" in runner.prompts[0]
+    assert "Recruiter said to follow up by the 5th." in runner.prompts[0]
+
+
+def test_application_history_revise_can_exclude_one_email_and_one_additional_file(
+    db_path: Path,
+) -> None:
+    app_id = add_application(db_path)
+    fill_application_history(db_path, app_id, "Wait for a reply.", None)
+    conn = connect(db_path)
+    try:
+        eml = (
+            b"From: recruiter@acme.example\r\n"
+            b"Date: Mon, 10 Oct 2026 09:00:00 +0000\r\n"
+            b"Subject: Interview scheduled\r\n"
+            b"Content-Type: text/plain; charset=utf-8\r\n"
+            b"\r\n"
+            b"Can you do Thursday at 2pm?\r\n"
+        )
+        excluded_email = store_job_file(
+            conn, db_path.parent / "files", app_id, "eml", "Interview.eml", eml
+        )
+        excluded_other = store_job_file(
+            conn,
+            db_path.parent / "files",
+            app_id,
+            "other",
+            "notes.txt",
+            b"Recruiter said to follow up by the 5th.",
+        )
+        store_job_file(
+            conn,
+            db_path.parent / "files",
+            app_id,
+            "other",
+            "kept.txt",
+            b"Role is fully remote.",
+        )
+    finally:
+        conn.close()
+    runner = FakeRunner(text=history_answer())
+    queue = make_queue(db_path, runner)
+
+    submit(
+        db_path,
+        queue,
+        app_id,
+        "application_history",
+        "Anything new?",
+        None,
+        [excluded_email.id, excluded_other.id],
+    )
+    run_all(queue)
+
+    assert "Can you do Thursday at 2pm?" not in runner.prompts[0]
+    assert "Recruiter said to follow up by the 5th." not in runner.prompts[0]
+    assert "Role is fully remote." in runner.prompts[0]
 
 
 def test_an_oversized_attachment_is_truncated_rather_than_failing_the_turn(db_path: Path) -> None:

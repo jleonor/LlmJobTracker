@@ -398,6 +398,9 @@ class JobReviseTurnCreate(BaseModel):
     # A job_files row already filed before this request (D-138) - only Application history's
     # chat reads it today.
     attachment_job_file_id: int | None = None
+    # Filed emails/Additional files to leave out of this one turn (D-260, D-261) - Application
+    # history only, ignored for every other section.
+    excluded_job_file_ids: list[int] | None = None
 
 
 class JobReviseTurnView(BaseModel):
@@ -1412,6 +1415,7 @@ def create_app(
                 section_kind,
                 body.message,
                 body.attachment_job_file_id,
+                body.excluded_job_file_ids,
             )
         except JobReviseNotReady as error:
             raise HTTPException(
