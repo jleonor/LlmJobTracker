@@ -272,25 +272,22 @@ export function earliestIdentifiedDate<T extends { status_history: StatusHistory
 }
 
 // Rebuilds the given (Job or Open) applications as they looked on `asOfDate` (a day, "YYYY-MM-DD"):
-// an application not yet Identified by then is dropped entirely, and a kept one's `status` and
-// `last_updated` are overridden to its latest status_history entry at or before that day - every
-// other field (match score, lane, ...) is not historized and so still reads as of today (D-272).
-// Everything downstream (applySlicers, proportionByStage, combinedTotals, ...) keeps working
-// unmodified against the result, since only these two fields change shape.
+// an application not yet Identified by then is dropped entirely, and a kept one's `status_history`
+// is truncated to entries at or before that day, with `status`/`last_updated` overridden to the
+// latest of those - every other field (match score, lane, ...) is not historized and so still
+// reads as of today (D-272). Truncating `status_history` itself (not just the two summary fields)
+// matters: every function in this module that reads it directly (the heatmap, the whole-history
+// rates, the lead-time average) would otherwise still see events after asOfDate. Everything
+// downstream keeps working unmodified against the result.
 export function snapshotAsOf<
   T extends { status: string; last_updated: string; status_history: StatusHistoryEntry[] },
 >(applications: T[], asOfDate: string): T[] {
   const snapshot: T[] = []
   for (const application of applications) {
-    let latest: StatusHistoryEntry | null = null
-    let identifiedByThen = false
-    for (const entry of application.status_history) {
-      if (entry.changed_at.slice(0, 10) > asOfDate) continue
-      if (entry.status === 'Identified') identifiedByThen = true
-      if (latest === null || entry.changed_at > latest.changed_at) latest = entry
-    }
-    if (!identifiedByThen || latest === null) continue // didn't exist yet as of asOfDate
-    snapshot.push({ ...application, status: latest.status, last_updated: latest.changed_at })
+    const history = application.status_history.filter((entry) => entry.changed_at.slice(0, 10) <= asOfDate)
+    if (!history.some((entry) => entry.status === 'Identified')) continue // didn't exist yet
+    const latest = history.reduce((latest, entry) => (entry.changed_at > latest.changed_at ? entry : latest))
+    snapshot.push({ ...application, status_history: history, status: latest.status, last_updated: latest.changed_at })
   }
   return snapshot
 }
@@ -384,8 +381,22 @@ function ratesFromEntries(allEntries: StatusHistoryEntry[], now: Date): WholeHis
 
 export type HeatmapDay = { date: string; count: number }
 
-function toDateKey(date: Date): string {
+export function toDateKey(date: Date): string {
   return date.toISOString().slice(0, 10)
+}
+
+// Day arithmetic for the date slider (Phase 14, D-271), kept here alongside the module's other
+// date-string helpers rather than in the page component.
+export function addDaysToDateKey(dateKey: string, days: number): string {
+  const date = new Date(`${dateKey}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return toDateKey(date)
+}
+
+export function daysBetweenDateKeys(fromKey: string, toKey: string): number {
+  const from = new Date(`${fromKey}T00:00:00Z`).getTime()
+  const to = new Date(`${toKey}T00:00:00Z`).getTime()
+  return Math.round((to - from) / (1000 * 60 * 60 * 24))
 }
 
 export function applicationsSentHeatmap(

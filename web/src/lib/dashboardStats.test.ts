@@ -433,6 +433,25 @@ describe('snapshotAsOf', () => {
     expect(snapshot[0].last_updated).toBe('2026-10-05T00:00:00Z')
   })
 
+  it('truncates status_history itself, not just the summary fields', () => {
+    const applications = [
+      application({
+        status_history: [
+          { status: 'Identified', changed_at: '2026-10-01T00:00:00Z' },
+          { status: 'Applied', changed_at: '2026-10-05T00:00:00Z' },
+          { status: 'Screening', changed_at: '2026-10-20T00:00:00Z' },
+        ],
+      }),
+    ]
+
+    const snapshot = snapshotAsOf(applications, '2026-10-10')
+
+    expect(snapshot[0].status_history).toEqual([
+      { status: 'Identified', changed_at: '2026-10-01T00:00:00Z' },
+      { status: 'Applied', changed_at: '2026-10-05T00:00:00Z' },
+    ])
+  })
+
   it('works the same way for Open Applications', () => {
     const applications = [
       openApplication({
