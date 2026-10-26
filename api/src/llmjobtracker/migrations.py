@@ -1319,6 +1319,20 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE profile_files_old RENAME TO profile_files",
         ),
     ),
+    Migration(
+        version=38,
+        name="add excluded_context to the three revise turns tables (Revise context selection)",
+        up=(
+            "ALTER TABLE revise_turns ADD COLUMN excluded_context TEXT",
+            "ALTER TABLE job_revise_turns ADD COLUMN excluded_context TEXT",
+            "ALTER TABLE open_application_revise_turns ADD COLUMN excluded_context TEXT",
+        ),
+        down=(
+            "ALTER TABLE revise_turns DROP COLUMN excluded_context",
+            "ALTER TABLE job_revise_turns DROP COLUMN excluded_context",
+            "ALTER TABLE open_application_revise_turns DROP COLUMN excluded_context",
+        ),
+    ),
 )
 
 _LEDGER = """
