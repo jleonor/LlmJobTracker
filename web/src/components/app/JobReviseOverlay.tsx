@@ -16,12 +16,28 @@ const ACTIVE_POLL_MS = 1000
 // What each job-page section's chat turn reads (mirrors profileDocuments.ts's
 // PROFILE_DOCUMENT_CONTEXT), shown as chips so the user can see what the model reads without
 // opening the prompt itself. Only the implemented sections (D-136's build order) are listed.
+// Application history's "Filed emails"/"Additional files" groups aren't listed here - they're
+// individually-clickable badges built from `contextItems` instead (D-260, D-261), since each
+// pool is usually small enough to exclude one item at a time rather than the whole group.
 const JOB_REVISE_CONTEXT: Record<string, string[]> = {
   job_details: ['Listing'],
-  application_history: ['Status history', 'Filed emails'],
+  application_history: ['Status history'],
   positioning: ['Career history', 'Questionnaire report', 'Strategy', 'Job details'],
-  tailored_cv: ['Career history', 'Questionnaire report', 'Strategy', 'Positioning breakdown'],
-  cover_letter: ['Career history', 'Questionnaire report', 'Strategy', 'Positioning breakdown'],
+  tailored_cv: [
+    'Master CV',
+    'Career history',
+    'Questionnaire report',
+    'Strategy',
+    'Positioning breakdown',
+  ],
+  cover_letter: [
+    'Cover letter template',
+    'Reference cover letter',
+    'Career history',
+    'Questionnaire report',
+    'Strategy',
+    'Positioning breakdown',
+  ],
   interview_prep: ['Career history', 'Questionnaire report', 'Strategy', 'Master CV', 'Job details'],
 }
 
@@ -47,6 +63,7 @@ export function JobReviseOverlay({
   title,
   leftPane,
   allowAttachment = false,
+  contextItems,
   open,
   onOpenChange,
   onChanged,
@@ -56,6 +73,9 @@ export function JobReviseOverlay({
   title: string
   leftPane: ReactNode
   allowAttachment?: boolean
+  // Individually-clickable context badges (Application history's filed emails and Additional
+  // files, D-260, D-261), in addition to JOB_REVISE_CONTEXT's static ones. Omitted elsewhere.
+  contextItems?: { id: number; label: string }[]
   open: boolean
   onOpenChange: (open: boolean) => void
   // Called once a turn's job finishes, so the page's own fields catch up to what the turn wrote
@@ -68,6 +88,20 @@ export function JobReviseOverlay({
   const [attachedFile, setAttachedFile] = useState<File | null>(null)
   const [sending, setSending] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  // Chosen fresh each time, reset once sent - nothing is remembered between turns (D-260).
+  const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set())
+
+  function toggleExcluded(id: number) {
+    setExcludedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
 
   const reload = useCallback(() => {
     fetchJobReviseTurns(applicationId, sectionKind)
@@ -114,9 +148,16 @@ export function JobReviseOverlay({
         attachmentId = filed.id
         onChanged()
       }
-      await postJobReviseTurn(applicationId, sectionKind, text, attachmentId)
+      await postJobReviseTurn(
+        applicationId,
+        sectionKind,
+        text,
+        attachmentId,
+        Array.from(excludedIds),
+      )
       setMessage('')
       setAttachedFile(null)
+      setExcludedIds(new Set())
       if (fileInput.current) fileInput.current.value = ''
       reload()
     } catch (failure) {
@@ -144,6 +185,27 @@ export function JobReviseOverlay({
                   {label}
                 </Badge>
               ))}
+              {(contextItems ?? []).map((item) => {
+                const excluded = excludedIds.has(item.id)
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => toggleExcluded(item.id)}
+                    aria-pressed={!excluded}
+                    title={excluded ? 'Excluded from this message' : 'Included in this message'}
+                  >
+                    <Badge
+                      variant="outline"
+                      className={`rounded-sm font-mono text-[10px] font-normal ${
+                        excluded ? 'text-muted-foreground/50 line-through' : ''
+                      }`}
+                    >
+                      {item.label}
+                    </Badge>
+                  </button>
+                )
+              })}
             </div>
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded border border-border p-3">
               {error && <p className="text-sm text-destructive">{error}</p>}

@@ -1469,6 +1469,9 @@ function ApplicationHistory({
             />
           }
           allowAttachment
+          contextItems={application.files
+            .filter((file) => EMAIL_KINDS.has(file.kind) || file.kind === 'other')
+            .map((file) => ({ id: file.id, label: file.name }))}
           open={generateOpen}
           onOpenChange={setGenerateOpen}
           onChanged={onChanged}
