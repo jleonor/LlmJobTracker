@@ -35,6 +35,9 @@ import {
   earliestIdentifiedDate,
   EMPTY_SLICERS,
   foldToOther,
+  hasBeenApplied,
+  isActiveApplication,
+  isColdApplication,
   MATCH_SCORE_BUCKETS,
   NOT_SCORED_BUCKET,
   proportionByLane,
@@ -225,6 +228,24 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
     () => combinedTotals(asOfApplications, asOfOpenApplications),
     [asOfApplications, asOfOpenApplications],
   )
+  // D-274: Job-Application-only, matching their own table views (D-275) - and, like Alive/Dead/
+  // Total above, read from `asOfApplications` directly rather than `sliced`, ignoring the
+  // category slicers.
+  const applicationsSentCount = useMemo(
+    () => asOfApplications.filter(hasBeenApplied).length,
+    [asOfApplications],
+  )
+  // "Stale" is relative to the slider's own asOfDate, not the real today - staleness is one more
+  // thing the slider redefines (D-271).
+  const asOfNow = useMemo(() => new Date(`${asOfDate}T00:00:00Z`), [asOfDate])
+  const activeCount = useMemo(
+    () => asOfApplications.filter((application) => isActiveApplication(application, asOfNow)).length,
+    [asOfApplications, asOfNow],
+  )
+  const coldCount = useMemo(
+    () => asOfApplications.filter((application) => isColdApplication(application, asOfNow)).length,
+    [asOfApplications, asOfNow],
+  )
 
   if (state.kind === 'loading') {
     return <p className="text-sm text-muted-foreground">Loading…</p>
@@ -265,7 +286,7 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
           secondary={rates === null ? undefined : `${rates.identifiedPerWeek.toFixed(1)} / week`}
         />
         <StatTile
-          label="Applications sent"
+          label="Applications sent rate"
           value={rates === null ? '—' : `${rates.appliedPerDay.toFixed(2)} / day`}
           secondary={rates === null ? undefined : `${rates.appliedPerWeek.toFixed(1)} / week`}
         />
@@ -278,8 +299,24 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
         <StatTile label="Total applications" value={String(totals.total)} />
         <StatTile label="Job applications" value={String(totals.totalJobApplications)} />
         <StatTile label="Open applications" value={String(totals.totalOpenApplications)} />
-        <StatTile label="Alive" value={String(totals.alive)} />
+        <StatTile
+          label="Alive"
+          value={String(totals.alive)}
+          secondary="Identified, Applied, Screening, Interview or Offer"
+        />
         <StatTile label="Dead" value={String(totals.dead)} secondary="Rejected, Withdrawn or Expired" />
+      </div>
+
+      {/* Phase 14 (D-274): Job-Application-only, each matching its own table view below exactly
+          (D-275) - Open Applications have no view system to mirror. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatTile label="Applications sent" value={String(applicationsSentCount)} />
+        <StatTile label="Active applications" value={String(activeCount)} />
+        <StatTile
+          label="Cold applications"
+          value={String(coldCount)}
+          secondary="Not Rejected, Withdrawn or Expired; no update in 30+ days"
+        />
       </div>
 
       {/* 3 columns x 2 rows: lane spans both rows in column 1; stage and match score fill row 1's

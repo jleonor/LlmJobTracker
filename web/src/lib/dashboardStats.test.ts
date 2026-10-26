@@ -15,6 +15,7 @@ import {
   distinctLocations,
   earliestIdentifiedDate,
   foldToOther,
+  hasBeenApplied,
   isActiveApplication,
   isColdApplication,
   matchScoreBucket,
@@ -527,5 +528,23 @@ describe('isColdApplication', () => {
     expect(isColdApplication(application({ status: 'Expired', last_updated: '2026-01-01T00:00:00Z' }), now)).toBe(
       false,
     )
+  })
+})
+
+describe('hasBeenApplied', () => {
+  it('is true once an Applied entry exists', () => {
+    expect(
+      hasBeenApplied(
+        application({ status_history: [{ status: 'Applied', changed_at: '2026-10-05T00:00:00Z' }] }),
+      ),
+    ).toBe(true)
+  })
+
+  it('is false when it never got past Identified', () => {
+    expect(
+      hasBeenApplied(
+        application({ status_history: [{ status: 'Identified', changed_at: '2026-10-05T00:00:00Z' }] }),
+      ),
+    ).toBe(false)
   })
 })

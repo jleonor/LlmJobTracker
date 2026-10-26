@@ -233,6 +233,13 @@ export function isColdApplication(application: JobApplication, now: Date = new D
   return daysSinceLastUpdated(application, now) > STALE_AFTER_DAYS
 }
 
+// The "Applications sent" count card (D-273/D-274): has an Applied-status entry at all, as of
+// whatever snapshot it's given (so moving the date slider changes this the same way it changes
+// everything else, via snapshotAsOf's status_history truncation).
+export function hasBeenApplied(application: JobApplication): boolean {
+  return application.status_history.some((entry) => entry.status === 'Applied')
+}
+
 export function proportionByMatchScoreBucket(applications: JobApplication[]): CountEntry[] {
   const counts = countBy(applications, (application) => matchScoreBucket(application.match_score))
   return sortedEntries(counts, MATCH_SCORE_BUCKETS)
