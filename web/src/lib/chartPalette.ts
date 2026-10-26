@@ -37,3 +37,23 @@ export const MATCH_SCORE_RAMP: readonly string[] = [
 // "Not scored" is absence of a value, not a low value - it never borrows a ramp step. A neutral
 // already used elsewhere in the app for de-emphasized text/fills.
 export const NOT_SCORED_COLOR = 'var(--muted-foreground)'
+
+// Sequential (magnitude: daily counts on the "Applications sent" calendar heatmap, Phase 14,
+// D-276) - a dedicated ramp, not MATCH_SCORE_RAMP above (built and indexed for that unrelated
+// ordinal chart, with no notion of "zero" and the wrong direction for this one: reusing it made
+// the busiest day the darkest, almost blending into the background). Zero itself is handled by
+// the caller as 'var(--muted)', never a ramp step (matching NOT_SCORED_COLOR's "absence is not a
+// low value" rule). Non-zero counts interpolate linearly from this ramp's dark end (the blue
+// ramp's own darkest step, 700, nearest zero) up to literal white at the busiest day - the dark-
+// mode "flip" the sequential job calls for, with white as the brightest step by the user's
+// explicit choice over the documented blue ramp's own near-white step.
+const HEATMAP_LOW_RGB: readonly [number, number, number] = [0x0d, 0x36, 0x6b] // '#0d366b', step 700
+const HEATMAP_HIGH_RGB: readonly [number, number, number] = [0xff, 0xff, 0xff] // literal white
+
+export function heatmapIntensityColor(fraction: number): string {
+  const clamped = Math.min(1, Math.max(0, fraction))
+  const [r, g, b] = HEATMAP_LOW_RGB.map((low, index) =>
+    Math.round(low + (HEATMAP_HIGH_RGB[index] - low) * clamped),
+  )
+  return `rgb(${r}, ${g}, ${b})`
+}

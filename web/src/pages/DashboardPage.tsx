@@ -18,7 +18,12 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { BACKEND_LABELS, MODEL_FIELD } from '@/lib/backends'
-import { CATEGORICAL_CHART_COLORS, MATCH_SCORE_RAMP, NOT_SCORED_COLOR } from '@/lib/chartPalette'
+import {
+  CATEGORICAL_CHART_COLORS,
+  heatmapIntensityColor,
+  MATCH_SCORE_RAMP,
+  NOT_SCORED_COLOR,
+} from '@/lib/chartPalette'
 import {
   addDaysToDateKey,
   applyStageSlicer,
@@ -609,13 +614,8 @@ function ProportionCard({
 // --- Calendar heatmap (sequential magnitude, trailing 12 months, D-239) ------------------------
 
 function heatmapColor(count: number, max: number): string {
-  if (count === 0) return 'var(--muted)'
-  if (max <= 0) return 'var(--muted)'
-  const steps = MATCH_SCORE_RAMP.length
-  // Lightest-to-highest-contrast step carries the highest count, same direction the sequential
-  // ramp already uses for match-score buckets.
-  const step = Math.min(steps - 1, Math.floor((count / max) * (steps - 1)))
-  return MATCH_SCORE_RAMP[steps - 1 - step]
+  if (count === 0 || max <= 0) return 'var(--muted)'
+  return heatmapIntensityColor(count / max)
 }
 
 function ApplicationsSentHeatmap({ days }: { days: { date: string; count: number }[] }) {
@@ -666,11 +666,11 @@ function ApplicationsSentHeatmap({ days }: { days: { date: string; count: number
       </div>
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
         <span>Less</span>
-        {[0, ...MATCH_SCORE_RAMP.slice().reverse()].map((step, index) => (
+        {[0, 0.25, 0.5, 0.75, 1].map((fraction, index) => (
           <div
             key={index}
             className="size-3 rounded-sm"
-            style={{ backgroundColor: index === 0 ? 'var(--muted)' : (step as string) }}
+            style={{ backgroundColor: index === 0 ? 'var(--muted)' : heatmapIntensityColor(fraction) }}
           />
         ))}
         <span>More</span>
