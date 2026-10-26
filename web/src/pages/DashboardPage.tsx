@@ -39,6 +39,7 @@ import {
   distinctLocations,
   earliestIdentifiedDate,
   EMPTY_SLICERS,
+  filterByIdentifiedRange,
   foldToOther,
   hasBeenApplied,
   isActiveApplication,
@@ -47,7 +48,6 @@ import {
   NOT_SCORED_BUCKET,
   proportionByLane,
   proportionByMatchScoreBucket,
-  snapshotAsOf,
   toDateKey,
   type CountEntry,
   type DashboardSlicers,
@@ -96,9 +96,12 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   // primary thing this page is for.
   const [openApplications, setOpenApplications] = useState<OpenApplication[]>([])
   const [slicers, setSlicers] = useState<DashboardSlicers>(EMPTY_SLICERS)
-  // The date slider (Phase 14, D-271): defaults to today, independent of the data's own earliest-
-  // identified bound below, so it never needs re-syncing once the applications finish loading.
-  const [asOfDate, setAsOfDate] = useState(() => toDateKey(new Date()))
+  // The Identified-date range slider (Phase 14, D-277): null until the user actually drags a
+  // handle, so it reads as "everything" (the full earliest-identified-to-today bound below)
+  // without needing to re-sync once the applications finish loading.
+  const [identifiedRange, setIdentifiedRange] = useState<{ start: string | null; end: string | null }>(
+    { start: null, end: null },
+  )
   const [lanes, setLanes] = useState<Lane[]>([])
   const [overview, setOverview] = useState<LaneOverview>({
     summary: null,
@@ -172,9 +175,9 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
     [state],
   )
 
-  // The date slider (Phase 14, D-271): bounds from the earliest Identified date (raw, full
-  // history - never the already-truncated snapshot below) to today. A lazy useState initializer
-  // (runs exactly once), not useMemo, since computing a Date directly during render is impure.
+  // The Identified-date range slider (Phase 14, D-277): bounds from the earliest Identified date
+  // (raw, full history) to today. A lazy useState initializer (runs exactly once), not useMemo,
+  // since computing a Date directly during render is impure.
   const [todayKey] = useState(() => toDateKey(new Date()))
   const minDateKey = useMemo(() => {
     const earliest = earliestIdentifiedDate([...allApplications, ...openApplications])
@@ -184,24 +187,30 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
     () => daysBetweenDateKeys(minDateKey, todayKey),
     [minDateKey, todayKey],
   )
-  const dayIndex = Math.min(maxDayIndex, Math.max(0, daysBetweenDateKeys(minDateKey, asOfDate)))
+  // Until the user drags a handle, the range reads as "everything" (full bounds).
+  const startDate = identifiedRange.start ?? minDateKey
+  const endDate = identifiedRange.end ?? todayKey
+  const startDayIndex = Math.min(maxDayIndex, Math.max(0, daysBetweenDateKeys(minDateKey, startDate)))
+  const endDayIndex = Math.min(maxDayIndex, Math.max(0, daysBetweenDateKeys(minDateKey, endDate)))
 
-  // D-271: every chart and card below reads this as-of-date snapshot, not the raw lists - this
-  // is what makes the slider redefine "now" for the whole page, superseding D-241's old slicer
-  // exemption for the whole-history rate and Alive/Dead/Total tiles.
-  const asOfApplications = useMemo(
-    () => snapshotAsOf(allApplications, asOfDate),
-    [allApplications, asOfDate],
+  // D-277 (a cohort filter, not a time machine - superseding D-271/D-272's as-of-date design):
+  // every chart and card below reads only the applications Identified within this range, each
+  // with its real, current status and fields - no reconstruction, so the category slicers'
+  // exemption for the whole-history rate and Alive/Dead/Total tiles (D-241) still applies exactly
+  // as it always has.
+  const rangeApplications = useMemo(
+    () => filterByIdentifiedRange(allApplications, startDate, endDate),
+    [allApplications, startDate, endDate],
   )
-  const asOfOpenApplications = useMemo(
-    () => snapshotAsOf(openApplications, asOfDate),
-    [openApplications, asOfDate],
+  const rangeOpenApplications = useMemo(
+    () => filterByIdentifiedRange(openApplications, startDate, endDate),
+    [openApplications, startDate, endDate],
   )
 
-  const sliced = useMemo(() => applySlicers(asOfApplications, slicers), [asOfApplications, slicers])
+  const sliced = useMemo(() => applySlicers(rangeApplications, slicers), [rangeApplications, slicers])
 
-  const laneOptions = useMemo(() => distinctLanes(asOfApplications), [asOfApplications])
-  const locationOptions = useMemo(() => distinctLocations(asOfApplications), [asOfApplications])
+  const laneOptions = useMemo(() => distinctLanes(rangeApplications), [rangeApplications])
+  const locationOptions = useMemo(() => distinctLocations(rangeApplications), [rangeApplications])
 
   const laneEntries = useMemo(
     () => foldToOther(proportionByLane(sliced), MAX_LANE_BARS, 'Other lanes'),
@@ -212,8 +221,8 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   // unfiltered when Stage isn't set, same as the Job list's own applySlicers would for a
   // dimension it doesn't touch.
   const slicedOpen = useMemo(
-    () => applyStageSlicer(asOfOpenApplications, slicers.stage),
-    [asOfOpenApplications, slicers.stage],
+    () => applyStageSlicer(rangeOpenApplications, slicers.stage),
+    [rangeOpenApplications, slicers.stage],
   )
   const stageEntries = useMemo(
     () => combinedProportionByStage(sliced, slicedOpen),
@@ -222,34 +231,31 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   const matchScoreEntries = useMemo(() => proportionByMatchScoreBucket(sliced), [sliced])
   const leadTimeDays = useMemo(() => averageDaysIdentifiedToApplied(sliced), [sliced])
   const rates = useMemo(
-    () => combinedWholeHistoryRates(asOfApplications, asOfOpenApplications),
-    [asOfApplications, asOfOpenApplications],
+    () => combinedWholeHistoryRates(rangeApplications, rangeOpenApplications),
+    [rangeApplications, rangeOpenApplications],
   )
   const heatmap = useMemo(
     () => combinedApplicationsSentHeatmap(sliced, slicedOpen),
     [sliced, slicedOpen],
   )
   const totals = useMemo(
-    () => combinedTotals(asOfApplications, asOfOpenApplications),
-    [asOfApplications, asOfOpenApplications],
+    () => combinedTotals(rangeApplications, rangeOpenApplications),
+    [rangeApplications, rangeOpenApplications],
   )
   // D-274: Job-Application-only, matching their own table views (D-275) - and, like Alive/Dead/
-  // Total above, read from `asOfApplications` directly rather than `sliced`, ignoring the
+  // Total above, read from `rangeApplications` directly rather than `sliced`, ignoring the
   // category slicers.
   const applicationsSentCount = useMemo(
-    () => asOfApplications.filter(hasBeenApplied).length,
-    [asOfApplications],
+    () => rangeApplications.filter(hasBeenApplied).length,
+    [rangeApplications],
   )
-  // "Stale" is relative to the slider's own asOfDate, not the real today - staleness is one more
-  // thing the slider redefines (D-271).
-  const asOfNow = useMemo(() => new Date(`${asOfDate}T00:00:00Z`), [asOfDate])
   const activeCount = useMemo(
-    () => asOfApplications.filter((application) => isActiveApplication(application, asOfNow)).length,
-    [asOfApplications, asOfNow],
+    () => rangeApplications.filter((application) => isActiveApplication(application)).length,
+    [rangeApplications],
   )
   const coldCount = useMemo(
-    () => asOfApplications.filter((application) => isColdApplication(application, asOfNow)).length,
-    [asOfApplications, asOfNow],
+    () => rangeApplications.filter((application) => isColdApplication(application)).length,
+    [rangeApplications],
   )
 
   if (state.kind === 'loading') {
@@ -263,13 +269,15 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
     <div className="flex flex-col gap-6">
       <h1 className="text-xl font-semibold">Dashboard</h1>
 
-      <AsOfDateSlider
-        asOfDate={asOfDate}
-        dayIndex={dayIndex}
+      <IdentifiedDateRangeSlider
+        startDate={startDate}
+        endDate={endDate}
+        startDayIndex={startDayIndex}
+        endDayIndex={endDayIndex}
         maxDayIndex={maxDayIndex}
         minDateKey={minDateKey}
         todayKey={todayKey}
-        onChange={setAsOfDate}
+        onChange={(start, end) => setIdentifiedRange({ start, end })}
       />
 
       <SlicerBar
@@ -382,40 +390,49 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   )
 }
 
-// --- As-of-date slider (Phase 14, D-271) ----------------------------------------------------
+// --- Identified-date range slider (Phase 14, D-277, superseding D-271/D-272's as-of-date design)
+// ------------------------------------------------------------------------------------------------
+// A cohort filter: only applications Identified within [startDate, endDate] are counted anywhere
+// on the page, each read with its real, current fields. Two thumbs, not one - a single-thumb
+// Slider was found live not to respond to pointer drags at all in this app's base-ui version (a
+// bare-number vs one-element-array onValueChange mismatch wasn't the cause either; every other
+// slider in the app already has two thumbs, which is presumably why this never surfaced before).
 
-function AsOfDateSlider({
-  asOfDate,
-  dayIndex,
+function IdentifiedDateRangeSlider({
+  startDate,
+  endDate,
+  startDayIndex,
+  endDayIndex,
   maxDayIndex,
   minDateKey,
   todayKey,
   onChange,
 }: {
-  asOfDate: string
-  dayIndex: number
+  startDate: string
+  endDate: string
+  startDayIndex: number
+  endDayIndex: number
   maxDayIndex: number
   minDateKey: string
   todayKey: string
-  onChange: (next: string) => void
+  onChange: (start: string, end: string) => void
 }) {
   return (
     <div className="flex flex-col gap-2 rounded border border-border bg-card p-4">
       <div className="flex items-center justify-between">
-        <Label>Dashboard as of</Label>
-        <span className="font-mono text-xs text-foreground">{asOfDate}</span>
+        <Label>Identified between</Label>
+        <span className="font-mono text-xs text-foreground">
+          {startDate} – {endDate}
+        </span>
       </div>
       <Slider
-        value={[dayIndex]}
+        value={[startDayIndex, endDayIndex]}
         min={0}
         max={Math.max(maxDayIndex, 1)}
         disabled={maxDayIndex === 0}
         onValueChange={(value) => {
-          // A single-thumb Slider calls back with a bare number, not a one-element array (only
-          // multi-thumb sliders do that) - found live, destructuring it as an array threw on
-          // every drag, so the date never actually changed.
-          const index = Array.isArray(value) ? value[0] : value
-          onChange(addDaysToDateKey(minDateKey, index))
+          const [lo, hi] = value as number[]
+          onChange(addDaysToDateKey(minDateKey, lo), addDaysToDateKey(minDateKey, hi))
         }}
       />
       <div className="flex items-center justify-between font-mono text-xs text-muted-foreground">
@@ -426,10 +443,10 @@ function AsOfDateSlider({
   )
 }
 
-// --- Slicers (D-241 narrowed by D-271: these still filter only the sliced charts, exempting the
-// whole-history rate and Alive/Dead/Total tiles - the new date slider above is different in kind
-// and DOES affect those tiles, since it changes which applications exist at all, not which ones
-// among today's count to show) -------------------------------------------------------------------
+// --- Slicers (D-241: these still filter only the sliced charts, exempting the whole-history rate
+// and Alive/Dead/Total tiles - the Identified-date range above is different in kind and DOES
+// affect those tiles too, since it's a cohort filter on which applications exist at all, not a
+// slicer on which ones among today's count to show) -----------------------------------------------
 
 const ALL_VALUE = '__all__'
 

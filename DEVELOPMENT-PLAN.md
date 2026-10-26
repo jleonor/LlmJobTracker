@@ -1244,7 +1244,7 @@ Done when
 **Goal:** the Dashboard can show its own past, not just its present, and surfaces applications that have gone stale rather than only those explicitly marked dead.
 
 Scope (inserted 2026-10-26, D-270, from a planning discussion with the user about Dashboard improvements wanted while Phase 13 was being built)
-- A date slider above the existing slicers (D-271): a single point-in-time cursor, day granularity, from the earliest "Identified" date to today, defaulting to today. It redefines "now" for the whole page - which applications exist yet, and each one's status as of that date - overriding the slicers' current exemption for the whole-history rate tiles and the Alive/Dead/Total tiles (D-241 no longer applies once this ships). Match score and lane are not historized, so a past date still shows their current values (D-272).
+- A date range slider above the existing slicers, two handles - Start and Identified-date End (D-277, superseding the original single-handle "as of" design, D-271/D-272): a cohort filter, not a time machine. Only applications Identified within the selected range are counted anywhere on the page, each read with its real, current status and fields - overriding the slicers' current exemption for the whole-history rate tiles and the Alive/Dead/Total tiles (D-241 no longer applies once this ships), but with no per-date status reconstruction and no historization caveat.
 - "Applications sent rate" (renamed from today's "Applications sent", D-273) stays a rate; a new "Applications sent" tile is a plain count (Job Applications with an Applied-status entry by the slider's date).
 - Two more new tiles, both Job-Application-only (D-274): "Active applications" and "Cold applications" (with a secondary description line, matching Dead's existing style), each counting the same thing its table view does (below). "Alive" gains a secondary description line the same way Dead already has one.
 - The "Active applications" table view's filter gains a last-updated-within-30-days condition, computed fresh at selection time; a new "Cold applications" view (non-Dead, including Identified, last updated more than 30 days ago), computed the same way (D-275).
@@ -1260,10 +1260,18 @@ Step list (drafted 2026-10-26, awaiting approval). All frontend-only - no backen
 6. `chartPalette.ts`: a new sequential ramp for the heatmap - non-zero counts interpolate linearly from a dark, near-`var(--muted)` anchor up to literal white (`#ffffff`) as `count/max` increases; `count === 0` stays the special-cased `var(--muted)`, untouched. `DashboardPage.tsx`'s `heatmapColor` and the heatmap's legend swatches updated to match.
 7. Checks: `python scripts/check.py`; screenshots of the slider moved to a past date with every card/chart changed accordingly; the Active and Cold applications table views; the recolored heatmap and its legend.
 
+Corrected 2026-10-26 (D-277): steps 1 and 3's single-handle "as of" slider (`snapshotAsOf`,
+`asOfDate`) didn't actually work - found live, a single-thumb Slider doesn't respond to pointer
+drags at all in this app's `@base-ui/react` version. Replaced with a two-handle Identified-date
+range slider: `snapshotAsOf` deleted outright, replaced by `filterByIdentifiedRange` (a cohort
+filter - no per-date status reconstruction, so D-272's historization caveat no longer applies).
+Verified live against real seeded data: both handles drag correctly in both directions, and every
+card/chart updates to match the selected range.
+
 Done when
-- [ ] Moving the slider changes every card and chart on the page to match that date, confirmed against a few different past dates.
-- [ ] The Active applications and Cold applications table views and Dashboard cards agree with each other's counts.
-- [ ] The Applications sent heatmap reads as a clear, correctly-directed gradient (busiest day brightest, no activity matching the empty-cell look).
+- [x] Moving the slider changes every card and chart on the page to match the selected range, confirmed live against real seeded data (2026-10-26: both handles tested, dragging both wider and narrower).
+- [x] The Active applications and Cold applications table views and Dashboard cards agree with each other's counts (2026-10-26: `isActiveApplication`/`isColdApplication` are the single shared predicates behind both; `jobViews.test.ts` exercises the view filters end to end through `applicationMatchesFilters`).
+- [x] The Applications sent heatmap reads as a clear, correctly-directed gradient (2026-10-26: verified visually in an isolated preview - muted at zero, smoothly brightening to white at the busiest day).
 - [ ] The user's go or no-go.
 
 ---

@@ -261,10 +261,14 @@ export function averageMatchScoreForLane(
   return scores.reduce((total, score) => total + score, 0) / scores.length
 }
 
-// --- As-of-date snapshot (Phase 14, D-271): the date slider redefines "now" for the whole page --
+// --- Identified-date range (Phase 14, D-277, superseding D-271/D-272's as-of-date design): the
+// date range slider is a cohort filter, not a time machine - it narrows which applications are
+// counted at all (by when they were Identified), but every one of them is read with its real,
+// current status and fields, the same as everywhere else in this module. -----------------------
 
 // The earliest "Identified" event across the given applications (Job or Open, or both lists
-// concatenated) - the date slider's lower bound. null when nothing has ever been Identified yet.
+// concatenated) - the date range slider's lower bound. null when nothing has ever been Identified
+// yet.
 export function earliestIdentifiedDate<T extends { status_history: StatusHistoryEntry[] }>(
   applications: T[],
 ): string | null {
@@ -278,25 +282,21 @@ export function earliestIdentifiedDate<T extends { status_history: StatusHistory
   return earliest
 }
 
-// Rebuilds the given (Job or Open) applications as they looked on `asOfDate` (a day, "YYYY-MM-DD"):
-// an application not yet Identified by then is dropped entirely, and a kept one's `status_history`
-// is truncated to entries at or before that day, with `status`/`last_updated` overridden to the
-// latest of those - every other field (match score, lane, ...) is not historized and so still
-// reads as of today (D-272). Truncating `status_history` itself (not just the two summary fields)
-// matters: every function in this module that reads it directly (the heatmap, the whole-history
-// rates, the lead-time average) would otherwise still see events after asOfDate. Everything
-// downstream keeps working unmodified against the result.
-export function snapshotAsOf<
-  T extends { status: string; last_updated: string; status_history: StatusHistoryEntry[] },
->(applications: T[], asOfDate: string): T[] {
-  const snapshot: T[] = []
-  for (const application of applications) {
-    const history = application.status_history.filter((entry) => entry.changed_at.slice(0, 10) <= asOfDate)
-    if (!history.some((entry) => entry.status === 'Identified')) continue // didn't exist yet
-    const latest = history.reduce((latest, entry) => (entry.changed_at > latest.changed_at ? entry : latest))
-    snapshot.push({ ...application, status_history: history, status: latest.status, last_updated: latest.changed_at })
-  }
-  return snapshot
+// Keeps only the applications (Job or Open) whose earliest "Identified" day falls within
+// [startDate, endDate] (both "YYYY-MM-DD", inclusive) - everything else about a kept application
+// is untouched, so every other function in this module keeps working unmodified against the
+// result.
+export function filterByIdentifiedRange<T extends { status_history: StatusHistoryEntry[] }>(
+  applications: T[],
+  startDate: string,
+  endDate: string,
+): T[] {
+  return applications.filter((application) => {
+    const identified = earliestIdentifiedDate([application])
+    if (identified === null) return false
+    const day = identified.slice(0, 10)
+    return day >= startDate && day <= endDate
+  })
 }
 
 // --- Identified -> Applied lead time -------------------------------------------------------

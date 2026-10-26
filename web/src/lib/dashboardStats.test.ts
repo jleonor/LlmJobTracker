@@ -14,6 +14,7 @@ import {
   distinctLanes,
   distinctLocations,
   earliestIdentifiedDate,
+  filterByIdentifiedRange,
   foldToOther,
   hasBeenApplied,
   isActiveApplication,
@@ -22,7 +23,6 @@ import {
   proportionByLane,
   proportionByMatchScoreBucket,
   proportionByStage,
-  snapshotAsOf,
   wholeHistoryRates,
 } from './dashboardStats'
 
@@ -404,77 +404,66 @@ describe('earliestIdentifiedDate', () => {
   })
 })
 
-describe('snapshotAsOf', () => {
-  it('drops an application not yet Identified by the given date', () => {
+describe('filterByIdentifiedRange', () => {
+  it('drops an application Identified before the range', () => {
     const applications = [
-      application({ status_history: [{ status: 'Identified', changed_at: '2026-10-15T00:00:00Z' }] }),
+      application({ status_history: [{ status: 'Identified', changed_at: '2026-09-15T00:00:00Z' }] }),
     ]
-    expect(snapshotAsOf(applications, '2026-10-10')).toEqual([])
+    expect(filterByIdentifiedRange(applications, '2026-10-01', '2026-10-31')).toEqual([])
   })
 
-  it('keeps an application Identified by the given date, with its status as of then', () => {
+  it('drops an application Identified after the range', () => {
+    const applications = [
+      application({ status_history: [{ status: 'Identified', changed_at: '2026-11-15T00:00:00Z' }] }),
+    ]
+    expect(filterByIdentifiedRange(applications, '2026-10-01', '2026-10-31')).toEqual([])
+  })
+
+  it('keeps an application Identified within the range, with its real current fields untouched', () => {
     const applications = [
       application({
-        id: 1,
         status: 'Interview',
         last_updated: '2026-10-20T00:00:00Z',
         status_history: [
-          { status: 'Identified', changed_at: '2026-10-01T00:00:00Z' },
-          { status: 'Applied', changed_at: '2026-10-05T00:00:00Z' },
-          { status: 'Screening', changed_at: '2026-10-12T00:00:00Z' },
+          { status: 'Identified', changed_at: '2026-10-05T00:00:00Z' },
+          { status: 'Applied', changed_at: '2026-10-10T00:00:00Z' },
           { status: 'Interview', changed_at: '2026-10-20T00:00:00Z' },
         ],
       }),
     ]
 
-    const snapshot = snapshotAsOf(applications, '2026-10-10')
+    const result = filterByIdentifiedRange(applications, '2026-10-01', '2026-10-31')
 
-    expect(snapshot).toHaveLength(1)
-    expect(snapshot[0].status).toBe('Applied')
-    expect(snapshot[0].last_updated).toBe('2026-10-05T00:00:00Z')
+    expect(result).toHaveLength(1)
+    expect(result[0].status).toBe('Interview')
+    expect(result[0].last_updated).toBe('2026-10-20T00:00:00Z')
+    expect(result[0].status_history).toHaveLength(3)
   })
 
-  it('truncates status_history itself, not just the summary fields', () => {
-    const applications = [
-      application({
-        status_history: [
-          { status: 'Identified', changed_at: '2026-10-01T00:00:00Z' },
-          { status: 'Applied', changed_at: '2026-10-05T00:00:00Z' },
-          { status: 'Screening', changed_at: '2026-10-20T00:00:00Z' },
-        ],
-      }),
-    ]
-
-    const snapshot = snapshotAsOf(applications, '2026-10-10')
-
-    expect(snapshot[0].status_history).toEqual([
-      { status: 'Identified', changed_at: '2026-10-01T00:00:00Z' },
-      { status: 'Applied', changed_at: '2026-10-05T00:00:00Z' },
-    ])
+  it('is inclusive of the exact start and end days', () => {
+    const start = application({
+      status_history: [{ status: 'Identified', changed_at: '2026-10-01T23:00:00Z' }],
+    })
+    const end = application({
+      status_history: [{ status: 'Identified', changed_at: '2026-10-31T01:00:00Z' }],
+    })
+    const result = filterByIdentifiedRange([start, end], '2026-10-01', '2026-10-31')
+    expect(result).toHaveLength(2)
   })
 
   it('works the same way for Open Applications', () => {
     const applications = [
       openApplication({
-        status_history: [{ status: 'Identified', changed_at: '2026-10-01T00:00:00Z' }],
+        status_history: [{ status: 'Identified', changed_at: '2026-10-15T00:00:00Z' }],
       }),
     ]
-    const snapshot = snapshotAsOf(applications, '2026-10-01')
-    expect(snapshot).toHaveLength(1)
-    expect(snapshot[0].status).toBe('Identified')
+    const result = filterByIdentifiedRange(applications, '2026-10-01', '2026-10-31')
+    expect(result).toHaveLength(1)
   })
 
-  it('on the exact as-of day, keeps that day\'s own status change', () => {
-    const applications = [
-      application({
-        status_history: [
-          { status: 'Identified', changed_at: '2026-10-01T00:00:00Z' },
-          { status: 'Applied', changed_at: '2026-10-10T23:00:00Z' },
-        ],
-      }),
-    ]
-    const snapshot = snapshotAsOf(applications, '2026-10-10')
-    expect(snapshot[0].status).toBe('Applied')
+  it('drops an application that has never been Identified', () => {
+    const applications = [application({ status_history: [] })]
+    expect(filterByIdentifiedRange(applications, '2026-10-01', '2026-10-31')).toEqual([])
   })
 })
 
