@@ -4,7 +4,9 @@ Phases 0 through 11 are done; `main` is fast-forwarded through `phase-11-open-ap
 
 Phase 12 (Profile: additional files) closed out 2026-10-26: the "Additional files" upload kind, its manual-text fallback, the tightened career-history gate, and Revise (LLM) context selection across profile/job application/open application were all confirmed, on the user's go in chat, alongside the checks already passing.
 
-**Current phase: 13 (Shell/Electron).** Narrowed on 2026-10-26 (D-264 to D-267) from the original Shell/hardening/in-app-browser scope to the Electron shell alone, plus an Export Data button in Settings; backups, the run log, and "Open LLM with browser" are dropped (the latter replaced by Phase 7's existing "Open LLM app"). Phase 14 (Dashboard time slider and stale-application tracking, D-270) and Phase 15 (Packaging and installers, D-268) now follow it. Phase 13's scope is set below; its step list has not been drafted yet (rule 7).
+Phase 13 (Shell/Electron) closed out 2026-10-26: the Electron shell, the Export Data button, the window-chrome batch (D-269), two unrelated small fixes, and the icon/titleBarOverlay/AppShell-layout/scrollbar batch (D-278) were all confirmed, on the user's go in chat. Merged into local `main` with `git merge --ff-only` (D-61); the branch is kept, nothing pushed.
+
+**Current phase: 14 (Dashboard time slider and stale-application tracking).** Already substantially built during Phase 13's own work (the user asked for it alongside the unrelated Electron work, D-270): the Identified-date range slider (D-277, superseding the original single-handle design, D-271/D-272), the Active/Cold application tracking (D-274/D-275), and the heatmap recolor (D-276) are all built and tested. Phase 15 (Packaging and installers, D-268) follows it.
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -1242,10 +1244,12 @@ Windows title bar replaced with a `titleBarOverlay` colored to match the app's n
 cell; and a thin scrollbar that's invisible until actively scrolling.
 
 Done when
-- [ ] The app starts and stops cleanly as an Electron window, with no orphan backend process left behind (matching Phase 1's own browser-mode check).
-- [ ] `run.ps1` (browser mode) still works exactly as before.
-- [ ] The Export Data button produces the same bundle "Open LLM app" does, minus the deep-link step.
-- [ ] A week of real use in the Electron shell, and the user's go or no-go.
+- [x] The app starts and stops cleanly as an Electron window, with no orphan backend process left behind (matching Phase 1's own browser-mode check). (2026-10-26: confirmed live during this phase's build, after fixing the `npm.cmd` EINVAL and unhandled child-process-error bugs; the user separately confirmed the window itself opens and works.)
+- [x] `run.ps1` (browser mode) still works exactly as before. (The Electron-only code paths, D-264/D-278, are gated behind `IS_WINDOWS`/Electron's own main process; `run.ps1`'s own invocation is untouched. Closed on the user's confirmation in chat.)
+- [x] The Export Data button produces the same bundle "Open LLM app" does, minus the deep-link step. (Backend route tested (`test_llm_app.py`); closed on the user's confirmation in chat.)
+- [x] A week of real use in the Electron shell, and the user's go or no-go. (2026-10-26: the user's explicit go-ahead in chat, closing out the phase.)
+
+Phase closed out 2026-10-26, merged into local `main` with `git merge --ff-only` (D-61).
 
 ---
 
