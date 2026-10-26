@@ -11,6 +11,7 @@ import { RunTrace } from '@/components/app/RunTrace'
 import {
   ApiError,
   deleteModelPrice,
+  exportData,
   fetchAuthStatus,
   fetchJobApplications,
   fetchLlmAppStatus,
@@ -217,6 +218,9 @@ function OpenLlmAppSection({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState<string | null>(null)
+  const [exportBusy, setExportBusy] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exportedPath, setExportedPath] = useState<string | null>(null)
 
   useEffect(() => {
     setExportPath(settings.llm_export_path ?? '')
@@ -274,6 +278,20 @@ function OpenLlmAppSection({
       setError(failure instanceof ApiError ? failure.message : 'Could not open the LLM app.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  // Export Data (D-265, Phase 13): a manual backup, reusing the same export with no deep link.
+  async function runExportData() {
+    setExportBusy(true)
+    setExportError(null)
+    try {
+      const result = await exportData()
+      setExportedPath(result.bundle_path)
+    } catch (failure) {
+      setExportError(failure instanceof ApiError ? failure.message : 'Could not export the data.')
+    } finally {
+      setExportBusy(false)
     }
   }
 
@@ -336,6 +354,21 @@ function OpenLlmAppSection({
           </div>
         ))}
       </div>
+
+      <div className="flex items-center justify-between gap-4 border-t border-border pt-3">
+        <p className="text-xs text-muted-foreground">
+          A manual backup: the same export below, without opening anything.
+        </p>
+        <Button variant="outline" disabled={exportBusy} onClick={() => void runExportData()}>
+          {exportBusy ? 'Exporting...' : 'Export Data'}
+        </Button>
+      </div>
+      {exportedPath && (
+        <p className="text-xs text-muted-foreground">
+          Exported to <span className="font-mono">{exportedPath}</span>.
+        </p>
+      )}
+      {exportError && <p className="text-sm text-destructive">{exportError}</p>}
 
       <div className="flex items-center justify-between gap-4 border-t border-border pt-3">
         <p className="text-xs text-muted-foreground">
