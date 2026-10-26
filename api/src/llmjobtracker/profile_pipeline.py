@@ -334,10 +334,18 @@ def document_block(label: str, stored: tuple[int, str] | None) -> str:
     return f"=== {label} ===\n{document}\n=== END {label} ==="
 
 
-def inputs_for(conn: sqlite3.Connection, kind: str) -> str:
-    """The material a prompt gets: the files it reads, and the documents it builds on."""
+def inputs_for(
+    conn: sqlite3.Connection, kind: str, excluded_kinds: frozenset[str] = frozenset()
+) -> str:
+    """The material a prompt gets: the files it reads, and the documents it builds on.
+
+    `excluded_kinds` (D-260, D-261) only applies to `full_cv_history`: a Revise turn may leave
+    out one or more of its evidence groups. The default (nothing excluded) is what the generating
+    prompt always uses, and what every other output kind gets regardless of this argument.
+    """
     if kind == "full_cv_history":
-        return files_block(usable_files(conn, EVIDENCE_KINDS))
+        kinds = tuple(k for k in EVIDENCE_KINDS if k not in excluded_kinds)
+        return files_block(usable_files(conn, kinds))
     if kind == "questionnaire_analysis":
         questionnaire = usable_files(conn, QUESTIONNAIRE_KINDS)
         if not questionnaire:

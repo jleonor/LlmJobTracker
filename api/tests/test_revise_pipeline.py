@@ -8,7 +8,7 @@ from llmjobtracker.app import TOKEN_HEADER, create_app
 from llmjobtracker.claude_job_queue import ClaudeJobQueue
 from llmjobtracker.claude_jobs import get_claude_job, list_claude_jobs
 from llmjobtracker.langgraph_runner import LangGraphRunner
-from llmjobtracker.profile_files import list_profile_files
+from llmjobtracker.profile_files import list_profile_files, store_profile_file
 from llmjobtracker.profile_pipeline import DEFAULT_RULES_PATH, ProfileNotReady
 from llmjobtracker.revise_pipeline import make_pipeline, submit_revise_turn
 from llmjobtracker.runner import FakeRunner
@@ -66,10 +66,24 @@ def run_all(queue: ClaudeJobQueue) -> None:
         pass
 
 
-def submit(db_path: Path, queue: ClaudeJobQueue, kind: str, message: str) -> int:
+def submit(
+    db_path: Path,
+    queue: ClaudeJobQueue,
+    kind: str,
+    message: str,
+    excluded_kinds: list[str] | None = None,
+) -> int:
     conn = connect(db_path)
     try:
-        return submit_revise_turn(conn, queue, kind, message)
+        return submit_revise_turn(conn, queue, kind, message, excluded_kinds)
+    finally:
+        conn.close()
+
+
+def store(db_path: Path, kind: str, name: str, content: bytes) -> int:
+    conn = connect(db_path)
+    try:
+        return store_profile_file(conn, db_path.parent, kind, name, content).id
     finally:
         conn.close()
 
@@ -118,6 +132,67 @@ def test_a_second_turn_reads_the_first_turns_answer_and_replays_it_as_history(
     assert "EARLIER REQUESTS" in second_prompt
     assert "v2" in second_prompt  # the document the second turn reads is the first turn's answer
     assert latest_document(db_path, "full_cv_history") == "v3"
+
+
+def test_a_career_history_revise_turn_reads_evidence_files_by_default(db_path: Path) -> None:
+    seed_document(db_path, "full_cv_history", "# Career history\n\nOriginal.")
+    store(db_path, "older_cv", "cv.txt", b"Senior Analyst, Example Corp, 2019 to 2022.")
+    store(db_path, "older_letter", "letter.txt", b"I am excited to apply for this role.")
+    runner = FakeRunner(text=rewrite("v2"))
+    queue = make_queue(db_path, runner)
+
+    submit(db_path, queue, "full_cv_history", "Fold in the older material.")
+    run_all(queue)
+
+    assert "Senior Analyst, Example Corp, 2019 to 2022." in runner.prompts[0]
+    assert "I am excited to apply for this role." in runner.prompts[0]
+
+
+def test_excluding_a_kind_leaves_its_files_out_of_a_career_history_revise(db_path: Path) -> None:
+    seed_document(db_path, "full_cv_history", "# Career history\n\nOriginal.")
+    store(db_path, "older_cv", "cv.txt", b"Senior Analyst, Example Corp, 2019 to 2022.")
+    store(db_path, "older_letter", "letter.txt", b"I am excited to apply for this role.")
+    runner = FakeRunner(text=rewrite("v2"))
+    queue = make_queue(db_path, runner)
+
+    submit(
+        db_path,
+        queue,
+        "full_cv_history",
+        "Fold in the older CV only.",
+        excluded_kinds=["older_letter"],
+    )
+    run_all(queue)
+
+    assert "Senior Analyst, Example Corp, 2019 to 2022." in runner.prompts[0]
+    assert "I am excited to apply for this role." not in runner.prompts[0]
+
+
+def test_excluded_kinds_is_ignored_for_a_kind_with_no_evidence_group(db_path: Path) -> None:
+    """Questionnaire analysis and strategy have no file-pool to exclude (D-261) - sending
+    excluded_kinds for one is simply ignored, not an error."""
+    seed_document(db_path, "full_cv_history", "# Career history\n\nOriginal.")
+    seed_document(db_path, "questionnaire_analysis", "# Questionnaire analysis\n\nOriginal.")
+    store(db_path, "questionnaire", "q.txt", b"Some answers.")
+    runner = FakeRunner(text=rewrite("v2"))
+    queue = make_queue(db_path, runner)
+
+    job_id = submit(
+        db_path,
+        queue,
+        "questionnaire_analysis",
+        "Tighten this up.",
+        excluded_kinds=["older_cv"],
+    )
+    run_all(queue)
+
+    conn = connect(db_path)
+    try:
+        job = get_claude_job(conn, job_id)
+    finally:
+        conn.close()
+    assert job is not None
+    assert job.status == "done"
 
 
 def test_revise_is_refused_when_there_is_no_document_yet(db_path: Path) -> None:

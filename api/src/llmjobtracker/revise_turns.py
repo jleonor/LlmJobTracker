@@ -19,21 +19,37 @@ class ReviseTurn:
     claude_job_id: int
     message: str
     created_at: str
+    # A JSON array of excluded evidence kinds for this one turn (D-260, D-261) - career history
+    # only, never persisted beyond the turn, null for every other output kind.
+    excluded_context: str | None
 
 
 _TABLE: TurnTable[ReviseTurn] = TurnTable(
     name="revise_turns",
-    select_columns=("id", "output_kind", "claude_job_id", "message", "created_at"),
+    select_columns=(
+        "id",
+        "output_kind",
+        "claude_job_id",
+        "message",
+        "created_at",
+        "excluded_context",
+    ),
     scope_columns=("output_kind",),
     build=lambda row: ReviseTurn(**dict(row)),
 )
 
 
 def create_turn(
-    conn: sqlite3.Connection, output_kind: str, claude_job_id: int, message: str
+    conn: sqlite3.Connection,
+    output_kind: str,
+    claude_job_id: int,
+    message: str,
+    excluded_context: str | None = None,
 ) -> int:
     return _TABLE.create(
-        conn, ("output_kind", "claude_job_id", "message"), (output_kind, claude_job_id, message)
+        conn,
+        ("output_kind", "claude_job_id", "message", "excluded_context"),
+        (output_kind, claude_job_id, message, excluded_context),
     )
 
 

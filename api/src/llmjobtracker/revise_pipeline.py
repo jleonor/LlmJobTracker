@@ -19,6 +19,7 @@ and the generated file in its own_* slot, D-84) — a revised document is not a 
 of thing from a generated one, just a later version of it.
 """
 
+import json
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -183,9 +184,19 @@ def _history_block(messages: list[str]) -> str:
 
 
 def submit_revise_turn(
-    conn: sqlite3.Connection, queue: ClaudeJobQueue, output_kind: str, message: str
+    conn: sqlite3.Connection,
+    queue: ClaudeJobQueue,
+    output_kind: str,
+    message: str,
+    excluded_kinds: list[str] | None = None,
 ) -> int:
-    """Queue one Revise (LLM) chat turn for a generated profile document (D-106)."""
+    """Queue one Revise (LLM) chat turn for a generated profile document (D-106).
+
+    `excluded_kinds` (D-260, D-261) only means something for `full_cv_history`, whose evidence is
+    a pool of several file kinds (Master CVs, Older CVs, Older cover letters, Additional files) -
+    the other two output kinds have no group to exclude, so this is silently ignored for them,
+    the same as sending an unknown field would be.
+    """
     if output_kind not in PROMPT_KINDS:
         raise ValueError(f"Unknown output kind: {output_kind}")
     if latest_document(conn, output_kind) is None:
@@ -193,11 +204,14 @@ def submit_revise_turn(
     cleaned = message.strip()
     if not cleaned:
         raise ValueError("The message is empty.")
+    excluded_context = None
+    if output_kind == "full_cv_history" and excluded_kinds:
+        excluded_context = json.dumps(excluded_kinds)
     job_kind = job_kind_for(output_kind)
     job_id = queue.submit(
         conn, f"Revise: {DOCUMENT_FILENAMES[output_kind]}", job_kind, [(job_kind, "")]
     )
-    create_turn(conn, output_kind, job_id, cleaned)
+    create_turn(conn, output_kind, job_id, cleaned, excluded_context)
     return job_id
 
 
@@ -216,13 +230,14 @@ def build_revise_prompt(
     if turn is None:
         raise PromptRejected("This revise turn was not recorded.")
     history = prior_messages(conn, output_kind, turn.id)
+    excluded_kinds = frozenset(json.loads(turn.excluded_context) if turn.excluded_context else ())
 
     rules = writing_rules_text(conn, rules_path)
     parts = [
         f"TASK: revise_{output_kind}",
         PREAMBLE.format(rules=rules),
         INSTRUCTIONS[output_kind],
-        inputs_for(conn, output_kind),
+        inputs_for(conn, output_kind, excluded_kinds),
         document_block(f"CURRENT {DOCUMENT_LABELS[output_kind]}", stored),
         _history_block(history),
         f"=== THE USER'S NEW REQUEST ===\n{turn.message}\n=== END REQUEST ===",
@@ -252,7 +267,12 @@ def _store_revise_result(
         _, current = stored
         document = clean_document(apply_edits(current, answer.edits))
     if output_kind == "full_cv_history":
-        hashes = [file.sha256 for file in usable_files(conn, EVIDENCE_KINDS)]
+        turn = turn_for_job(conn, prompt.claude_job_id)
+        excluded = frozenset(
+            json.loads(turn.excluded_context) if turn and turn.excluded_context else ()
+        )
+        kinds = tuple(k for k in EVIDENCE_KINDS if k not in excluded)
+        hashes = [file.sha256 for file in usable_files(conn, kinds)]
     elif output_kind == "questionnaire_analysis":
         hashes = [file.sha256 for file in usable_files(conn, QUESTIONNAIRE_KINDS)]
     else:

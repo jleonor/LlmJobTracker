@@ -379,6 +379,9 @@ class AddJobResult(BaseModel):
 
 class ReviseTurnCreate(BaseModel):
     message: str
+    # Career history only (D-260, D-261) - evidence kinds to leave out of this one turn. Ignored
+    # for the other two output kinds, which have no group to exclude.
+    excluded_kinds: list[str] | None = None
 
 
 class ReviseTurnView(BaseModel):
@@ -2326,7 +2329,7 @@ def create_app(
         if output_kind not in PROMPT_KINDS:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         try:
-            job_id = submit_revise_turn(conn, queue, output_kind, body.message)
+            job_id = submit_revise_turn(conn, queue, output_kind, body.message, body.excluded_kinds)
         except ProfileNotReady as error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
