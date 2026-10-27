@@ -8,7 +8,9 @@ Phase 13 (Shell/Electron) closed out 2026-10-26: the Electron shell, the Export 
 
 Phase 14 (Dashboard time slider and stale-application tracking) closed out 2026-10-26: the Identified-date range slider (D-277, superseding the original single-handle design, D-271/D-272), the Active/Cold application tracking (D-274/D-275), and the heatmap recolor (D-276) were all confirmed, on the user's go in chat. Already built directly on `main` as part of Phase 13's own work (D-270), so no separate branch or merge was needed.
 
-**Current phase: 15 (Packaging and installers, D-268).**
+Phase 15 (Packaging and installers) closed out 2026-10-28: a Windows installer verified locally end-to-end (no dev Python/Node install needed, app data in the right place, a real Claude Job working), and a macOS installer (unsigned, D-280) confirmed by the user's contact on real Apple Silicon hardware (macOS 14.4.1) after the documented Gatekeeper workaround, were both confirmed, on the user's go in chat. One commit (`.github/workflows/package.yml`'s registration) was applied directly to `main` ahead of the merge - GitHub's `workflow_dispatch` trigger only works for a workflow file already present on the default branch, so there was no way to wait for the phase's own close-out without blocking the user from running the workflow at all in the meantime. Merged into local `main` with `git merge --ff-only` (D-61) once that commit was folded back into the branch; the branch is kept, nothing pushed by Claude.
+
+**No further phase is currently scheduled.** Phase overview's last numbered phase was 15; "Public release" (below) is the remaining checklist item, revisited once the user judges the app ready for it.
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -1318,9 +1320,9 @@ Step list (drafted 2026-10-26, awaiting approval; revised 2026-10-27, D-280: no 
 
 Done when
 - [x] A Windows installer produces a working, installed app with no separate Python/Node install. (2026-10-27: `electron-builder --win` produced `LLM Job Tracker Setup 0.1.0.exe` (NSIS, 164 MB); verified against the unpacked output it installs - launched `LLM Job Tracker.exe` directly from a clean folder with no `uv`/`npm` on `PATH` beyond what's bundled. Its own static server answered `/` with 200, `/api/health` proxied through with the token injected (200, `{"status":"ok"}`), and the database landed at the pointed `LOCALAPPDATA`. Closing the app's process tree left no orphaned backend process.)
-- [ ] A macOS installer produces a working, installed app on real macOS hardware (unsigned - the Gatekeeper workaround is used, not notarization, D-280).
-- [ ] The app's data directory lands in the right OS-idiomatic place on both platforms.
-- [ ] The user's go or no-go on the resulting installers.
+- [x] A macOS installer produces a working, installed app on real macOS hardware (unsigned - the Gatekeeper workaround is used, not notarization, D-280). (2026-10-28: the user's contact confirmed the `.dmg`/`.zip` built by the GitHub Actions workflow opened normally on Apple Silicon, macOS 14.4.1, after clearing the quarantine flag - Gatekeeper's "Operation not permitted" block went away exactly as the workaround note describes, with no Developer ID signature or notarization needed.)
+- [x] The app's data directory lands in the right OS-idiomatic place on both platforms. (2026-10-27: Windows confirmed directly (`%LOCALAPPDATA%\LlmJobTracker\`, step 5's own evidence above); the macOS fallback to `~/Library/Application Support/LlmJobTracker` is covered by `test_data_dir_falls_back_to_macos_application_support` - not separately re-confirmed by the contact inspecting the folder on the 2026-10-28 run, since the app ran normally and nothing in that run would exercise a different path.)
+- [x] The user's go or no-go on the resulting installers. (2026-10-28: confirmed in chat, go.)
 
 ---
 
