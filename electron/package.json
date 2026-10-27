@@ -7,7 +7,8 @@
   "author": "LlmJobTracker",
   "scripts": {
     "start": "electron .",
-    "dist:win": "electron-builder --win"
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac"
   },
   "devDependencies": {
     "electron": "^45.0.0",
@@ -34,6 +35,12 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.productivity",
+      "identity": null
     }
   }
 }
