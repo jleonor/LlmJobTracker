@@ -46,9 +46,10 @@ The Job Applications and Profile pages can hand a read-only export of your data 
 Electron (`electron/main.js`) owns the window and starts the FastAPI backend, which serves the built frontend and answers `/api/*` behind a per-launch token (D-43). The backend holds SQLite storage and a one-job-at-a-time Claude Jobs queue; each job's prompt is built from `Agent/specs/` and `Agent/rules/` and sent through whichever CLI backend is selected in Settings (D-195, D-205). The only traffic that leaves your machine is that CLI's own call to its provider (D-39); the desktop apps on the right are an optional, separate integration (D-210), not part of this request path.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'Poppins, Segoe UI, sans-serif', 'fontSize': '15px', 'lineColor': '#9e8e7c', 'primaryBorderColor': '#31353b', 'primaryTextColor': '#1a1f29'}}}%%
 flowchart TB
-    subgraph Local["Your machine"]
-        Web["React/Vite frontend<br/>web/dist"]
+    subgraph Local["🖥️ Your machine"]
+        Web(["React/Vite frontend<br/>web/dist"])
         API["FastAPI backend<br/>api/src/llmjobtracker<br/>(started by electron/main.js)"]
         DB[("SQLite<br/>%LOCALAPPDATA%\LlmJobTracker")]
         Files[("Managed files<br/>profile + job folders")]
@@ -58,32 +59,59 @@ flowchart TB
         LG["LangGraphRunner<br/>wraps the active backend"]
         CCR["ClaudeCodeRunner"]
         CXR["CodexRunner"]
-        CCLI["Claude Code CLI"]
-        CXLI["Codex CLI"]
+        CCLI(["Claude Code CLI"])
+        CXLI(["Codex CLI"])
+        ClaudeDesktop("Claude Desktop")
+        ChatGPTDesktop("ChatGPT desktop app")
 
         Web <-->|"/api/* via X-Launch-Token"| API
         API --> DB
         API --> Files
         API --> Pipelines
-        Specs --> Pipelines
-        Pipelines --> Queue
-        Queue --> LG
-        LG --> CCR
-        LG --> CXR
-        CCR --> CCLI
-        CXR --> CXLI
-        API -.->|"Open LLM app<br/>read-only export + deep link"| ClaudeDesktop["Claude Desktop"]
-        API -.->|"Open LLM app<br/>read-only export + deep link"| ChatGPTDesktop["ChatGPT desktop app"]
+        Specs -.->|reads| Pipelines
+        Pipelines ==> Queue
+        Queue ==> LG
+        LG ==> CCR
+        LG ==> CXR
+        CCR ==> CCLI
+        CXR ==> CXLI
+        API -.->|"Open LLM app<br/>read-only export + deep link"| ClaudeDesktop
+        API -.->|"Open LLM app<br/>read-only export + deep link"| ChatGPTDesktop
     end
 
-    subgraph Cloud["Cloud — only the model calls leave your machine"]
-        Anthropic["Anthropic"]
-        OpenAI["OpenAI"]
+    subgraph Cloud["☁️ Cloud — only the model calls leave your machine"]
+        Anthropic{{"Anthropic"}}
+        OpenAI{{"OpenAI"}}
     end
 
-    CCLI --> Anthropic
-    CXLI --> OpenAI
+    CCLI ==> Anthropic
+    CXLI ==> OpenAI
+
+    classDef frontend fill:#3987e5,stroke:#1d4e8f,color:#ffffff,stroke-width:1px
+    classDef hub fill:#f2a93b,stroke:#c17f12,color:#2a1800,stroke-width:2px
+    classDef storage fill:#199e70,stroke:#0f6b4b,color:#ffffff,stroke-width:1px
+    classDef knowledge fill:#9085e9,stroke:#5f55c4,color:#ffffff,stroke-width:1px
+    classDef orchestration fill:#c98500,stroke:#8f5f00,color:#2a1800,stroke-width:1px
+    classDef runner fill:#d55181,stroke:#a3305a,color:#ffffff,stroke-width:1px
+    classDef cli fill:#e66767,stroke:#b53f3f,color:#ffffff,stroke-width:1px
+    classDef optional fill:#262a30,stroke:#565b63,color:#9e8e7c,stroke-width:1px,stroke-dasharray:3 3
+    classDef cloud fill:#181c21,stroke:#f2a93b,color:#e0e2e9,stroke-width:2px
+
+    class Web frontend
+    class API hub
+    class DB,Files storage
+    class Specs knowledge
+    class Pipelines,Queue orchestration
+    class LG,CCR,CXR runner
+    class CCLI,CXLI cli
+    class ClaudeDesktop,ChatGPTDesktop optional
+    class Anthropic,OpenAI cloud
+
+    style Local fill:#eef1f6,stroke:#31353b,color:#1a1f29,stroke-width:1px
+    style Cloud fill:#fff6e8,stroke:#f2a93b,stroke-width:1.5px,color:#4a3300
 ```
+
+Node colors follow the app's own validated chart palette and amber accent (`web/src/index.css`): blue for the frontend, amber for the backend hub, green for storage, purple for the prompt contracts, gold for orchestration, pink for the runner layer, red for the CLI processes, and a dashed grey for the optional desktop-app integration. Thick arrows trace the main document-generation path (listing → queue → runner → CLI → provider); dotted arrows mark the two things that aren't on that path — reading prompt contracts, and the optional Open LLM app export.
 
 ## Key files
 
