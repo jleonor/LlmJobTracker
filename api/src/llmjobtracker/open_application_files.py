@@ -13,6 +13,8 @@ from typing import Final
 
 from pydantic import BaseModel
 
+from llmjobtracker.extraction import extract
+
 # Characters Windows rejects in a file or folder name (same as job_files.py's own).
 _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*]')
 
@@ -237,7 +239,10 @@ def store_open_application_file(
     content: bytes,
 ) -> OpenApplicationFile:
     """An Additional files upload (kind `other`) — mirrors job_files.store_job_file, trimmed to
-    this app's own allowed extensions (no html: there's no Listing page to save here, D-253)."""
+    this app's own allowed extensions (no html: there's no Listing page to save here, D-253).
+    Extracted at upload time (D-282, matching job_files.py's own D-262) so Application history's
+    Generate/Revise can read it back the same way a Job Application's Additional files already
+    can; extract() itself returns "unsupported" for .eml/.msg, same as job_files.py's path."""
     name = (original_name or "").strip().replace("\\", "/").rsplit("/", 1)[-1][:200] or "upload"
     extension = Path(name).suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
@@ -252,6 +257,7 @@ def store_open_application_file(
     target, name = _unique_target(folder, name, content)
     target.write_bytes(content)
 
+    result = extract(target)
     file_id = insert_open_application_file(
         conn,
         application_id,
@@ -259,6 +265,15 @@ def store_open_application_file(
         name=name,
         stored_path=target.relative_to(files_root).as_posix(),
         sha256=hashlib.sha256(content).hexdigest(),
+        extraction_status=result.status,
+        extraction_message=result.message,
+        extracted_text=result.text,
     )
     conn.commit()
-    return OpenApplicationFile(id=file_id, kind="other", name=name)
+    return OpenApplicationFile(
+        id=file_id,
+        kind="other",
+        name=name,
+        extraction_status=result.status,
+        extraction_message=result.message,
+    )

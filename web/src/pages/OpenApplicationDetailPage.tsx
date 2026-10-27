@@ -24,6 +24,7 @@ import {
   fetchProfileOutputs,
   generateOpenApplicationCoverLetter,
   generateOpenApplicationCv,
+  generateOpenApplicationHistory,
   generateOpenApplicationIntroductionMessage,
   openOpenApplicationFile,
   patchOpenApplication,
@@ -445,7 +446,7 @@ function CompanyDetailsEditDialog({
   )
 }
 
-// --- Application history (manual only, D-253) -------------------------------------------------
+// --- Application history (Generate/Revise added D-282, reopening D-253's "manual only" call) ---
 
 function StatusTimeline({ history, currentStatus }: { history: StatusHistoryEntry[]; currentStatus: string }) {
   const dateByStatus = new Map(history.map((entry) => [entry.status, entry.changed_at]))
@@ -503,13 +504,28 @@ function ApplicationHistory({
   onChanged: () => void
 }) {
   const [editOpen, setEditOpen] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const hasData =
+    application.notes !== null || application.next_action !== null || application.due_date !== null
+  const ready = Boolean(application.target_name)
   return (
     <Section
       title="Application history"
       actions={
-        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-          Edit
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            Edit
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!ready}
+            title={ready ? undefined : 'Fill in Company details first.'}
+            onClick={() => setGenerateOpen(true)}
+          >
+            {llmLabel(hasData)}
+          </Button>
+        </div>
       }
     >
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
@@ -528,7 +544,56 @@ function ApplicationHistory({
         onOpenChange={setEditOpen}
         onSaved={onChanged}
       />
+      {hasData ? (
+        <OpenApplicationReviseOverlay
+          applicationId={application.id}
+          sectionKind="application_history"
+          title="Application history"
+          leftPane={
+            <CurrentApplicationHistoryPane
+              notes={application.notes}
+              nextAction={application.next_action}
+              dueDate={application.due_date}
+            />
+          }
+          open={generateOpen}
+          onOpenChange={setGenerateOpen}
+          onChanged={onChanged}
+        />
+      ) : (
+        <GenerateSectionOverlay
+          title="Application history"
+          hasData={hasData}
+          open={generateOpen}
+          onOpenChange={setGenerateOpen}
+          onSubmit={() => generateOpenApplicationHistory(application.id)}
+          onChanged={onChanged}
+        />
+      )}
     </Section>
+  )
+}
+
+// OpenApplicationReviseOverlay's left pane for Application history, mirroring
+// JobApplicationDetailPage.tsx's own CurrentApplicationHistoryPane.
+function CurrentApplicationHistoryPane({
+  notes,
+  nextAction,
+  dueDate,
+}: {
+  notes: string | null
+  nextAction: string | null
+  dueDate: string | null
+}) {
+  if (!notes && !nextAction && !dueDate) {
+    return <p className="text-sm text-muted-foreground">Nothing to revise yet.</p>
+  }
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <Field label="Notes">{notes ?? EMPTY}</Field>
+      <Field label="Next action">{nextAction ?? EMPTY}</Field>
+      <Field label="Due date">{dueDate ?? EMPTY}</Field>
+    </div>
   )
 }
 

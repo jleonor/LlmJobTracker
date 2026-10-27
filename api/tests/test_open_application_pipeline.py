@@ -1,15 +1,20 @@
-"""Tests for Open Applications' four Generate/Revise (LLM) sections (Agent/specs/
+"""Tests for Open Applications' five Generate/Revise (LLM) sections (Agent/specs/
 open-application-llm-steps.md): Company details, Tailored CV, Cover letter, Introduction
-message.
+message, and Application history (D-282).
 """
 
 from pathlib import Path
 
 from llmjobtracker.claude_job_queue import ClaudeJobQueue
 from llmjobtracker.claude_jobs import get_claude_job, prompt_exchange
-from llmjobtracker.open_application_files import latest_open_application_file_of_kind
+from llmjobtracker.open_application_files import (
+    latest_open_application_file_of_kind,
+    store_open_application_file,
+)
 from llmjobtracker.open_application_pipeline import (
+    OpenApplicationReviseNotReady,
     OpenApplicationStepNotReady,
+    application_history_ready,
     build_open_application_identity_prompt,
     cover_letter_ready,
     create_open_application,
@@ -20,6 +25,7 @@ from llmjobtracker.open_application_pipeline import (
     parse_introduction_message_answer,
     parse_open_application_identity_answer,
     submit_extract_open_application_identity,
+    submit_generate_application_history,
     submit_generate_cover_letter,
     submit_generate_cv,
     submit_generate_introduction_message,
@@ -29,6 +35,7 @@ from llmjobtracker.open_application_research import ResearchItemInput, replace_r
 from llmjobtracker.open_applications import (
     count_open_applications,
     get_open_application_detail,
+    replace_status_history,
     set_master_cv,
 )
 from llmjobtracker.profile_files import store_profile_file
@@ -415,3 +422,130 @@ def test_company_details_revise_can_exclude_one_research_item(db_path: Path) -> 
     assert exchange is not None
     assert "They raised a Series B in 2026." not in (exchange.prompt_text or "")
     assert "They are hiring for a remote team." in (exchange.prompt_text or "")
+
+
+# --- Application history (D-282) -----------------------------------------------------------
+
+
+def test_application_history_ready_requires_company_details(db_path: Path) -> None:
+    # insert_open_application already seeds an initial "Identified" status_history row at
+    # creation time, so the status-history half of the gate is never actually the blocker in
+    # practice - Company details (target_name) is the one real distinguishing condition.
+    application_id = add_open_application(db_path, {})
+    conn = connect(db_path)
+    assert application_history_ready(conn, application_id) is False
+
+    application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
+    conn = connect(db_path)
+    assert application_history_ready(conn, application_id) is True
+
+
+def test_submit_generate_application_history_rejects_when_not_ready(db_path: Path) -> None:
+    queue = make_queue(db_path, FakeRunner(text="x"))
+    application_id = add_open_application(db_path, {})
+    conn = connect(db_path)
+    try:
+        submit_generate_application_history(conn, queue, application_id)
+        raised = False
+    except OpenApplicationStepNotReady:
+        raised = True
+    assert raised
+
+
+def test_generate_application_history_end_to_end_writes_notes_too(db_path: Path) -> None:
+    application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
+    conn = connect(db_path)
+    replace_status_history(conn, application_id, [("Identified", "2026-10-01T09:00:00Z")])
+    conn.commit()
+
+    answer_text = (
+        "=== NOTES ===\nIdentified as a talent pool lead on Oct 1.\n=== END NOTES ===\n\n"
+        "=== NEXT ACTION ===\nFollow up in two weeks\n=== END NEXT ACTION ===\n\n"
+        "=== DUE DATE ===\n2026-10-15\n=== END DUE DATE ===\n"
+    )
+    runner = FakeRunner(text=answer_text)
+    queue = make_queue(db_path, runner)
+    job_id = submit_generate_application_history(conn, queue, application_id)
+    run_all(queue)
+
+    assert "Acme Talent Pool" in runner.prompts[0]  # the Company details block
+    assert "Identified" in runner.prompts[0]  # the status history block
+
+    job = get_claude_job(conn, job_id)
+    assert job is not None
+    assert job.status == "done"
+    detail = get_open_application_detail(conn, application_id)
+    assert detail is not None
+    assert detail.notes == "Identified as a talent pool lead on Oct 1."
+    assert detail.next_action == "Follow up in two weeks"
+    assert detail.due_date == "2026-10-15"
+
+
+def test_generate_application_history_reads_additional_files_too(db_path: Path) -> None:
+    application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
+    conn = connect(db_path)
+    replace_status_history(conn, application_id, [("Identified", "2026-10-01T09:00:00Z")])
+    store_open_application_file(
+        conn,
+        db_path.parent / "files",
+        application_id,
+        "Acme Talent Pool",
+        "notes.txt",
+        b"The recruiter mentioned a Nov 3 start date.",
+    )
+    conn.commit()
+
+    answer_text = (
+        "=== NOTES ===\nIdentified; the recruiter mentioned a Nov 3 start date.\n"
+        "=== END NOTES ===\n\n=== NEXT ACTION ===\n=== END NEXT ACTION ===\n\n"
+        "=== DUE DATE ===\n=== END DUE DATE ===\n"
+    )
+    runner = FakeRunner(text=answer_text)
+    queue = make_queue(db_path, runner)
+    submit_generate_application_history(conn, queue, application_id)
+    run_all(queue)
+
+    assert "The recruiter mentioned a Nov 3 start date." in runner.prompts[0]
+
+
+def test_revise_application_history_patches_next_action_only(db_path: Path) -> None:
+    application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
+    conn = connect(db_path)
+    replace_status_history(conn, application_id, [("Identified", "2026-10-01T09:00:00Z")])
+    answer_text = (
+        "=== NOTES ===\nunchanged\n=== END NOTES ===\n\n"
+        "=== NEXT ACTION ===\nSend a follow-up email\n=== END NEXT ACTION ===\n\n"
+        "=== DUE DATE ===\nunchanged\n=== END DUE DATE ===\n"
+    )
+    queue = make_queue(db_path, FakeRunner(text=answer_text))
+    submit_generate_application_history(
+        conn, queue, application_id
+    )  # needs _application_history_has_data to be true for the revise gate below
+    run_all(queue)
+
+    queue.set_runner(FakeRunner(text=answer_text))
+    job_id = submit_open_application_revise_turn(
+        conn, queue, application_id, "application_history", "Add a follow-up next action"
+    )
+    run_all(queue)
+
+    job = get_claude_job(conn, job_id)
+    assert job is not None
+    assert job.status == "done"
+    detail = get_open_application_detail(conn, application_id)
+    assert detail is not None
+    assert detail.next_action == "Send a follow-up email"
+
+
+def test_revise_application_history_rejects_when_nothing_to_revise(db_path: Path) -> None:
+    queue = make_queue(db_path, FakeRunner(text="x"))
+    application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
+    conn = connect(db_path)
+    try:
+        submit_open_application_revise_turn(
+            conn, queue, application_id, "application_history", "Add a next action"
+        )
+        raised = False
+    except OpenApplicationReviseNotReady:
+        raised = True
+    assert raised

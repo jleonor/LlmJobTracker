@@ -153,6 +153,9 @@ from llmjobtracker.open_application_pipeline import (
     create_open_application as create_open_application_row,
 )
 from llmjobtracker.open_application_pipeline import (
+    submit_generate_application_history as submit_generate_open_application_history,
+)
+from llmjobtracker.open_application_pipeline import (
     submit_generate_cover_letter as submit_generate_open_application_cover_letter,
 )
 from llmjobtracker.open_application_pipeline import (
@@ -1770,6 +1773,25 @@ def create_app(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         try:
             job_id = submit_generate_introduction_message(conn, queue, application_id)
+        except OpenApplicationStepNotReady as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
+        return _job_or_404(conn, job_id)
+
+    @app.post(
+        "/open-applications/{application_id}/application-history/generate",
+        response_model=ClaudeJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(require_token)],
+    )
+    def generate_open_application_history(
+        application_id: int, conn: Annotated[Connection, Depends(get_db)]
+    ) -> ClaudeJob:
+        if get_open_application_detail(conn, application_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            job_id = submit_generate_open_application_history(conn, queue, application_id)
         except OpenApplicationStepNotReady as error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)

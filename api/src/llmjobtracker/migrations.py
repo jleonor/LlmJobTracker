@@ -68,11 +68,18 @@ OPEN_APPLICATION_STATUSES = ("Identified", "Applied", "Rejected", "Withdrawn", "
 OPEN_APPLICATION_TARGET_TYPES = ("talent_pool", "unsolicited", "cold_outreach")
 OPEN_APPLICATION_FILE_KINDS = ("tailored_cv", "cover_letter", "introduction_message", "other")
 OPEN_APPLICATION_RESEARCH_SOURCE_TYPES = ("url", "text")
-OPEN_APPLICATION_REVISE_SECTION_KINDS = (
+# Migration 35's own four-kind shape, frozen here the same way _V18_JOB_REVISE_SECTION_KINDS is -
+# migration 39 widens the CHECK to add "application_history" (D-282), reopening D-253's "manual
+# only" call.
+_V35_OPEN_APPLICATION_REVISE_SECTION_KINDS = (
     "company_details",
     "tailored_cv",
     "cover_letter",
     "introduction_message",
+)
+OPEN_APPLICATION_REVISE_SECTION_KINDS = (
+    *_V35_OPEN_APPLICATION_REVISE_SECTION_KINDS,
+    "application_history",
 )
 
 # Phase 2 values (D-62, D-64, D-66; Agent/specs/profile-steps.md).
@@ -523,6 +530,37 @@ CREATE TABLE job_revise_turns_old (
     message TEXT NOT NULL CHECK (message <> ''),
     attachment_job_file_id INTEGER REFERENCES job_files(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL DEFAULT ({_NOW})
+)
+"""
+
+# Migration 39 (D-282): widens open_application_revise_turns.section_kind's CHECK to add
+# "application_history" - the same table-rebuild migration 22 used for job_revise_turns.section_
+# kind above, since SQLite can't ALTER a CHECK. Includes migration 38's excluded_context column,
+# which this table already has by now.
+_V39_OPEN_APPLICATION_REVISE_TURNS_NEW = f"""
+CREATE TABLE open_application_revise_turns_new (
+    id INTEGER PRIMARY KEY,
+    open_application_id INTEGER NOT NULL REFERENCES open_applications(id) ON DELETE CASCADE,
+    section_kind TEXT NOT NULL
+        CHECK (section_kind IN ({_in_list(OPEN_APPLICATION_REVISE_SECTION_KINDS)})),
+    claude_job_id INTEGER NOT NULL REFERENCES claude_jobs(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT ({_NOW}),
+    excluded_context TEXT
+)
+"""
+
+# migration 39's down step: back to migration 35's own four-kind shape.
+_V39_OPEN_APPLICATION_REVISE_TURNS_OLD = f"""
+CREATE TABLE open_application_revise_turns_old (
+    id INTEGER PRIMARY KEY,
+    open_application_id INTEGER NOT NULL REFERENCES open_applications(id) ON DELETE CASCADE,
+    section_kind TEXT NOT NULL
+        CHECK (section_kind IN ({_in_list(_V35_OPEN_APPLICATION_REVISE_SECTION_KINDS)})),
+    claude_job_id INTEGER NOT NULL REFERENCES claude_jobs(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT ({_NOW}),
+    excluded_context TEXT
 )
 """
 
@@ -1255,7 +1293,9 @@ MIGRATIONS: tuple[Migration, ...] = (
                 open_application_id INTEGER NOT NULL
                     REFERENCES open_applications(id) ON DELETE CASCADE,
                 section_kind TEXT NOT NULL
-                    CHECK (section_kind IN ({_in_list(OPEN_APPLICATION_REVISE_SECTION_KINDS)})),
+                    CHECK (
+                        section_kind IN ({_in_list(_V35_OPEN_APPLICATION_REVISE_SECTION_KINDS)})
+                    ),
                 claude_job_id INTEGER NOT NULL REFERENCES claude_jobs(id) ON DELETE CASCADE,
                 message TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT ({_NOW})
@@ -1331,6 +1371,30 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE revise_turns DROP COLUMN excluded_context",
             "ALTER TABLE job_revise_turns DROP COLUMN excluded_context",
             "ALTER TABLE open_application_revise_turns DROP COLUMN excluded_context",
+        ),
+    ),
+    Migration(
+        version=39,
+        name="widen open_application_revise_turns.section_kind to add application_history (D-282)",
+        up=(
+            _V39_OPEN_APPLICATION_REVISE_TURNS_NEW,
+            "INSERT INTO open_application_revise_turns_new "
+            "(id, open_application_id, section_kind, claude_job_id, message, created_at, "
+            "excluded_context) "
+            "SELECT id, open_application_id, section_kind, claude_job_id, message, created_at, "
+            "excluded_context FROM open_application_revise_turns",
+            "DROP TABLE open_application_revise_turns",
+            "ALTER TABLE open_application_revise_turns_new RENAME TO open_application_revise_turns",
+        ),
+        down=(
+            _V39_OPEN_APPLICATION_REVISE_TURNS_OLD,
+            "INSERT INTO open_application_revise_turns_old "
+            "(id, open_application_id, section_kind, claude_job_id, message, created_at, "
+            "excluded_context) "
+            "SELECT id, open_application_id, section_kind, claude_job_id, message, created_at, "
+            "excluded_context FROM open_application_revise_turns",
+            "DROP TABLE open_application_revise_turns",
+            "ALTER TABLE open_application_revise_turns_old RENAME TO open_application_revise_turns",
         ),
     ),
 )

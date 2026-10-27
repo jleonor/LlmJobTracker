@@ -30,6 +30,7 @@ const OPEN_APPLICATION_REVISE_CONTEXT: Record<string, string[]> = {
     'Company details',
   ],
   introduction_message: ['Career history', 'Questionnaire report', 'Strategy', 'Company details'],
+  application_history: ['Company details', 'Status history', 'Additional files'],
 }
 
 export function OpenApplicationReviseOverlay({

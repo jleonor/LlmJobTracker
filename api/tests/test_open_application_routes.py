@@ -246,3 +246,34 @@ def test_revise_turns_unknown_section_404s(client: TestClient) -> None:
     application_id = created["application_id"]
     response = client.get(f"/open-applications/{application_id}/revise/not_a_section/turns")
     assert response.status_code == 404
+
+
+def test_generate_application_history_for_a_missing_application_404s(client: TestClient) -> None:
+    assert client.post("/open-applications/999/application-history/generate").status_code == 404
+
+
+def test_generate_application_history_before_ready_400s(client: TestClient) -> None:
+    created = client.post(
+        "/open-applications",
+        json={"research_items": [{"source_type": "text", "content": "Acme is hiring."}]},
+    ).json()  # no target_name - Company details isn't ready yet
+    response = client.post(
+        f"/open-applications/{created['application_id']}/application-history/generate"
+    )
+    assert response.status_code == 400
+
+
+def test_revise_turns_recognizes_application_history_as_a_known_section(
+    client: TestClient,
+) -> None:
+    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    application_id = created["application_id"]
+    listed = client.get(f"/open-applications/{application_id}/revise/application_history/turns")
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+    started = client.post(
+        f"/open-applications/{application_id}/revise/application_history/turns",
+        json={"message": "Add a next action"},
+    )
+    assert started.status_code == 400  # nothing generated yet to revise

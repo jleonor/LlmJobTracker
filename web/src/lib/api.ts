@@ -1152,6 +1152,12 @@ export function generateOpenApplicationIntroductionMessage(id: number): Promise<
   })
 }
 
+export function generateOpenApplicationHistory(id: number): Promise<ClaudeJob> {
+  return request<ClaudeJob>(`/api/open-applications/${id}/application-history/generate`, {
+    method: 'POST',
+  })
+}
+
 export function fetchOpenApplicationReviseTurns(
   applicationId: number,
   sectionKind: string,
