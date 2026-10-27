@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight, Download, FolderOpen } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Download, FolderOpen, Pencil } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
@@ -147,7 +147,7 @@ export function JobApplicationDetailPage({
       <Flags application={application} />
 
       <div className="flex flex-col gap-1">
-        <p className="text-sm text-muted-foreground">{application.company}</p>
+        <EditableCompanyName application={application} onChanged={onChanged} />
         <div className="flex flex-wrap items-center gap-2">
           <h1 id="job-detail-heading" className="text-xl font-semibold tracking-tight">
             {application.role_title}
@@ -168,6 +168,92 @@ export function JobApplicationDetailPage({
       <ApplicationHistory application={application} onChanged={onChanged} />
       <Files application={application} onChanged={onChanged} />
     </section>
+  )
+}
+
+// The job page header's own hover-pencil edit (D-283) - a folder collision merges this
+// application's files into the existing company folder rather than rejecting the edit, unlike
+// role_title's own collision (Job details' Edit dialog, D-207).
+function EditableCompanyName({
+  application,
+  onChanged,
+}: {
+  application: JobApplicationDetail
+  onChanged: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(application.company)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function startEditing() {
+    setValue(application.company)
+    setError(null)
+    setEditing(true)
+  }
+
+  async function save() {
+    const trimmed = value.trim()
+    if (trimmed === application.company) {
+      setEditing(false)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await patchJobApplication(application.id, { company: trimmed })
+      setEditing(false)
+      onChanged()
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : 'This could not be saved.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <Input
+            autoFocus
+            value={value}
+            disabled={saving}
+            className="h-7 max-w-xs text-sm"
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void save()
+              if (event.key === 'Escape') setEditing(false)
+            }}
+          />
+          <Button variant="outline" size="sm" disabled={saving} onClick={() => void save()}>
+            {saving ? 'Saving...' : 'Save'}
+          </Button>
+          <Button variant="ghost" size="sm" disabled={saving} onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+        </div>
+        {error && (
+          <p role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="group/company flex items-center gap-1.5">
+      <p className="text-sm text-muted-foreground">{application.company}</p>
+      <button
+        type="button"
+        aria-label="Edit company name"
+        className="opacity-0 transition-opacity group-hover/company:opacity-100 focus-visible:opacity-100"
+        onClick={startEditing}
+      >
+        <Pencil className="size-3.5 text-muted-foreground hover:text-foreground" aria-hidden="true" />
+      </button>
+    </div>
   )
 }
 

@@ -599,6 +599,186 @@ def test_edit_renames_the_folder_even_with_no_files_yet(client: TestClient, db_p
     assert response.status_code == 200
 
 
+# --- Company rename (D-283) -----------------------------------------------------------------
+
+
+def test_edit_writes_company(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+
+    response = client.patch(f"/job-applications/{app_id}", json={"company": "Acme Corp"})
+
+    assert response.status_code == 200
+    assert response.json()["company"] == "Acme Corp"
+
+
+def test_edit_trims_company(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path)
+
+    response = client.patch(f"/job-applications/{app_id}", json={"company": "  Acme Corp  "})
+
+    assert response.status_code == 200
+    assert response.json()["company"] == "Acme Corp"
+
+
+def test_edit_rejects_a_blank_company(client: TestClient, db_path: Path) -> None:
+    app_id = add_application(db_path, company="Co")
+
+    response = client.patch(f"/job-applications/{app_id}", json={"company": "   "})
+
+    assert response.status_code == 400
+    unchanged = client.get(f"/job-applications/{app_id}")
+    assert unchanged.json()["company"] == "Co"
+
+
+def test_edit_renames_the_company_folder_and_its_stored_files(
+    client: TestClient, db_path: Path
+) -> None:
+    files_root = db_path.parent / "files"
+    app_id = add_application(db_path, company="Co", role_title="Analyst")
+    conn = connect(db_path)
+    try:
+        folder = files_root / "Co" / "Analyst"
+        folder.mkdir(parents=True)
+        (folder / "Job Listing.md").write_text("Some listing text.", encoding="utf-8")
+        insert_job_file(
+            conn,
+            app_id,
+            kind="listing",
+            name="Job Listing.md",
+            stored_path="Co/Analyst/Job Listing.md",
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client.patch(f"/job-applications/{app_id}", json={"company": "Acme Corp"})
+
+    assert response.status_code == 200
+    assert not folder.exists()
+    assert not (files_root / "Co").exists()  # the old company folder is cleaned up too
+    new_folder = files_root / "Acme Corp" / "Analyst"
+    assert (new_folder / "Job Listing.md").read_text(encoding="utf-8") == "Some listing text."
+
+    conn = connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT stored_path FROM job_files WHERE job_application_id = ?", (app_id,)
+        ).fetchone()
+        assert row["stored_path"] == "Acme Corp/Analyst/Job Listing.md"
+    finally:
+        conn.close()
+
+
+def test_edit_renaming_company_to_the_same_name_is_a_no_op(
+    client: TestClient, db_path: Path
+) -> None:
+    app_id = add_application(db_path, company="Co", role_title="Analyst")
+
+    response = client.patch(f"/job-applications/{app_id}", json={"company": "Co"})
+
+    assert response.status_code == 200
+    assert response.json()["company"] == "Co"
+
+
+def test_edit_renames_the_company_folder_even_with_no_files_yet(
+    client: TestClient, db_path: Path
+) -> None:
+    app_id = add_application(db_path, company="Co", role_title="Analyst")
+
+    response = client.patch(f"/job-applications/{app_id}", json={"company": "Acme Corp"})
+
+    assert response.status_code == 200
+
+
+def test_edit_merges_into_an_existing_company_folder_on_collision(
+    client: TestClient, db_path: Path
+) -> None:
+    """D-283: unlike role_title's own collision (rejected, D-207), a company rename onto an
+    already-existing folder merges this application's own files into it instead."""
+    files_root = db_path.parent / "files"
+    app_id = add_application(db_path, company="Old Name", role_title="Analyst")
+    conn = connect(db_path)
+    try:
+        old_folder = files_root / "Old Name" / "Analyst"
+        old_folder.mkdir(parents=True)
+        (old_folder / "Job Listing.md").write_text("My own listing.", encoding="utf-8")
+        insert_job_file(
+            conn,
+            app_id,
+            kind="listing",
+            name="Job Listing.md",
+            stored_path="Old Name/Analyst/Job Listing.md",
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    # Another application already has a file at the target company+role folder.
+    existing_folder = files_root / "Acme Corp" / "Analyst"
+    existing_folder.mkdir(parents=True)
+    (existing_folder / "Notes.txt").write_text("Someone else's file.", encoding="utf-8")
+
+    response = client.patch(f"/job-applications/{app_id}", json={"company": "Acme Corp"})
+
+    assert response.status_code == 200  # merged, not rejected
+    assert not old_folder.exists()
+    assert (existing_folder / "Notes.txt").read_text(encoding="utf-8") == "Someone else's file."
+    assert (existing_folder / "Job Listing.md").read_text(encoding="utf-8") == "My own listing."
+
+    conn = connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT stored_path FROM job_files WHERE job_application_id = ?", (app_id,)
+        ).fetchone()
+        assert row["stored_path"] == "Acme Corp/Analyst/Job Listing.md"
+    finally:
+        conn.close()
+
+
+def test_edit_merges_and_disambiguates_a_name_clash_inside_the_merged_folder(
+    client: TestClient, db_path: Path
+) -> None:
+    """Same as above, but the existing folder already has a same-named file - the incoming one
+    is kept (never overwritten) under a hash-suffixed name, the same rule a plain upload follows."""
+    files_root = db_path.parent / "files"
+    app_id = add_application(db_path, company="Old Name", role_title="Analyst")
+    conn = connect(db_path)
+    try:
+        old_folder = files_root / "Old Name" / "Analyst"
+        old_folder.mkdir(parents=True)
+        (old_folder / "Job Listing.md").write_text("My own listing.", encoding="utf-8")
+        insert_job_file(
+            conn,
+            app_id,
+            kind="listing",
+            name="Job Listing.md",
+            stored_path="Old Name/Analyst/Job Listing.md",
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    existing_folder = files_root / "Acme Corp" / "Analyst"
+    existing_folder.mkdir(parents=True)
+    (existing_folder / "Job Listing.md").write_text("A different listing.", encoding="utf-8")
+
+    response = client.patch(f"/job-applications/{app_id}", json={"company": "Acme Corp"})
+
+    assert response.status_code == 200
+    assert (existing_folder / "Job Listing.md").read_text(
+        encoding="utf-8"
+    ) == "A different listing."
+
+    conn = connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT stored_path FROM job_files WHERE job_application_id = ?", (app_id,)
+        ).fetchone()
+        stored_path = str(row["stored_path"])
+    finally:
+        conn.close()
+    assert stored_path != "Acme Corp/Analyst/Job Listing.md"  # disambiguated, not overwritten
+    assert (files_root / stored_path).read_text(encoding="utf-8") == "My own listing."
+
+
 # --- Master CV ---------------------------------------------------------------------------------
 
 

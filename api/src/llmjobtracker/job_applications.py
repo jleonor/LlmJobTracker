@@ -12,7 +12,12 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from llmjobtracker.job_files import JobApplicationFile, list_job_files, managed_folder
+from llmjobtracker.job_files import (
+    JobApplicationFile,
+    _unique_target,
+    list_job_files,
+    managed_folder,
+)
 
 DEFAULT_STATUS = "Identified"
 # D-44: forward order. A Job Application's current status (D-117) is the furthest of these it has
@@ -31,8 +36,9 @@ END_STATUSES = ("Rejected", "Withdrawn", "Expired")
 # details' own Edit dialog, free text, same as the rest of that form. role_title (D-207) lives
 # there too - unlike every other field here it is NOT NULL and renames the managed files folder
 # on disk (update_job_application below), so it gets its own validation rather than a bare
-# column write. company is deliberately not included: nothing asked for renaming it, and doing so
-# would need the same folder-rename treatment.
+# column write. company (D-283) got the same treatment once renaming it was actually asked for -
+# its own files are moved (and merged into an existing same-named folder, rather than rejected
+# the way role_title's own collision is) by the same function.
 _EDITABLE_JSON_COLUMNS = frozenset({"requirements", "fit", "gaps", "unclear", "interview_prep"})
 _EDITABLE_COLUMNS = frozenset(
     {
@@ -48,6 +54,7 @@ _EDITABLE_COLUMNS = frozenset(
         "due_date",
         "strategy",
         "role_title",
+        "company",
     }
 )
 
@@ -153,6 +160,9 @@ class JobApplicationEdit(BaseModel):
     # other field here it can never actually be cleared (None/blank is rejected, not written) -
     # see update_job_application.
     role_title: str | None = None
+    # D-283: the job page header's own hover-pencil edit, not part of the Job details form - same
+    # never-blank rule as role_title, but a folder collision merges instead of rejecting.
+    company: str | None = None
     portal_name: str | None = None
     portal_url: str | None = None
     location: str | None = None
@@ -432,6 +442,55 @@ class InvalidRoleTitle(Exception):
     already-existing managed folder under the same company."""
 
 
+class InvalidCompany(Exception):
+    """A company edit (D-283) was blank."""
+
+
+def _move_application_files(
+    conn: sqlite3.Connection,
+    files_root: Path,
+    application_id: int,
+    old_folder: Path,
+    new_folder: Path,
+) -> None:
+    """Moves this application's own files from `old_folder` to `new_folder`, used by both a
+    company and a role_title rename (D-283).
+
+    Moved file by file, scoped to `application_id`'s own `job_files` rows - never the whole
+    folder at once - so this stays correct even if `old_folder` turns out to already be shared
+    with another application (the stale-duplicate-folder bug D-284 investigates separately): a
+    sibling's files are simply left where they are. `new_folder` may already exist (another
+    application's folder, or the target company's own existing folder) - each file is placed
+    there via `_unique_target`, the same never-overwrite, hash-suffix-on-a-name-clash rule a
+    plain upload already follows, so this doubles as the "merge into the existing folder" the
+    user asked for rather than a special case of its own.
+    """
+    rows = conn.execute(
+        "SELECT id, stored_path FROM job_files WHERE job_application_id = ?", (application_id,)
+    ).fetchall()
+    if not rows:
+        return
+    new_folder.mkdir(parents=True, exist_ok=True)
+    updates: list[tuple[str, int]] = []
+    for row in rows:
+        old_path = files_root / str(row["stored_path"])
+        if not old_path.exists():
+            continue
+        target, _ = _unique_target(new_folder, old_path.name, old_path.read_bytes())
+        old_path.rename(target)
+        updates.append((target.relative_to(files_root).as_posix(), row["id"]))
+    with conn:
+        for new_stored, file_id in updates:
+            conn.execute("UPDATE job_files SET stored_path = ? WHERE id = ?", (new_stored, file_id))
+    # Clean up now-empty folders left behind - never if a sibling application's files mean they
+    # aren't actually empty.
+    for folder in (old_folder, old_folder.parent):
+        try:
+            folder.rmdir()
+        except OSError:
+            break  # not empty, or doesn't exist - leave it, and don't try its parent either
+
+
 def update_job_application(
     conn: sqlite3.Connection,
     application_id: int,
@@ -443,9 +502,11 @@ def update_job_application(
     `patch` is already filtered to the fields the caller actually sent (Pydantic's
     `exclude_unset`), so a field left out of the request is left untouched, not cleared.
 
-    A role_title edit (D-207) also renames the managed files folder on disk, so existing job
-    files stay reachable under the new title - `files_root` is only needed for that; every
-    caller that never touches role_title (every LLM pipeline today) can omit it.
+    A role_title or company edit (D-207, D-283) also moves the managed files folder on disk, so
+    existing job files stay reachable under the new name - `files_root` is only needed for that;
+    every caller that never touches either (every LLM pipeline today) can omit it. Unlike
+    role_title, a company edit never rejects on a folder collision - it merges this application's
+    own files into the already-existing folder instead (`_move_application_files`).
     """
     if not patch:
         return get_job_application_detail(conn, application_id)
@@ -465,24 +526,21 @@ def update_job_application(
                     raise InvalidRoleTitle(
                         f"Another application already has a folder for {new_title!r}."
                     )
-                if old_folder.exists():
-                    new_folder.parent.mkdir(parents=True, exist_ok=True)
-                    old_folder.rename(new_folder)
-                    # job_files.stored_path is a path relative to files_root, set once when each
-                    # file was stored (job_files.py) - it doesn't follow the folder on its own.
-                    old_rel = old_folder.relative_to(files_root).as_posix()
-                    new_rel = new_folder.relative_to(files_root).as_posix()
-                    with conn:
-                        for row in conn.execute(
-                            "SELECT id, stored_path FROM job_files WHERE job_application_id = ?",
-                            (application_id,),
-                        ).fetchall():
-                            stored = str(row["stored_path"])
-                            if stored == old_rel or stored.startswith(old_rel + "/"):
-                                conn.execute(
-                                    "UPDATE job_files SET stored_path = ? WHERE id = ?",
-                                    (new_rel + stored[len(old_rel) :], row["id"]),
-                                )
+                _move_application_files(conn, files_root, application_id, old_folder, new_folder)
+    if "company" in patch:
+        new_company = (patch["company"] or "").strip()
+        if not new_company:
+            raise InvalidCompany("Company cannot be blank.")
+        patch = {**patch, "company": new_company}
+        if files_root is not None and new_company != current.company:
+            # If role_title was *also* just patched (above), the files already moved under
+            # current.company to the new title - this must look for them there, not under the
+            # title the application still had when this function started.
+            effective_role_title = patch.get("role_title", current.role_title)
+            old_folder = managed_folder(files_root, current.company, effective_role_title)
+            new_folder = managed_folder(files_root, new_company, effective_role_title)
+            if old_folder != new_folder:
+                _move_application_files(conn, files_root, application_id, old_folder, new_folder)
     assignments: list[str] = []
     params: dict[str, Any] = {"id": application_id}
     for key, value in patch.items():
