@@ -6,7 +6,9 @@ Phase 12 (Profile: additional files) closed out 2026-10-26: the "Additional file
 
 Phase 13 (Shell/Electron) closed out 2026-10-26: the Electron shell, the Export Data button, the window-chrome batch (D-269), two unrelated small fixes, and the icon/titleBarOverlay/AppShell-layout/scrollbar batch (D-278) were all confirmed, on the user's go in chat. Merged into local `main` with `git merge --ff-only` (D-61); the branch is kept, nothing pushed.
 
-**Current phase: 14 (Dashboard time slider and stale-application tracking).** Already substantially built during Phase 13's own work (the user asked for it alongside the unrelated Electron work, D-270): the Identified-date range slider (D-277, superseding the original single-handle design, D-271/D-272), the Active/Cold application tracking (D-274/D-275), and the heatmap recolor (D-276) are all built and tested. Phase 15 (Packaging and installers, D-268) follows it.
+Phase 14 (Dashboard time slider and stale-application tracking) closed out 2026-10-26: the Identified-date range slider (D-277, superseding the original single-handle design, D-271/D-272), the Active/Cold application tracking (D-274/D-275), and the heatmap recolor (D-276) were all confirmed, on the user's go in chat. Already built directly on `main` as part of Phase 13's own work (D-270), so no separate branch or merge was needed.
+
+**Current phase: 15 (Packaging and installers, D-268).**
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -1286,7 +1288,7 @@ Done when
 - [x] Moving the slider changes every card and chart on the page to match the selected range, confirmed live against real seeded data (2026-10-26: both handles tested, dragging both wider and narrower).
 - [x] The Active applications and Cold applications table views and Dashboard cards agree with each other's counts (2026-10-26: `isActiveApplication`/`isColdApplication` are the single shared predicates behind both; `jobViews.test.ts` exercises the view filters end to end through `applicationMatchesFilters`).
 - [x] The Applications sent heatmap reads as a clear, correctly-directed gradient (2026-10-26: verified visually in an isolated preview - muted at zero, smoothly brightening to white at the busiest day).
-- [ ] The user's go or no-go.
+- [x] The user's go or no-go. (2026-10-26: confirmed in chat.)
 
 ---
 
@@ -1298,15 +1300,25 @@ Scope (inserted 2026-10-26, D-268, from a planning discussion with the user abou
 - Bundle the FastAPI backend into a standalone executable (candidate: PyInstaller) per OS, so the installed app needs no separate Python/`uv` on the user's machine. The `claude`/`codex` CLIs remain a separate, user-installed dependency either way (D-19), since the app's own installer doesn't install them.
 - Electron Builder (or Forge) producing a Windows installer (`.exe`/`.msi`) and a macOS `.dmg`/`.pkg`.
 - macOS fix to `storage.py`'s `data_dir()`: today's non-Windows fallback (`Path.home() / "AppData" / "Local"`) is wrong on macOS; it needs the macOS-idiomatic `~/Library/Application Support/LlmJobTracker`.
-- Apple notarization for the macOS build, so Gatekeeper doesn't block it on a fresh machine. Needs a paid Apple Developer account.
+- The macOS build ships unsigned, with no Apple notarization (D-280, dropping D-268's original notarization item): Gatekeeper will warn on first launch, worked around by right-click-Open or `xattr -d com.apple.quarantine` - documented for whoever installs it, rather than paid for.
 - A download page (outside this repo) where the user offers the installers, with donations — not part of this phase's "done when" list, since it isn't code in this repo.
 - Verifying the macOS build on real macOS hardware (open question: what hardware is available for this — see D-268's discussion).
 
-Step list: not yet drafted (rule 7).
+Step list (drafted 2026-10-26, awaiting approval; revised 2026-10-27, D-280: no Apple notarization). macOS is built via a GitHub Actions macOS runner and tested by a contact of the user's on real hardware (D-279) - there is no local Mac.
+
+1. Cut `phase-15-packaging` from `main` (D-61).
+2. PyInstaller spike for `api/`: bundle the FastAPI backend into a standalone executable on Windows (one-dir, not one-file, so startup isn't paying one-file's unpack-to-temp cost every launch). Confirm it starts, serves the app, and talks to SQLite/app-data the same way the `uv`-run backend does, with no separate Python install. Record findings (entry point, hidden-import issues, size) in `planning/packaging-notes.md`.
+3. `storage.py`: fix `data_dir()`'s non-Windows fallback from `Path.home() / "AppData" / "Local"` to the macOS-idiomatic `Path.home() / "Library" / "Application Support"` (D-268). The Windows branch is untouched. Test: the fallback returns the macOS path when `LOCALAPPDATA` is unset and the platform is Darwin (monkeypatched), alongside the existing Windows-path test.
+4. `electron/main.js`: stop spawning a Python venv and `npm run dev`; launch the PyInstaller-bundled backend executable instead, and load the built frontend (`web/dist`) directly rather than through the Vite dev server. This drops the dev proxy that today injects `X-Launch-Token` (`web/vite.config.ts`) - give the packaged app its own way to get the per-launch token into the page (for example, the main process serving `index.html` itself and injecting the token, rather than a bare `file://` load). Update the stale "Phase 14" comment (written before D-270's renumbering) to Phase 15.
+5. electron-builder config (`electron/`): a Windows target (`.exe`/`.msi`) bundling the Electron shell, the PyInstaller backend, and the built frontend. Verify locally: install, launch with no dev Python/Node process involved, confirm app data still lands in `%LOCALAPPDATA%\LlmJobTracker\`, confirm the Export Data button and a real Claude Job still work end to end.
+6. Extend the same config with a macOS target (`.dmg`, unsigned - D-280) and a PyInstaller spike for the backend built on that runner. Add a manually-triggered GitHub Actions workflow (not part of `scripts/check.py`'s CI path) that runs PyInstaller + electron-builder for macOS on a `macos` runner and uploads the resulting `.dmg` as a build artifact.
+7. Write the Gatekeeper workaround (right-click Open, or `xattr -d com.apple.quarantine <path>` in Terminal) into a short note shipped alongside the `.dmg` (e.g. `planning/macos-install-notes.md`, handed over with the artifact - it isn't app code).
+8. Hand the unsigned `.dmg` and that note to the user's contact for install and test on real Mac hardware (outside this repo, a manual step). Record their result - install (with the Gatekeeper workaround), launch, app data under `~/Library/Application Support/LlmJobTracker` - back in this file's Done-when list.
+9. Checks: `python scripts/check.py`; a screenshot of the installed Windows app running with no dev-mode Python/Node processes in Task Manager; the GitHub Actions workflow run producing the macOS artifact; the contact's confirmation relayed back for the macOS done-when item.
 
 Done when
 - [ ] A Windows installer produces a working, installed app with no separate Python/Node install.
-- [ ] A macOS installer produces a working, installed app on real macOS hardware, notarized, with no Gatekeeper block.
+- [ ] A macOS installer produces a working, installed app on real macOS hardware (unsigned - the Gatekeeper workaround is used, not notarization, D-280).
 - [ ] The app's data directory lands in the right OS-idiomatic place on both platforms.
 - [ ] The user's go or no-go on the resulting installers.
 
