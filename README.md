@@ -85,6 +85,27 @@ flowchart TB
     CXLI --> OpenAI
 ```
 
+## Key files
+
+| Path | What it is |
+|---|---|
+| [CLAUDE.md](CLAUDE.md) | Rules and working style for anyone (human or Claude) building this app |
+| [DEVELOPMENT-PLAN.md](DEVELOPMENT-PLAN.md) | Phases, the current phase, and each phase's approved step list |
+| [DECISIONS.md](DECISIONS.md) | Every product and architecture decision, with its date and reason |
+| [api/src/llmjobtracker/app.py](api/src/llmjobtracker/app.py) | The FastAPI app: routes, the per-launch token, startup |
+| [api/src/llmjobtracker/runner.py](api/src/llmjobtracker/runner.py) | The `Runner` interface every LLM backend implements (D-19, D-20) |
+| [api/src/llmjobtracker/claude_job_queue.py](api/src/llmjobtracker/claude_job_queue.py) | The one-job-at-a-time Claude Jobs queue |
+| [api/src/llmjobtracker/*_pipeline.py](api/src/llmjobtracker/) | Prompt building and answer parsing for each LLM step (profile, job, lanes, pricing, Open Applications) |
+| [api/src/llmjobtracker/migrations.py](api/src/llmjobtracker/migrations.py) | The SQLite schema, as an ordered list of migrations |
+| [web/src/pages/](web/src/pages/) | One file per screen: Job Applications, Dashboard, Profile, LLM history, Settings |
+| [web/src/components/app/](web/src/components/app/) | The app's own feature components — overlays, file preview, run traces |
+| [web/src/lib/api.ts](web/src/lib/api.ts) | The frontend's one entry point into the backend API |
+| [Agent/specs/](Agent/specs/) | The step contract and output schema for every LLM step |
+| [Agent/rules/](Agent/rules/) | Default writing and honesty rules for generated documents, overridden by the user's own uploaded copies |
+| [electron/main.js](electron/main.js) | The packaged app's entry point: starts the backend, serves the frontend, owns the window |
+| [scripts/dev.py](scripts/dev.py) | Starts both servers for development with one shared launch token |
+| [scripts/check.py](scripts/check.py) | The one command that runs every lint, type and test check |
+
 ## Running in development
 
 Prerequisites: Python 3.12 with `uv`, and Node.js.
