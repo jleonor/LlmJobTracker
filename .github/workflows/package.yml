@@ -1,13 +1,51 @@
-name: Package macOS build
+name: Package builds
 
-# Manual only (D-279/D-280) - not part of a regular CI path, since there is no local Mac to
-# develop or verify this against day to day. Produces an unsigned .dmg, built and uploaded here
-# for the user to hand to their own macOS contact for install/testing on real hardware.
+# Manual only (D-279/D-280) - not part of a regular CI path, since this has no need to run on
+# every commit. Produces unsigned installers for both platforms, built and uploaded here for the
+# user to install themselves (Windows) or hand to a contact for testing on real hardware (macOS,
+# D-279 - there is no local Mac to develop or verify this against day to day).
 on:
   workflow_dispatch: {}
 
 jobs:
-  package:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+
+      - name: Build the backend executable (PyInstaller)
+        working-directory: api
+        run: |
+          uv sync
+          uv run pyinstaller llmjobtracker-api.spec --noconfirm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Build the frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build the Windows installer
+        working-directory: electron
+        run: |
+          npm ci
+          npx electron-builder --win
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llmjobtracker-windows
+          path: electron/release/*.exe
+          if-no-files-found: error
+
+  macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
