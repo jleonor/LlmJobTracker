@@ -1,0 +1,95 @@
+name: Package builds
+
+# Manual only (D-279/D-280) - not part of a regular CI path, since this has no need to run on
+# every commit. Produces unsigned installers for both platforms, built and uploaded here for the
+# user to install themselves (Windows) or hand to a contact for testing on real hardware (macOS,
+# D-279 - there is no local Mac to develop or verify this against day to day).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+
+      - name: Build the backend executable (PyInstaller)
+        working-directory: api
+        run: |
+          uv sync
+          uv run pyinstaller llmjobtracker-api.spec --noconfirm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Build the frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build the Windows installer
+        working-directory: electron
+        run: |
+          npm ci
+          npx electron-builder --win
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llmjobtracker-windows
+          path: electron/release/*.exe
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+
+      - name: Build the backend executable (PyInstaller)
+        working-directory: api
+        run: |
+          uv sync
+          uv run pyinstaller llmjobtracker-api.spec --noconfirm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Build the frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Generate the macOS icon (.icns from the tracked .png)
+        working-directory: electron
+        run: |
+          mkdir icon.iconset
+          for size in 16 32 64 128 256 512; do
+            sips -z "$size" "$size" assets/icon.png --out "icon.iconset/icon_${size}x${size}.png"
+            double=$((size * 2))
+            sips -z "$double" "$double" assets/icon.png --out "icon.iconset/icon_${size}x${size}@2x.png"
+          done
+          iconutil -c icns icon.iconset -o assets/icon.icns
+          rm -rf icon.iconset
+
+      - name: Build the macOS installer (unsigned, D-280)
+        working-directory: electron
+        run: |
+          npm ci
+          npx electron-builder --mac --config.mac.identity=null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llmjobtracker-macos
+          path: electron/release/*.dmg
+          if-no-files-found: error
