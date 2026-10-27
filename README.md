@@ -14,6 +14,14 @@ The app runs on your machine: the backend binds to 127.0.0.1, data lives in a lo
 
 Status: Phase 15 (Packaging and installers) in progress. Phases 0 through 14 are done — the tracker, profile onboarding, job intake, multi-LLM support, lanes, the dashboard, Open Applications, additional profile files and the Electron shell all run end to end against real data.
 
+## Key features
+
+- **Track job applications** — a tracker table (Company, Title, Lane, Location, Status, Last updated, Fit %, LLM queue badge) with full status history, inline editing, file previews, and a configurable column/view system, alongside a lighter Open Applications table for talent pools and cold outreach.
+- **LLM analysis of your profile** — upload your CVs, cover letters and questionnaire once; an LLM turns them into a reviewed career history, questionnaire analysis and positioning strategy that every later document is grounded in.
+- **LLM-assisted job-posting creation** — give it raw text, a URL, a saved HTML page or a PDF; the app extracts the text for you to review first, then an LLM turns the reviewed text into a clean, structured listing document.
+- **Listing analysis, tailored CV and cover letter** — an LLM scores each requirement against your career history (the Fit % itself is computed in code from those scores, never guessed by the model), then writes a tailored CV and cover letter from your master CV and cover letter template as a set of tracked, reviewable edits.
+- **Dashboard with lane analysis** — slicer-driven charts, a calendar heatmap, and per-lane strengths/weaknesses, with Active/Cold application tracking measured against a date you control.
+
 ## Running in development
 
 Prerequisites: Python 3.12 with `uv`, and Node.js.
