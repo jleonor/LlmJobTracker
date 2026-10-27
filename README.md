@@ -105,6 +105,7 @@ flowchart TB
 | [electron/main.js](electron/main.js) | The packaged app's entry point: starts the backend, serves the frontend, owns the window |
 | [scripts/dev.py](scripts/dev.py) | Starts both servers for development with one shared launch token |
 | [scripts/check.py](scripts/check.py) | The one command that runs every lint, type and test check |
+| [planning/](planning/) | Stitch mockups and build notes — not committed, kept local only |
 
 ## Running in development
 
@@ -129,16 +130,5 @@ To run with the synthetic jobs, use `-Seed`. The jobs go to a separate folder, `
 Without `-Seed`, the app uses `%LOCALAPPDATA%\LlmJobTracker`.
 
 Checks: `python scripts/check.py` runs lint, format, types and tests for both halves.
-
-## Where to start
-
-- `CLAUDE.md`: rules and working style for the people and tools building the app.
-- `DEVELOPMENT-PLAN.md`: phases, and the one that is current.
-- `DECISIONS.md`: what has been decided, and what is still open.
-
-## Layout
-
-- `Agent/`: skills, default rules and specs that the in-app Claude uses.
-- `planning/`: Stitch mockups and notes for building the UI.
 
 Personal data is never stored in this repo. It lives under `%LOCALAPPDATA%\LlmJobTracker\`.
