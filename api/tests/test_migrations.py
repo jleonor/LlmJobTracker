@@ -1,4 +1,5 @@
 import sqlite3
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -255,6 +256,15 @@ def test_data_dir_override_wins(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "ignored"))
     monkeypatch.setenv("LJT_DATA_DIR", str(tmp_path / "override"))
     assert data_dir() == tmp_path / "override"
+
+
+def test_data_dir_falls_back_to_macos_application_support(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LJT_DATA_DIR", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert data_dir() == Path.home() / "Library" / "Application Support" / "LlmJobTracker"
 
 
 def test_claude_job_status_must_be_a_known_value(conn: sqlite3.Connection) -> None:

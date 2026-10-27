@@ -6,6 +6,7 @@ tests and development runs can use a temporary folder.
 
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
 DATA_DIR_ENV = "LJT_DATA_DIR"
@@ -17,7 +18,12 @@ def data_dir() -> Path:
     if override:
         return Path(override)
     local_app_data = os.environ.get("LOCALAPPDATA")
-    base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
+    if local_app_data:
+        base = Path(local_app_data)
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path.home() / "AppData" / "Local"
     return base / "LlmJobTracker"
 
 
