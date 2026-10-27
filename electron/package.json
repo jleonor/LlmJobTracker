@@ -2,7 +2,7 @@
   "name": "llmjobtracker-electron",
   "private": true,
   "version": "0.1.0",
-  "description": "Dev-mode Electron shell for LlmJobTracker (Phase 13). Starts the API and the web dev server, then opens them in their own window instead of the system browser.",
+  "description": "Electron shell for LlmJobTracker (D-17). Launches the PyInstaller-bundled backend and serves the built frontend from its own static+proxy server.",
   "main": "main.js",
   "scripts": {
     "start": "electron ."

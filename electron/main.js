@@ -1,10 +1,8 @@
-// Phase 13 (D-17, D-264): dev-mode Electron shell. Starts the API and the web dev server the
-// same way scripts/dev.py does (Electron owns the child processes directly here, rather than
-// scripts/dev.py, so it can start and stop them from its own window lifecycle), then opens a
-// window at the Vite dev server's URL instead of the system browser. Because this still goes
-// through the Vite dev server, its existing proxy keeps injecting X-Launch-Token
-// (web/vite.config.ts) - no token handling is needed here. That only arrives in Phase 14, once
-// the window loads the built static files with no dev-server proxy in front.
+// Phase 15 (D-17, D-268): production Electron shell. Launches the PyInstaller-bundled backend
+// executable (no separate Python/uv needed) and serves the built frontend (web/dist) from a
+// small static file server this process runs itself, with that same server proxying /api/* to
+// the backend and injecting X-Launch-Token - taking over the role Vite's dev-mode proxy played
+// in Phase 13 (web/vite.config.ts), since there is no dev server in front of the built app.
 
 const { app, BrowserWindow, Menu, shell, nativeTheme } = require('electron')
 const { spawn, execFile } = require('node:child_process')
@@ -16,8 +14,11 @@ const fs = require('node:fs')
 const ROOT = path.resolve(__dirname, '..')
 const API_DIR = path.join(ROOT, 'api')
 const WEB_DIR = path.join(ROOT, 'web')
-const WEB_URL = 'http://127.0.0.1:5173/'
 const IS_WINDOWS = process.platform === 'win32'
+const API_PORT = 8765
+const WEB_PORT = 5173
+const WEB_URL = `http://127.0.0.1:${WEB_PORT}/`
+const TOKEN_HEADER = 'x-launch-token'
 const WINDOW_TITLE = 'LLM Job Tracker'
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png')
 // The app's own --card/--foreground tokens (web/src/index.css) - kept in sync by hand, since the
@@ -26,6 +27,18 @@ const ICON_PATH = path.join(__dirname, 'assets', 'icon.png')
 const NAVBAR_COLOR = '#181c21'
 const NAVBAR_SYMBOL_COLOR = '#e0e2e9'
 
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+}
+
 // No File/Edit/View/Window menu bar - this is a single-purpose app shell, not a document editor.
 Menu.setApplicationMenu(null)
 // Windows draws the titleBarOverlay's window-control glyphs per the OS's own light/dark setting
@@ -33,9 +46,16 @@ Menu.setApplicationMenu(null)
 // now, D-17's phase).
 nativeTheme.themeSource = 'system'
 
-function apiPython() {
-  const relative = IS_WINDOWS ? ['Scripts', 'python.exe'] : ['bin', 'python']
-  return path.join(API_DIR, '.venv', ...relative)
+// In a packaged build, electron-builder copies these under extraResources (electron-builder.yml);
+// in a repo checkout, they're the ordinary build output of steps 2 and the web build.
+function backendExecutablePath() {
+  const dir = app.isPackaged ? path.join(process.resourcesPath, 'backend') : path.join(API_DIR, 'dist', 'llmjobtracker-api')
+  const exeName = IS_WINDOWS ? 'llmjobtracker-api.exe' : 'llmjobtracker-api'
+  return path.join(dir, exeName)
+}
+
+function webDistPath() {
+  return app.isPackaged ? path.join(process.resourcesPath, 'web') : path.join(WEB_DIR, 'dist')
 }
 
 function waitForUrl(url, timeoutMs) {
@@ -72,78 +92,113 @@ function stopTree(child) {
 }
 
 let apiProcess = null
-let webProcess = null
+let localServer = null
 let shuttingDown = false
 
-function spawnWebServer(env, spawnOptions) {
-  if (IS_WINDOWS) {
-    // npm's Windows launcher is a .cmd file - Node's spawn needs shell:true to run one
-    // directly (EINVAL otherwise, a well-known Node-on-Windows limitation). Passed as one
-    // command string, not args+shell:true, to avoid Node's "arguments not escaped" warning
-    // for that combination.
-    return spawn('npm run dev -- --port 5173 --strictPort', {
-      cwd: WEB_DIR,
-      env,
-      ...spawnOptions,
-      shell: true,
-    })
-  }
-  return spawn('npm', ['run', 'dev', '--', '--port', '5173', '--strictPort'], {
-    cwd: WEB_DIR,
-    env,
-    ...spawnOptions,
-  })
-}
-
-function startBackendAndWebServer() {
-  const python = apiPython()
-  if (!fs.existsSync(python)) {
-    throw new Error(`The API environment is missing (${python}). Run "uv sync" in api/ first.`)
+function startBackend() {
+  const exe = backendExecutablePath()
+  if (!fs.existsSync(exe)) {
+    throw new Error(`The backend executable is missing (${exe}). Run PyInstaller in api/ first.`)
   }
 
   const token = crypto.randomBytes(32).toString('base64url')
   const env = { ...process.env, LJT_TOKEN: token }
   const spawnOptions = IS_WINDOWS ? { detached: false } : { detached: true }
 
-  apiProcess = spawn(python, ['-m', 'llmjobtracker'], { cwd: API_DIR, env, ...spawnOptions })
-  webProcess = spawnWebServer(env, spawnOptions)
+  apiProcess = spawn(exe, [], { cwd: path.dirname(exe), env, ...spawnOptions })
+  apiProcess.stdout?.on('data', (chunk) => process.stdout.write(`[api] ${chunk}`))
+  apiProcess.stderr?.on('data', (chunk) => process.stderr.write(`[api] ${chunk}`))
+  // Without this, an unhandled 'error' event (e.g. the executable not found) throws
+  // synchronously and crashes the whole main process before any cleanup can run - caught live
+  // while building Phase 13's version of this (D-17's "stops the backend" promise failing
+  // exactly when it mattered most, on a spawn error).
+  apiProcess.on('error', (error) => {
+    console.error('[api] failed to start:', error)
+    quitAndCleanUp()
+  })
+  apiProcess.on('exit', (code, signal) => {
+    if (shuttingDown) return
+    console.error(`[api] exited unexpectedly (code ${code}, signal ${signal})`)
+    quitAndCleanUp()
+  })
 
-  for (const [name, child] of [['API', apiProcess], ['web', webProcess]]) {
-    child.stdout?.on('data', (chunk) => process.stdout.write(`[${name}] ${chunk}`))
-    child.stderr?.on('data', (chunk) => process.stderr.write(`[${name}] ${chunk}`))
-    // Without this, an unhandled 'error' event (e.g. the executable not found) throws
-    // synchronously and crashes the whole main process before any cleanup can run, leaving
-    // the other child orphaned - caught live while building this (D-17's "stops the backend"
-    // promise failing exactly when it mattered most, on a spawn error).
-    child.on('error', (error) => {
-      console.error(`[${name}] failed to start:`, error)
-      quitAndCleanUp()
-    })
-    child.on('exit', (code, signal) => {
-      if (shuttingDown) return
-      console.error(`[${name}] exited unexpectedly (code ${code}, signal ${signal})`)
-      quitAndCleanUp()
-    })
-  }
+  return token
 }
 
-function stopBackendAndWebServer() {
+function serveStatic(req, res, rootDir) {
+  const urlPath = decodeURIComponent(req.url.split('?')[0])
+  let filePath = path.join(rootDir, urlPath === '/' ? 'index.html' : urlPath)
+  // Keep the resolved path inside rootDir - a malicious or malformed urlPath (e.g. "/../../x")
+  // must not escape it.
+  if (!filePath.startsWith(rootDir)) {
+    filePath = path.join(rootDir, 'index.html')
+  }
+  if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+    // No client-side router today, but falling back to index.html for an unknown path is the
+    // standard single-page-app behavior and costs nothing if one is ever added.
+    filePath = path.join(rootDir, 'index.html')
+  }
+  const contentType = MIME_TYPES[path.extname(filePath)] ?? 'application/octet-stream'
+  res.writeHead(200, { 'Content-Type': contentType })
+  fs.createReadStream(filePath).pipe(res)
+}
+
+function proxyToApi(req, res, token) {
+  const headers = { ...req.headers, [TOKEN_HEADER]: token }
+  delete headers.host
+  const upstream = http.request(
+    {
+      hostname: '127.0.0.1',
+      port: API_PORT,
+      path: req.url.replace(/^\/api/, ''),
+      method: req.method,
+      headers,
+    },
+    (upstreamRes) => {
+      res.writeHead(upstreamRes.statusCode, upstreamRes.headers)
+      upstreamRes.pipe(res)
+    },
+  )
+  upstream.on('error', (error) => {
+    console.error('[proxy] backend request failed:', error)
+    res.writeHead(502)
+    res.end('Bad gateway')
+  })
+  req.pipe(upstream)
+}
+
+function startLocalServer(webDir, token) {
+  const server = http.createServer((req, res) => {
+    if (req.url.startsWith('/api/')) {
+      proxyToApi(req, res, token)
+      return
+    }
+    serveStatic(req, res, webDir)
+  })
+  return new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(WEB_PORT, '127.0.0.1', () => resolve(server))
+  })
+}
+
+function stopBackendAndServer() {
   stopTree(apiProcess)
-  stopTree(webProcess)
   apiProcess = null
-  webProcess = null
+  localServer?.close()
+  localServer = null
 }
 
 function quitAndCleanUp() {
   if (shuttingDown) return
   shuttingDown = true
-  stopBackendAndWebServer()
+  stopBackendAndServer()
   app.quit()
 }
 
 async function createWindow() {
-  startBackendAndWebServer()
-  await waitForUrl(WEB_URL, 60_000)
+  const token = startBackend()
+  await waitForUrl(`http://127.0.0.1:${API_PORT}/health`, 60_000)
+  localServer = await startLocalServer(webDistPath(), token)
 
   const window = new BrowserWindow({
     width: 1400,
@@ -154,7 +209,7 @@ async function createWindow() {
     // Windows/Linux only (BrowserWindow ignores titleBarOverlay elsewhere): hides the native
     // title text/strip, keeping just the min/max/close controls, overlaid in the navbar's own
     // color - the web page's own header (AppShell.tsx) becomes the rest of that strip, draggable.
-    // macOS has no equivalent color-themed overlay; revisit there during Phase 15's packaging.
+    // macOS has no equivalent color-themed overlay.
     ...(IS_WINDOWS
       ? {
           titleBarStyle: 'hidden',
@@ -196,5 +251,5 @@ app.on('window-all-closed', () => {
 })
 
 app.on('will-quit', () => {
-  stopBackendAndWebServer()
+  stopBackendAndServer()
 })
