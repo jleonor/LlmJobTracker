@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="bannerTitle bannerDesc">
+  <title id="bannerTitle">LlmJobTracker</title>
+  <desc id="bannerDesc">A local, single-user job-search tracker. LLM-assisted positioning, tailored CVs and cover letters, reviewed and approved by you.</desc>
+
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1200" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#141922"/>
+      <stop offset="1" stop-color="#0b0e12"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="148" cy="150" r="320" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f2a93b" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#f2a93b" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="300" fill="url(#bgGrad)"/>
+  <rect width="1200" height="300" fill="url(#glow)"/>
+
+  <!-- Icon badge -->
+  <rect x="60" y="62" width="176" height="176" rx="40" fill="#181c21" stroke="#31353b" stroke-width="2"/>
+
+  <!-- Briefcase + AI-sparkle mark, adapted from web/public/logo-white.svg -->
+  <g transform="translate(65.6 68.42) scale(0.163158)">
+    <path d="M 347 345 V 283 C 347 254 370 230 398 230 H 578 C 606 230 626 252 626 283 V 345"
+          fill="none" stroke="#e0e2e9" stroke-width="41" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 564 751 H 267 C 228 751 198 721 198 683 V 414 C 198 377 226 347 264 347 H 710 C 747 347 776 377 776 413 V 511"
+          fill="none" stroke="#e0e2e9" stroke-width="41" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 200 499 L 436 541" fill="none" stroke="#e0e2e9" stroke-width="37" stroke-linecap="butt"/>
+    <rect x="418" y="494" width="139" height="89" rx="24" fill="#e0e2e9"/>
+    <path d="M 683 486
+             C 693 486 697 500 703 522
+             C 718 581 728 589 772 607
+             C 789 614 804 618 816 622
+             C 833 626 833 646 816 652
+             C 803 657 787 661 771 667
+             C 729 684 717 697 703 747
+             C 697 768 694 787 682 787
+             C 669 787 667 770 661 750
+             C 646 701 634 684 590 667
+             C 574 661 558 656 546 651
+             C 530 646 530 628 546 622
+             C 562 616 577 612 593 605
+             C 634 588 645 571 661 518
+             C 667 497 672 486 683 486 Z"
+          fill="#f2a93b"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="270" y="133" font-family="Georgia, 'Times New Roman', serif" font-size="66" font-weight="600" fill="#e0e2e9">LlmJobTracker</text>
+  <rect x="272" y="158" width="70" height="4" rx="2" fill="#f2a93b"/>
+
+  <text x="270" y="190" font-family="Verdana, 'Segoe UI', sans-serif" font-size="25" fill="#e0e2e9">A local, single-user job-search tracker</text>
+  <text x="270" y="222" font-family="Verdana, 'Segoe UI', sans-serif" font-size="18" fill="#9e8e7c">LLM-assisted positioning, tailored CVs and cover letters.</text>
+  <text x="270" y="248" font-family="Verdana, 'Segoe UI', sans-serif" font-size="18" fill="#9e8e7c">You review and approve every result.</text>
+</svg>

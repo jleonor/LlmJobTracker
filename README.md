@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/banner.svg" alt="LlmJobTracker — a local, single-user job-search tracker" width="900">
+</p>
+
 # LlmJobTracker
 
 A local, single-user desktop app for a job search. It keeps a tracker, takes in job listings, and produces the positioning, tailored CV and cover letter for each application. You review and approve every result. Nothing is sent or saved as final without you.
