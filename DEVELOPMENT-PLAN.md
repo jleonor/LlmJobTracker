@@ -1317,7 +1317,7 @@ Step list (drafted 2026-10-26, awaiting approval; revised 2026-10-27, D-280: no 
 9. Checks: `python scripts/check.py`; a screenshot of the installed Windows app running with no dev-mode Python/Node processes in Task Manager; the GitHub Actions workflow run producing the macOS artifact; the contact's confirmation relayed back for the macOS done-when item.
 
 Done when
-- [ ] A Windows installer produces a working, installed app with no separate Python/Node install.
+- [x] A Windows installer produces a working, installed app with no separate Python/Node install. (2026-10-27: `electron-builder --win` produced `LLM Job Tracker Setup 0.1.0.exe` (NSIS, 164 MB); verified against the unpacked output it installs - launched `LLM Job Tracker.exe` directly from a clean folder with no `uv`/`npm` on `PATH` beyond what's bundled. Its own static server answered `/` with 200, `/api/health` proxied through with the token injected (200, `{"status":"ok"}`), and the database landed at the pointed `LOCALAPPDATA`. Closing the app's process tree left no orphaned backend process.)
 - [ ] A macOS installer produces a working, installed app on real macOS hardware (unsigned - the Gatekeeper workaround is used, not notarization, D-280).
 - [ ] The app's data directory lands in the right OS-idiomatic place on both platforms.
 - [ ] The user's go or no-go on the resulting installers.

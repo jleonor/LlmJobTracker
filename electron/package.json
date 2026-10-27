@@ -4,10 +4,36 @@
   "version": "0.1.0",
   "description": "Electron shell for LlmJobTracker (D-17). Launches the PyInstaller-bundled backend and serves the built frontend from its own static+proxy server.",
   "main": "main.js",
+  "author": "LlmJobTracker",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist:win": "electron-builder --win"
   },
   "devDependencies": {
-    "electron": "^45.0.0"
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.llmjobtracker.app",
+    "productName": "LLM Job Tracker",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": "../api/dist/llmjobtracker-api", "to": "backend" },
+      { "from": "../web/dist", "to": "web" }
+    ],
+    "win": {
+      "target": ["nsis"],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
