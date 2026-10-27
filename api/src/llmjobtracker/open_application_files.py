@@ -1,7 +1,8 @@
 """An Open Application's own files: Tailored CV, Cover letter, Introduction message, and
 anything else filed under Additional files (open-application-domain.md). Table
-`open_application_files`. Mirrors job_files.py, trimmed: no eml/msg/html kinds, no source_url
-dedup (there is no listing to dedup against), and `subject` instead (introduction_message only).
+`open_application_files`. Mirrors job_files.py, trimmed: no html kind (D-253/D-281), no
+source_url dedup (there is no listing to dedup against), and `subject` instead
+(introduction_message only).
 """
 
 import hashlib
@@ -16,7 +17,13 @@ from pydantic import BaseModel
 _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*]')
 
 MAX_UPLOAD_BYTES: Final = 25 * 1024 * 1024
-ALLOWED_EXTENSIONS: Final = frozenset({".pdf", ".docx", ".txt", ".md"})
+# .html/.htm is left out (D-253): that extension exists in job_files.py only for a saved listing
+# page, and Open Applications have no Listing feature. .eml/.msg are allowed (D-281, correcting
+# D-253): file_preview.py's preview_for() already renders both generically regardless of entity,
+# so there was no actual reason to block an emailed attachment from being saved here - the same
+# way Job Applications' own Additional files accept them, with the same unsupported-for-prompt-
+# extraction limit (extraction.py's extract() doesn't parse email formats either).
+ALLOWED_EXTENSIONS: Final = frozenset({".pdf", ".docx", ".txt", ".md", ".eml", ".msg"})
 
 
 class OpenApplicationFileUploadError(Exception):
@@ -230,12 +237,11 @@ def store_open_application_file(
     content: bytes,
 ) -> OpenApplicationFile:
     """An Additional files upload (kind `other`) — mirrors job_files.store_job_file, trimmed to
-    this app's own four allowed extensions (no eml/msg/html: Open Applications file emails and
-    saved listing pages nowhere, D-253)."""
+    this app's own allowed extensions (no html: there's no Listing page to save here, D-253)."""
     name = (original_name or "").strip().replace("\\", "/").rsplit("/", 1)[-1][:200] or "upload"
     extension = Path(name).suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
-        raise OpenApplicationFileUploadError(415, "Use a PDF, DOCX, TXT or MD file.")
+        raise OpenApplicationFileUploadError(415, "Use a PDF, DOCX, TXT, MD, EML or MSG file.")
     if not content:
         raise OpenApplicationFileUploadError(400, "The file is empty.")
     if len(content) > MAX_UPLOAD_BYTES:

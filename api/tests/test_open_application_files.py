@@ -76,6 +76,17 @@ def test_store_upload_rejects_a_disallowed_extension(db_path: Path, tmp_path: Pa
     assert raised
 
 
+def test_store_upload_accepts_an_eml_file(db_path: Path, tmp_path: Path) -> None:
+    conn = connect(db_path)
+    files_root = tmp_path / "files"
+    application_id = insert_open_application(conn, {"target_name": "Acme"})
+    result = store_open_application_file(
+        conn, files_root, application_id, "Acme", "recruiter.eml", b"From: a@b.com\n\nHi"
+    )
+    assert result.kind == "other"
+    assert (managed_folder(files_root, "Acme", application_id) / "recruiter.eml").exists()
+
+
 def test_store_upload_keeps_the_managed_folder_keyed_by_id(db_path: Path, tmp_path: Path) -> None:
     conn = connect(db_path)
     files_root = tmp_path / "files"
