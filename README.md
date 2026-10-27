@@ -41,6 +41,50 @@ The Job Applications and Profile pages can hand a read-only export of your data 
 - **[Claude Desktop](https://claude.com/download)** — opens the export via a `claude://` deep link, for the Claude Code backend.
 - **[ChatGPT desktop app](https://chatgpt.com/codex)** (on Windows, installed via the Microsoft Store) — opens the export via a `codex://` deep link, for the Codex backend.
 
+## Architecture
+
+Electron (`electron/main.js`) owns the window and starts the FastAPI backend, which serves the built frontend and answers `/api/*` behind a per-launch token (D-43). The backend holds SQLite storage and a one-job-at-a-time Claude Jobs queue; each job's prompt is built from `Agent/specs/` and `Agent/rules/` and sent through whichever CLI backend is selected in Settings (D-195, D-205). The only traffic that leaves your machine is that CLI's own call to its provider (D-39); the desktop apps on the right are an optional, separate integration (D-210), not part of this request path.
+
+```mermaid
+flowchart TB
+    subgraph Local["Your machine"]
+        Web["React/Vite frontend<br/>web/dist"]
+        API["FastAPI backend<br/>api/src/llmjobtracker<br/>(started by electron/main.js)"]
+        DB[("SQLite<br/>%LOCALAPPDATA%\LlmJobTracker")]
+        Files[("Managed files<br/>profile + job folders")]
+        Specs["Agent/specs + Agent/rules<br/>prompt contracts, honesty rules"]
+        Pipelines["Pipeline modules<br/>job_pipeline.py, profile_pipeline.py, ..."]
+        Queue["Claude Jobs queue<br/>one job at a time"]
+        LG["LangGraphRunner<br/>wraps the active backend"]
+        CCR["ClaudeCodeRunner"]
+        CXR["CodexRunner"]
+        CCLI["Claude Code CLI"]
+        CXLI["Codex CLI"]
+
+        Web <-->|"/api/* via X-Launch-Token"| API
+        API --> DB
+        API --> Files
+        API --> Pipelines
+        Specs --> Pipelines
+        Pipelines --> Queue
+        Queue --> LG
+        LG --> CCR
+        LG --> CXR
+        CCR --> CCLI
+        CXR --> CXLI
+        API -.->|"Open LLM app<br/>read-only export + deep link"| ClaudeDesktop["Claude Desktop"]
+        API -.->|"Open LLM app<br/>read-only export + deep link"| ChatGPTDesktop["ChatGPT desktop app"]
+    end
+
+    subgraph Cloud["Cloud — only the model calls leave your machine"]
+        Anthropic["Anthropic"]
+        OpenAI["OpenAI"]
+    end
+
+    CCLI --> Anthropic
+    CXLI --> OpenAI
+```
+
 ## Running in development
 
 Prerequisites: Python 3.12 with `uv`, and Node.js.
