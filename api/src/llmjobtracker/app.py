@@ -853,7 +853,10 @@ def create_app(
         # version - _store_generated_listing preserves it rather than recomputing it from the
         # generated content.
         source_url = body.listing_source_url if body.listing_method == "url" else None
-        folder = managed_folder(files_root, company, role_title)
+        folder_suffix_row = conn.execute(
+            "SELECT folder_suffix FROM job_applications WHERE id = ?", (application_id,)
+        ).fetchone()
+        folder = managed_folder(files_root, company, role_title, folder_suffix_row["folder_suffix"])
         insert_job_file(
             conn,
             application_id,

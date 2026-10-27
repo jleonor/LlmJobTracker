@@ -582,9 +582,10 @@ def test_edit_renaming_to_the_same_title_is_a_no_op(client: TestClient, db_path:
 
 
 def test_edit_rejects_renaming_onto_an_existing_folder(client: TestClient, db_path: Path) -> None:
-    files_root = db_path.parent / "files"
+    """D-284: checked against the database, not the filesystem - this also catches a collision
+    with an application that has no files yet, so no physical folder exists for it at all."""
     app_id = add_application(db_path, company="Co", role_title="Analyst")
-    (files_root / "Co" / "Senior Analyst").mkdir(parents=True)
+    add_application(db_path, company="Co", role_title="Senior Analyst")
 
     response = client.patch(f"/job-applications/{app_id}", json={"role_title": "Senior Analyst"})
 
@@ -597,6 +598,95 @@ def test_edit_renames_the_folder_even_with_no_files_yet(client: TestClient, db_p
     response = client.patch(f"/job-applications/{app_id}", json={"role_title": "Senior Analyst"})
 
     assert response.status_code == 200
+
+
+# --- Folder disambiguation (D-284) ----------------------------------------------------------
+
+
+def test_a_second_application_with_the_same_company_and_role_gets_its_own_folder(
+    client: TestClient, db_path: Path
+) -> None:
+    first_id = add_application(db_path, company="Acme", role_title="Analyst")
+    second_id = add_application(db_path, company="Acme", role_title="Analyst")
+
+    first = client.post(
+        f"/job-applications/{first_id}/files/other",
+        headers={"X-File-Name": "Notes.txt"},
+        content=b"First application's own file.",
+    ).json()
+    second = client.post(
+        f"/job-applications/{second_id}/files/other",
+        headers={"X-File-Name": "Notes.txt"},
+        content=b"Second application's own file.",
+    ).json()
+
+    files_root = db_path.parent / "files"
+    first_path = files_root / "Acme" / "Analyst" / "Notes.txt"
+    second_path = files_root / "Acme" / "Analyst (1)" / "Notes.txt"
+    assert first_path.read_text(encoding="utf-8") == "First application's own file."
+    assert second_path.read_text(encoding="utf-8") == "Second application's own file."
+    assert first["id"] != second["id"]
+
+
+def test_a_third_application_with_the_same_company_and_role_takes_the_next_free_slot(
+    client: TestClient, db_path: Path
+) -> None:
+    add_application(db_path, company="Acme", role_title="Analyst")
+    add_application(db_path, company="Acme", role_title="Analyst")
+    third_id = add_application(db_path, company="Acme", role_title="Analyst")
+
+    client.post(
+        f"/job-applications/{third_id}/files/other",
+        headers={"X-File-Name": "Notes.txt"},
+        content=b"Third application's own file.",
+    )
+
+    files_root = db_path.parent / "files"
+    third_path = files_root / "Acme" / "Analyst (2)" / "Notes.txt"
+    assert third_path.read_text(encoding="utf-8") == "Third application's own file."
+
+
+def test_deleting_an_application_leaves_a_sibling_sharing_its_folder_untouched(
+    client: TestClient, db_path: Path
+) -> None:
+    """A pre-D-284 database could already have two applications sharing a folder (and a company
+    rename's own merge, D-283, can still create one on purpose) - deleting one must never take
+    the other's files with it."""
+    files_root = db_path.parent / "files"
+    conn = connect(db_path)
+    try:
+        shared_id = insert_job_application(conn, {"company": "Acme", "role_title": "Analyst"})
+        sibling_id = insert_job_application(conn, {"company": "Acme", "role_title": "Analyst"})
+        # Force a legacy-style collision: both rows claim the plain, unsuffixed folder.
+        conn.execute(
+            "UPDATE job_applications SET folder_suffix = NULL WHERE id IN (?, ?)",
+            (shared_id, sibling_id),
+        )
+        conn.commit()
+        folder = files_root / "Acme" / "Analyst"
+        folder.mkdir(parents=True)
+        (folder / "Mine.txt").write_text("Belongs to the deleted application.", encoding="utf-8")
+        (folder / "Theirs.txt").write_text("Belongs to the sibling.", encoding="utf-8")
+        insert_job_file(
+            conn, shared_id, kind="other", name="Mine.txt", stored_path="Acme/Analyst/Mine.txt"
+        )
+        insert_job_file(
+            conn,
+            sibling_id,
+            kind="other",
+            name="Theirs.txt",
+            stored_path="Acme/Analyst/Theirs.txt",
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client.delete(f"/job-applications/{shared_id}")
+
+    assert response.status_code == 204
+    assert not (folder / "Mine.txt").exists()
+    assert (folder / "Theirs.txt").read_text(encoding="utf-8") == "Belongs to the sibling."
+    assert folder.exists()  # not removed - the sibling's file is still there
 
 
 # --- Company rename (D-283) -----------------------------------------------------------------

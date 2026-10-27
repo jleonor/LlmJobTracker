@@ -4,7 +4,6 @@ A Claude Job is a different thing (D-49). It is not stored here.
 """
 
 import json
-import shutil
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -284,6 +283,35 @@ def _application_row(row: sqlite3.Row, history: list[StatusHistoryEntry]) -> Job
     )
 
 
+def _assign_folder_slot(
+    conn: sqlite3.Connection,
+    company: str,
+    role_title: str,
+    *,
+    exclude_application_id: int | None = None,
+) -> int | None:
+    """The folder_suffix a new or renamed-into occupant of (company, role_title) should use
+    (D-284): None if nothing already claims the plain, unsuffixed folder for this exact pair,
+    otherwise the smallest 1, 2, 3... not already claimed by another application sharing it.
+
+    Checked against the database, not the filesystem - a collision with an application that has
+    no files yet (so no folder exists on disk at all) would otherwise go undetected, which was
+    the gap in role_title's own pre-D-284 collision check.
+    """
+    query = "SELECT folder_suffix FROM job_applications WHERE company = ? AND role_title = ?"
+    params: list[Any] = [company, role_title]
+    if exclude_application_id is not None:
+        query += " AND id != ?"
+        params.append(exclude_application_id)
+    claimed = {row["folder_suffix"] for row in conn.execute(query, params).fetchall()}
+    if None not in claimed:
+        return None
+    suffix = 1
+    while suffix in claimed:
+        suffix += 1
+    return suffix
+
+
 def insert_job_application(
     conn: sqlite3.Connection,
     row: dict[str, Any],
@@ -293,20 +321,25 @@ def insert_job_application(
 
     `history` is a list of (status, changed_at) pairs, oldest first. The current status is
     the last one. With no history, the application starts as Identified, dated now.
+
+    A folder slot (D-284) is assigned up front, from the database rather than the filesystem, so
+    two applications that happen to share a company/role_title (a reposted duplicate listing)
+    never end up sharing a files folder the way they could before.
     """
     steps = history or [(DEFAULT_STATUS, _now())]
     current_status = steps[-1][0]
+    folder_suffix = _assign_folder_slot(conn, row["company"], row["role_title"])
     with conn:
         cursor = conn.execute(
             """
             INSERT INTO job_applications (
                 company, role_title, lane, location, work_mode, contract_type,
                 portal_name, portal_url, status, match_score, next_action, due_date,
-                description, requirements, notes
+                description, requirements, notes, folder_suffix
             ) VALUES (
                 :company, :role_title, :lane, :location, :work_mode, :contract_type,
                 :portal_name, :portal_url, :status, :match_score, :next_action, :due_date,
-                :description, :requirements, :notes
+                :description, :requirements, :notes, :folder_suffix
             )
             """,
             {
@@ -325,6 +358,7 @@ def insert_job_application(
                 "description": row.get("description"),
                 "requirements": json.dumps(row.get("requirements", [])),
                 "notes": row.get("notes"),
+                "folder_suffix": folder_suffix,
             },
         )
         application_id = cursor.lastrowid
@@ -347,15 +381,33 @@ def delete_job_application(conn: sqlite3.Connection, files_root: Path, applicati
     (migrations.py) and so go with it in the same transaction. The managed folder's files on disk
     are not a database row, so a DB cascade can't reach them - removed here directly, after the
     row is gone. Returns False if there is no such application.
+
+    Removed file by file, scoped to this application's own job_files rows, never the whole
+    folder at once (D-284) - a company rename's own merge behavior (D-283) can leave two
+    applications sharing one folder on purpose, and a pre-D-284 duplicate-listing collision could
+    already have done so by accident; either way, a blind `rmtree` here would have deleted a
+    sibling application's files too. The folder (and its now-possibly-empty company folder) is
+    only removed once actually empty.
     """
     row = conn.execute(
-        "SELECT company, role_title FROM job_applications WHERE id = ?", (application_id,)
+        "SELECT company, role_title, folder_suffix FROM job_applications WHERE id = ?",
+        (application_id,),
     ).fetchone()
     if row is None:
         return False
+    file_rows = conn.execute(
+        "SELECT stored_path FROM job_files WHERE job_application_id = ?", (application_id,)
+    ).fetchall()
     with conn:
         conn.execute("DELETE FROM job_applications WHERE id = ?", (application_id,))
-    shutil.rmtree(managed_folder(files_root, row["company"], row["role_title"]), ignore_errors=True)
+    for file_row in file_rows:
+        (files_root / str(file_row["stored_path"])).unlink(missing_ok=True)
+    folder = managed_folder(files_root, row["company"], row["role_title"], row["folder_suffix"])
+    for candidate in (folder, folder.parent):
+        try:
+            candidate.rmdir()
+        except OSError:
+            break  # not empty (a sibling's files remain) or doesn't exist - leave it
     return True
 
 
@@ -506,27 +558,47 @@ def update_job_application(
     existing job files stay reachable under the new name - `files_root` is only needed for that;
     every caller that never touches either (every LLM pipeline today) can omit it. Unlike
     role_title, a company edit never rejects on a folder collision - it merges this application's
-    own files into the already-existing folder instead (`_move_application_files`).
+    own files into the already-existing folder instead (`_move_application_files`). Either way, a
+    successful move always lands this application on the plain, unsuffixed folder for its new
+    name (D-284): role_title's own collision check already guarantees nothing else occupies it,
+    and company's merge deliberately joins whatever already does.
     """
     if not patch:
         return get_job_application_detail(conn, application_id)
     current = get_job_application_detail(conn, application_id)
     if current is None:
         return None
+    folder_suffix_row = conn.execute(
+        "SELECT folder_suffix FROM job_applications WHERE id = ?", (application_id,)
+    ).fetchone()
+    current_folder_suffix = folder_suffix_row["folder_suffix"] if folder_suffix_row else None
     if "role_title" in patch:
         new_title = (patch["role_title"] or "").strip()
         if not new_title:
             raise InvalidRoleTitle("Job title cannot be blank.")
         patch = {**patch, "role_title": new_title}
         if files_root is not None and new_title != current.role_title:
-            old_folder = managed_folder(files_root, current.company, current.role_title)
+            if (
+                _assign_folder_slot(
+                    conn, current.company, new_title, exclude_application_id=application_id
+                )
+                is not None
+            ):
+                raise InvalidRoleTitle(
+                    f"Another application already has a folder for {new_title!r}."
+                )
+            old_folder = managed_folder(
+                files_root, current.company, current.role_title, current_folder_suffix
+            )
             new_folder = managed_folder(files_root, current.company, new_title)
             if old_folder != new_folder:
-                if new_folder.exists():
-                    raise InvalidRoleTitle(
-                        f"Another application already has a folder for {new_title!r}."
-                    )
                 _move_application_files(conn, files_root, application_id, old_folder, new_folder)
+                with conn:
+                    conn.execute(
+                        "UPDATE job_applications SET folder_suffix = NULL WHERE id = ?",
+                        (application_id,),
+                    )
+                current_folder_suffix = None
     if "company" in patch:
         new_company = (patch["company"] or "").strip()
         if not new_company:
@@ -537,10 +609,17 @@ def update_job_application(
             # current.company to the new title - this must look for them there, not under the
             # title the application still had when this function started.
             effective_role_title = patch.get("role_title", current.role_title)
-            old_folder = managed_folder(files_root, current.company, effective_role_title)
+            old_folder = managed_folder(
+                files_root, current.company, effective_role_title, current_folder_suffix
+            )
             new_folder = managed_folder(files_root, new_company, effective_role_title)
             if old_folder != new_folder:
                 _move_application_files(conn, files_root, application_id, old_folder, new_folder)
+                with conn:
+                    conn.execute(
+                        "UPDATE job_applications SET folder_suffix = NULL WHERE id = ?",
+                        (application_id,),
+                    )
     assignments: list[str] = []
     params: dict[str, Any] = {"id": application_id}
     for key, value in patch.items():

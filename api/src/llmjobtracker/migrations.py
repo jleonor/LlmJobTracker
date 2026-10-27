@@ -1397,6 +1397,12 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE open_application_revise_turns_old RENAME TO open_application_revise_turns",
         ),
     ),
+    Migration(
+        version=40,
+        name="add job_applications.folder_suffix (D-284)",
+        up=("ALTER TABLE job_applications ADD COLUMN folder_suffix INTEGER",),
+        down=("ALTER TABLE job_applications DROP COLUMN folder_suffix",),
+    ),
 )
 
 _LEDGER = """

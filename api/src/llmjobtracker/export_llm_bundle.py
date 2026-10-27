@@ -22,7 +22,6 @@ from typing import Final
 
 from pydantic import BaseModel
 
-from llmjobtracker.job_applications import list_job_applications
 from llmjobtracker.job_files import managed_folder
 from llmjobtracker.profile_files import profile_folder
 from llmjobtracker.settings import get_settings
@@ -94,14 +93,20 @@ def llm_app_status() -> dict[str, LlmAppStatus]:
 def _copy_job_files(conn: sqlite3.Connection, data_folder: Path, bundle_root: Path) -> None:
     files_root = data_folder / "files"
     destination_root = bundle_root / "files"
-    for application in list_job_applications(conn):
-        source = managed_folder(files_root, application.company, application.role_title)
+    rows = conn.execute(
+        "SELECT company, role_title, folder_suffix FROM job_applications"
+    ).fetchall()
+    for row in rows:
+        source = managed_folder(files_root, row["company"], row["role_title"], row["folder_suffix"])
         if not source.exists():
             continue
-        destination = managed_folder(destination_root, application.company, application.role_title)
+        destination = managed_folder(
+            destination_root, row["company"], row["role_title"], row["folder_suffix"]
+        )
         if destination.exists():
-            # Two applications sharing the same company/role_title already share the same
-            # live folder - nothing more to copy once the first one's been handled.
+            # Each application gets its own folder slot going forward (D-284), but an older
+            # database may still have two applications sharing one from before that - nothing
+            # more to copy once the first one's been handled.
             continue
         shutil.copytree(source, destination)
 

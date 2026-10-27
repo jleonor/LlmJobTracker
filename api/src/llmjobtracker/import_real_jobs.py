@@ -76,7 +76,10 @@ def import_job(conn: sqlite3.Connection, files_root: Path, job: dict[str, Any]) 
         history=history or None,
     )
 
-    folder = managed_folder(files_root, company, role_title)
+    folder_suffix = conn.execute(
+        "SELECT folder_suffix FROM job_applications WHERE id = ?", (app_id,)
+    ).fetchone()["folder_suffix"]
+    folder = managed_folder(files_root, company, role_title, folder_suffix)
     folder.mkdir(parents=True, exist_ok=True)
     for file_entry in job.get("files", []):
         source = Path(file_entry["source"])

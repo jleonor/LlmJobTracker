@@ -56,9 +56,21 @@ def sanitize_path_part(value: str) -> str:
     return _UNSAFE_CHARS.sub("_", value).rstrip(" .")
 
 
-def managed_folder(files_root: Path, company: str, role_title: str) -> Path:
-    """`%LOCALAPPDATA%\\LlmJobTracker\\files\\<company>\\<role_title>` (files.md)."""
-    return files_root / sanitize_path_part(company) / sanitize_path_part(role_title)
+def managed_folder(
+    files_root: Path, company: str, role_title: str, folder_suffix: int | None = None
+) -> Path:
+    """`%LOCALAPPDATA%\\LlmJobTracker\\files\\<company>\\<role_title>[ (N)]` (files.md).
+
+    `folder_suffix` disambiguates two applications that would otherwise resolve to the exact
+    same company/role_title folder (D-284) - assigned once, at creation, by
+    job_applications.py's own `_assign_folder_slot`, not recomputed from company/role_title text
+    alone (which can't tell two colliding applications apart). None (the common case) means this
+    application holds the plain, unsuffixed folder.
+    """
+    role_part = sanitize_path_part(role_title)
+    if folder_suffix is not None:
+        role_part = f"{role_part} ({folder_suffix})"
+    return files_root / sanitize_path_part(company) / role_part
 
 
 class JobFileText(BaseModel):
@@ -304,11 +316,14 @@ def write_generated_job_file(
     """
     clear_job_files_of_kind(conn, files_root, application_id, kind)
     app_row = conn.execute(
-        "SELECT company, role_title FROM job_applications WHERE id = ?", (application_id,)
+        "SELECT company, role_title, folder_suffix FROM job_applications WHERE id = ?",
+        (application_id,),
     ).fetchone()
     if app_row is None:
         raise JobFileUploadError(404, "No such Job Application.")
-    folder = managed_folder(files_root, app_row["company"], app_row["role_title"])
+    folder = managed_folder(
+        files_root, app_row["company"], app_row["role_title"], app_row["folder_suffix"]
+    )
     folder.mkdir(parents=True, exist_ok=True)
     target, final_name = _unique_target(folder, name, content)
     target.write_bytes(content)
@@ -355,7 +370,8 @@ def store_job_file(
     if kind not in JOB_FILE_KINDS:
         raise JobFileUploadError(400, f"Unknown file kind: {kind}.")
     app_row = conn.execute(
-        "SELECT company, role_title FROM job_applications WHERE id = ?", (application_id,)
+        "SELECT company, role_title, folder_suffix FROM job_applications WHERE id = ?",
+        (application_id,),
     ).fetchone()
     if app_row is None:
         raise JobFileUploadError(404, "No such Job Application.")
@@ -369,7 +385,9 @@ def store_job_file(
     if len(content) > MAX_UPLOAD_BYTES:
         raise JobFileUploadError(413, "The file is larger than 25 MB.")
 
-    folder = managed_folder(files_root, app_row["company"], app_row["role_title"])
+    folder = managed_folder(
+        files_root, app_row["company"], app_row["role_title"], app_row["folder_suffix"]
+    )
     folder.mkdir(parents=True, exist_ok=True)
     target, name = _unique_target(folder, name, content)
     target.write_bytes(content)
