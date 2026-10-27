@@ -22,6 +22,25 @@ Status: Phase 15 (Packaging and installers) in progress. Phases 0 through 14 are
 - **Listing analysis, tailored CV and cover letter** — an LLM scores each requirement against your career history (the Fit % itself is computed in code from those scores, never guessed by the model), then writes a tailored CV and cover letter from your master CV and cover letter template as a set of tracked, reviewable edits.
 - **Dashboard with lane analysis** — slicer-driven charts, a calendar heatmap, and per-lane strengths/weaknesses, with Active/Cold application tracking measured against a date you control.
 
+## System requirements
+
+LlmJobTracker runs on Windows or macOS. It has no built-in API key and no hosted backend — every LLM call goes out through a command-line tool you install and sign in to yourself (D-19, D-34, D-39).
+
+### Required
+
+- **Python 3.12+** and **[uv](https://docs.astral.sh/uv/)** — run the FastAPI backend. A packaged build bundles these; for development, install `uv` per its own docs.
+- **Node.js 18+** — builds the React/Vite frontend. Development only; a packaged build needs nothing.
+- **One LLM CLI, signed in to a paid plan.** Settings has one switch that picks which CLI the app's `Runner` interface calls (D-195) — you only need the one you plan to use:
+  - **[Claude Code CLI](https://code.claude.com/docs/en/setup)** — on Windows, the native installer is `irm https://claude.ai/install.ps1 | iex` in PowerShell (or `npm install -g @anthropic-ai/claude-code` if you'd rather use npm). Needs a Claude Pro, Max, Team or Enterprise plan — the free claude.ai plan doesn't include Claude Code. Verify with `claude --version`.
+  - **[Codex CLI](https://developers.openai.com/codex/quickstart?setup=cli)** — install via OpenAI's native installer (see the quickstart for the current command) or `npm install -g @openai/codex`. Needs a ChatGPT Plus/Pro/Team/Enterprise plan, or an API key. Verify with `codex --version`.
+
+### Optional — for "Open LLM app"
+
+The Job Applications and Profile pages can hand a read-only export of your data to a desktop LLM app with one click (D-210). This only works for whichever desktop app matches your selected CLI above, and only if it's installed:
+
+- **[Claude Desktop](https://claude.com/download)** — opens the export via a `claude://` deep link, for the Claude Code backend.
+- **[ChatGPT desktop app](https://chatgpt.com/codex)** (on Windows, installed via the Microsoft Store) — opens the export via a `codex://` deep link, for the Codex backend.
+
 ## Running in development
 
 Prerequisites: Python 3.12 with `uv`, and Node.js.
