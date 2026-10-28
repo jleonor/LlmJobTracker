@@ -1,11 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files
+
+# trafilatura ships non-Python resources (settings.cfg, data/tei_corpus.dtd) that PyInstaller's
+# import analysis won't pick up on its own; without this, the frozen backend reads an empty
+# config at import time and crashes with a confusing configparser.NoOptionError on first use.
+datas = collect_data_files('trafilatura')
 
 a = Analysis(
     ['src/llmjobtracker/__main__.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
