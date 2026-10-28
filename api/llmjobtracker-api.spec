@@ -2,10 +2,12 @@
 
 from PyInstaller.utils.hooks import collect_data_files
 
-# trafilatura ships non-Python resources (settings.cfg, data/tei_corpus.dtd) that PyInstaller's
-# import analysis won't pick up on its own; without this, the frozen backend reads an empty
-# config at import time and crashes with a confusing configparser.NoOptionError on first use.
-datas = collect_data_files('trafilatura')
+# trafilatura (settings.cfg, data/tei_corpus.dtd) and justext (its stoplists/ folder, used as a
+# fallback extractor) both ship non-Python resources that PyInstaller's import analysis won't
+# pick up on its own, and neither has a bundled PyInstaller hook. Without this, the frozen
+# backend hits a missing settings.cfg on every extraction, or a missing stoplist whenever
+# trafilatura falls back to justext - both only on a URL/HTML job listing.
+datas = collect_data_files('trafilatura') + collect_data_files('justext')
 
 a = Analysis(
     ['src/llmjobtracker/__main__.py'],
