@@ -652,9 +652,7 @@ def test_a_staged_job_is_never_picked_up_by_the_worker(
     queue = queue_of(fake_client)
     conn = connect(db_path)
     try:
-        job_id = queue.submit(
-            conn, "staged", "profile", [("step", "one")], status="staged"
-        )
+        job_id = queue.submit(conn, "staged", "profile", [("step", "one")], status="staged")
     finally:
         conn.close()
 

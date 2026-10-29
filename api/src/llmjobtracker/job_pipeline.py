@@ -1294,9 +1294,7 @@ def queue_add_job_chain(
     if workflow not in ADD_JOB_WORKFLOWS:
         raise ValueError(f"Unknown workflow: {workflow}")
     job_ids = [
-        submit_generate_job_listing(
-            conn, queue, application_id, method, text, status="staged"
-        )
+        submit_generate_job_listing(conn, queue, application_id, method, text, status="staged")
     ]
     job_ids.append(
         submit_generate_job_details(conn, queue, application_id, skip_gate=True, status="staged")
