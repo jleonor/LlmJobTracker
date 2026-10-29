@@ -206,6 +206,11 @@ def test_duplicate_fingerprint_survives_generate_replacing_the_placeholder(
         application_id = created.json()["application_id"]
 
         queue = client.app.state.queue  # type: ignore[attr-defined]
+        conn = connect(db_path)
+        try:
+            queue.trigger_staged(conn)  # the chain is staged (D-286) - trigger it to run
+        finally:
+            conn.close()
         assert queue.process_next()  # generate_job_listing
         assert queue.process_next()  # generate_job_details
         assert not queue.process_next()

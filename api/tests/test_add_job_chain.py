@@ -161,6 +161,24 @@ def test_every_queued_job_is_linked_to_the_new_application(db_path: Path) -> Non
         conn.close()
 
 
+def test_every_queued_job_starts_staged_not_queued(db_path: Path) -> None:
+    """D-286/D-287: Add Job's own chain is staged, so it doesn't run until the header's Trigger
+    workflows button triggers it - unlike a manual Generate (LLM) button elsewhere, which still
+    queues immediately (not exercised here, since this module is only Add Job's own chain)."""
+    app_id = add_application(db_path)
+    queue = make_queue(db_path, FakeRunner(text="x"))
+    conn = connect(db_path)
+    try:
+        job_ids = queue_add_job_chain(conn, queue, app_id, "paste", "Some listing text", "full")
+        for job_id in job_ids:
+            job = get_claude_job(conn, job_id)
+            assert job is not None
+            assert job.status == "staged"
+        assert queue.process_next() is False  # nothing queued - every step is staged
+    finally:
+        conn.close()
+
+
 def test_unknown_workflow_raises(db_path: Path) -> None:
     app_id = add_application(db_path)
     queue = make_queue(db_path, FakeRunner(text="x"))
@@ -192,6 +210,7 @@ def test_basic_workflow_runs_end_to_end(db_path: Path) -> None:
     conn = connect(db_path)
     try:
         job_ids = queue_add_job_chain(conn, queue, app_id, "paste", listing_text, "basic")
+        queue.trigger_staged(conn)  # the chain is staged (D-286) - nothing runs until triggered
     finally:
         conn.close()
     run_all(queue)
@@ -229,6 +248,7 @@ def test_positioning_workflow_fails_cleanly_with_no_profile_documents(db_path: P
     conn = connect(db_path)
     try:
         job_ids = queue_add_job_chain(conn, queue, app_id, "paste", listing_text, "positioning")
+        queue.trigger_staged(conn)  # the chain is staged (D-286) - nothing runs until triggered
     finally:
         conn.close()
     run_all(queue)

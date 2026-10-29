@@ -1101,10 +1101,16 @@ def submit_extract_job_identity(conn: sqlite3.Connection, queue: ClaudeJobQueue,
 
 
 def submit_generate_job_listing(
-    conn: sqlite3.Connection, queue: ClaudeJobQueue, application_id: int, method: str, text: str
+    conn: sqlite3.Connection,
+    queue: ClaudeJobQueue,
+    application_id: int,
+    method: str,
+    text: str,
+    *,
+    status: str = "queued",
 ) -> int:
     """Queue the Listing's Generate (LLM) step, once the user has reviewed (and possibly edited)
-    the extracted text (job-llm-steps.md)."""
+    the extracted text (job-llm-steps.md). `status`: see queue_add_job_chain below."""
     cleaned = text.strip()
     if not cleaned:
         raise ValueError("There is no reviewed text to generate from.")
@@ -1115,6 +1121,7 @@ def submit_generate_job_listing(
         JOB_KIND_GENERATE,
         [(JOB_KIND_GENERATE, prompt)],
         job_application_id=application_id,
+        status=status,
     )
 
 
@@ -1124,12 +1131,14 @@ def submit_generate_job_details(
     application_id: int,
     *,
     skip_gate: bool = False,
+    status: str = "queued",
 ) -> int:
     """`skip_gate` is for Add Job's own chain (queue_add_job_chain below), which queues this
     immediately behind generate_job_listing - the listing this gate checks for does not exist
     yet, only the queue entry that will create it (D-50: one Claude Job runs at a time, in
     creation order). build_job_details_prompt's own PromptRejected is the real safety net then,
-    checked at render time once this step's turn actually comes."""
+    checked at render time once this step's turn actually comes. `status`: see
+    queue_add_job_chain below."""
     if not skip_gate and not job_details_ready(conn, application_id):
         raise JobStepNotReady("Add a listing file with readable text first.")
     return queue.submit(
@@ -1138,6 +1147,7 @@ def submit_generate_job_details(
         JOB_KIND_DETAILS,
         [(JOB_KIND_DETAILS, "")],
         job_application_id=application_id,
+        status=status,
     )
 
 
@@ -1147,9 +1157,10 @@ def submit_generate_positioning(
     application_id: int,
     *,
     skip_gate: bool = False,
+    status: str = "queued",
 ) -> int:
     """`skip_gate`: see submit_generate_job_details above - Add Job's own chain queues this
-    before Job details has actually run."""
+    before Job details has actually run. `status`: see queue_add_job_chain below."""
     if not skip_gate and not positioning_ready(conn, application_id):
         raise JobStepNotReady(
             "Positioning analysis needs the career history, questionnaire analysis and "
@@ -1161,6 +1172,7 @@ def submit_generate_positioning(
         JOB_KIND_POSITIONING,
         [(JOB_KIND_POSITIONING, "")],
         job_application_id=application_id,
+        status=status,
     )
 
 
@@ -1184,9 +1196,10 @@ def submit_generate_tailored_cv(
     application_id: int,
     *,
     skip_gate: bool = False,
+    status: str = "queued",
 ) -> int:
     """`skip_gate`: see submit_generate_job_details above - Add Job's own chain queues this
-    before Positioning analysis has actually run."""
+    before Positioning analysis has actually run. `status`: see queue_add_job_chain below."""
     if not skip_gate and not tailored_cv_ready(conn, application_id):
         raise JobStepNotReady(
             "Tailored CV needs a selected Master CV, the three LLM profile documents, Job "
@@ -1198,6 +1211,7 @@ def submit_generate_tailored_cv(
         JOB_KIND_TAILORED_CV,
         [(JOB_KIND_TAILORED_CV, "")],
         job_application_id=application_id,
+        status=status,
     )
 
 
@@ -1207,9 +1221,10 @@ def submit_generate_cover_letter(
     application_id: int,
     *,
     skip_gate: bool = False,
+    status: str = "queued",
 ) -> int:
     """`skip_gate`: see submit_generate_job_details above - Add Job's own chain queues this
-    before the Tailored CV has actually run."""
+    before the Tailored CV has actually run. `status`: see queue_add_job_chain below."""
     if not skip_gate and not cover_letter_ready(conn, application_id):
         raise JobStepNotReady(
             "Cover letter needs a Tailored CV, Job details filled in, the three LLM profile "
@@ -1222,6 +1237,7 @@ def submit_generate_cover_letter(
         JOB_KIND_COVER_LETTER,
         [(JOB_KIND_COVER_LETTER, "")],
         job_application_id=application_id,
+        status=status,
     )
 
 
@@ -1268,16 +1284,40 @@ def queue_add_job_chain(
     at a time in creation order (D-50). Each step's own build_*_prompt() still raises
     PromptRejected at render time if, for any reason (a predecessor failed), what it needs isn't
     actually there once its turn comes - the real gate, not bypassed here, just checked later.
+
+    Every step is created "staged" (D-286, Phase 16), not "queued": none of them runs until the
+    header's "Trigger workflows" button (D-288) triggers this application's chain (or every
+    staged chain app-wide) at once. This is what lets a second Add Job reach its own detail page
+    immediately, instead of its intake Claude Jobs landing behind the first application's whole
+    chain in the single-worker queue (D-50).
     """
     if workflow not in ADD_JOB_WORKFLOWS:
         raise ValueError(f"Unknown workflow: {workflow}")
-    job_ids = [submit_generate_job_listing(conn, queue, application_id, method, text)]
-    job_ids.append(submit_generate_job_details(conn, queue, application_id, skip_gate=True))
+    job_ids = [
+        submit_generate_job_listing(
+            conn, queue, application_id, method, text, status="staged"
+        )
+    ]
+    job_ids.append(
+        submit_generate_job_details(conn, queue, application_id, skip_gate=True, status="staged")
+    )
     if workflow in ("positioning", "full"):
-        job_ids.append(submit_generate_positioning(conn, queue, application_id, skip_gate=True))
+        job_ids.append(
+            submit_generate_positioning(
+                conn, queue, application_id, skip_gate=True, status="staged"
+            )
+        )
     if workflow == "full":
-        job_ids.append(submit_generate_tailored_cv(conn, queue, application_id, skip_gate=True))
-        job_ids.append(submit_generate_cover_letter(conn, queue, application_id, skip_gate=True))
+        job_ids.append(
+            submit_generate_tailored_cv(
+                conn, queue, application_id, skip_gate=True, status="staged"
+            )
+        )
+        job_ids.append(
+            submit_generate_cover_letter(
+                conn, queue, application_id, skip_gate=True, status="staged"
+            )
+        )
     return job_ids
 
 
