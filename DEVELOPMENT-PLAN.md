@@ -1354,9 +1354,9 @@ Step list (drafted 2026-10-29, awaiting approval)
 11. Checks: `python scripts/check.py`. Manual verification in the browser: stage two job applications' "full" workflow, confirm neither runs and both show `staged` badges; click Trigger workflows; confirm both chains run to completion, one at a time, in the order they were staged; confirm a manual "Generate (LLM)" button elsewhere still runs immediately.
 
 Done when
-- [ ] Adding a second job application's workflow does not wait behind the first's; both reach their detail pages immediately, showing a `staged` state.
-- [ ] The header's "Trigger workflows" button shows the right staged count, is disabled at zero, and starts every staged chain in creation order on one click, with no confirmation step.
-- [ ] `python scripts/check.py` is green (output shown).
+- [x] Adding a second job application's workflow does not wait behind the first's; both reach their detail pages immediately, showing a `staged` state. (2026-10-29: verified live, in the browser, against an isolated instance with a scratch database - a "basic" workflow Add Job showed "2 steps staged. They run once you click 'Trigger workflows'" instead of live progress tabs; clicking Add another job reset the wizard while the first job's steps stayed staged; the tracker table showed a teal "Staged" badge.)
+- [x] The header's "Trigger workflows" button shows the right staged count, is disabled at zero, and starts every staged chain in creation order on one click, with no confirmation step. (2026-10-29: the header read "Trigger workflows (2 staged)", enabled; one click with no confirmation flipped both to queued, the header read "LLM: processing", and both finished - the table's badge cleared and the job detail page showed a real generated Job details description.)
+- [x] `python scripts/check.py` is green (output shown). (2026-10-29: `[PASS] api: lint`, `format`, `types`, `tests` (852 passed, 2 deselected); `[PASS] web: lint`, `types and build`, `tests` (81 passed).)
 - [ ] You confirm the behavior in chat, live against the running app.
 
 ---
