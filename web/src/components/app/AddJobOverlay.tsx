@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { QueueStatusBadge } from '@/components/app/QueueStatusBadge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -30,6 +31,7 @@ import type {
   Lane,
   ListingExtraction,
   ProfileFile,
+  QueueStatus,
 } from '@/lib/types'
 
 type Method = ListingExtraction['method']
@@ -645,16 +647,22 @@ export function AddJobOverlay({
 
           {stage === 'created' && result && (
             <div className="flex flex-col gap-2">
+              {/* Read from live-polled job data (stagedJobs), not assumed from result alone - a
+                  job this overlay just created is only "staged" if the server actually made it
+                  that way, and this stays honest even if it wasn't (e.g. a backend still running
+                  the pre-Phase-16 code, which queues immediately instead of staging). */}
               <p className="text-sm text-muted-foreground">
-                {stagedJobs.length} step{stagedJobs.length === 1 ? '' : 's'} staged. They run once
-                you click "Trigger workflows" in the header.
+                {stagedJobs.length > 0 && stagedJobs.every((job) => job?.status === 'staged')
+                  ? `${stagedJobs.length} step${stagedJobs.length === 1 ? '' : 's'} staged. They run once you click "Trigger workflows" in the header.`
+                  : 'Added. Each step below runs on its own; its status updates live.'}
               </p>
               <ul className="flex flex-col gap-1">
                 {result.claude_job_ids.map((id) => {
                   const job = stagedJobs.find((candidate) => candidate?.id === id) ?? null
                   return (
-                    <li key={id} className="text-sm text-muted-foreground">
-                      {job?.label ?? `Job ${id}`}
+                    <li key={id} className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>{job?.label ?? `Job ${id}`}</span>
+                      {job && <QueueStatusBadge status={job.status as QueueStatus} />}
                     </li>
                   )
                 })}
