@@ -10,7 +10,7 @@ Phase 14 (Dashboard time slider and stale-application tracking) closed out 2026-
 
 Phase 15 (Packaging and installers) closed out 2026-10-28: a Windows installer verified locally end-to-end (no dev Python/Node install needed, app data in the right place, a real Claude Job working), and a macOS installer (unsigned, D-280) confirmed by the user's contact on real Apple Silicon hardware (macOS 14.4.1) after the documented Gatekeeper workaround, were both confirmed, on the user's go in chat. One commit (`.github/workflows/package.yml`'s registration) was applied directly to `main` ahead of the merge - GitHub's `workflow_dispatch` trigger only works for a workflow file already present on the default branch, so there was no way to wait for the phase's own close-out without blocking the user from running the workflow at all in the meantime. Merged into local `main` with `git merge --ff-only` (D-61) once that commit was folded back into the branch; the branch is kept, nothing pushed by Claude.
 
-**No further phase is currently scheduled.** Phase overview's last numbered phase was 15; "Public release" (below) is the remaining checklist item, revisited once the user judges the app ready for it.
+Phase 16 (Staged workflows) was inserted 2026-10-29 (D-285), from a planning discussion with the user about Add Job's queueing behavior; its step list is below, awaiting approval.
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -42,9 +42,10 @@ This plan says what gets built, in what order, and how we know a phase is done. 
 | 13 | Shell (Electron) | The app runs as its own Electron window, starting and stopping the backend; an "Export Data" button in Settings |
 | 14 | Dashboard time slider and stale-application tracking | A date slider that redefines the whole Dashboard's "now"; Active/Cold application tracking; a corrected heatmap color ramp |
 | 15 | Packaging and installers | A standalone, downloadable build, installable on Windows and macOS |
+| 16 | Staged workflows | Add Job's chosen workflow chain can be staged instead of run immediately; a header "Trigger workflows" button starts everything staged |
 | Parked | Not scheduled | Job workspace's revision-chain model, Emails and chat, Question memory, board view, browser assist, managed agent loop, form filling, the real spreadsheet dry-run/apply import, the font/UI audit, the Memory function, "Add story" (D-142, D-179, D-185, D-235, D-236) |
 
-Phases 5 to 12 were reordered on 2026-10-13 (D-179), from a planning discussion with the user about what to build after Phase 4. The previous Phase 5 (Job workspace's remaining scope), Phase 6 (Emails and chat), Phase 7 (Question memory) and part of the old Phase 8 (board view) are not dropped — they move to Parked, to be rescheduled once Phase 6's technical debt audit decides where each resumes (D-185). "Public release" (updating `README.md` and making the GitHub repo public) is a checklist item after Phase 9, not a numbered phase, matching how the user wants it sequenced. Phase 10 (Memory function) was dropped to Parked on 2026-10-18 (D-236), alongside a new "Add story" idea, both pending a future agent-based system; Dashboard moved up from 11 to 10, and Shell/hardening moved up from 12 to 11. Open Applications was inserted as a new phase on 2026-10-22 (D-248), from a planning discussion with the user about what to build after Dashboard closed: it is numbered 11, and Shell, hardening, and in-app LLM + browser moves from 11 to 12. Profile: additional files was inserted as a new phase on 2026-10-24 (D-255), from a planning discussion with the user about what to build after Open Applications closed: it is numbered 12, and Shell, hardening, and in-app LLM + browser moves from 12 to 13. On 2026-10-26, while planning Phase 13 in detail, it was narrowed to the Electron shell alone and renamed "Shell (Electron)"; backups, the run log, and "Open LLM with browser" were dropped from its scope (D-264 to D-267), and a new phase, Packaging and installers, was inserted after it to cover making the app a downloadable, installable build for Windows and macOS (D-268). Also on 2026-10-26, a further new phase, Dashboard time slider and stale-application tracking, was inserted ahead of Packaging and installers (numbered 14, pushing Packaging and installers to 15), from a planning discussion about Dashboard improvements the user wanted built alongside Phase 13's unrelated Electron work (D-270).
+Phases 5 to 12 were reordered on 2026-10-13 (D-179), from a planning discussion with the user about what to build after Phase 4. The previous Phase 5 (Job workspace's remaining scope), Phase 6 (Emails and chat), Phase 7 (Question memory) and part of the old Phase 8 (board view) are not dropped — they move to Parked, to be rescheduled once Phase 6's technical debt audit decides where each resumes (D-185). "Public release" (updating `README.md` and making the GitHub repo public) is a checklist item after Phase 9, not a numbered phase, matching how the user wants it sequenced. Phase 10 (Memory function) was dropped to Parked on 2026-10-18 (D-236), alongside a new "Add story" idea, both pending a future agent-based system; Dashboard moved up from 11 to 10, and Shell/hardening moved up from 12 to 11. Open Applications was inserted as a new phase on 2026-10-22 (D-248), from a planning discussion with the user about what to build after Dashboard closed: it is numbered 11, and Shell, hardening, and in-app LLM + browser moves from 11 to 12. Profile: additional files was inserted as a new phase on 2026-10-24 (D-255), from a planning discussion with the user about what to build after Open Applications closed: it is numbered 12, and Shell, hardening, and in-app LLM + browser moves from 12 to 13. On 2026-10-26, while planning Phase 13 in detail, it was narrowed to the Electron shell alone and renamed "Shell (Electron)"; backups, the run log, and "Open LLM with browser" were dropped from its scope (D-264 to D-267), and a new phase, Packaging and installers, was inserted after it to cover making the app a downloadable, installable build for Windows and macOS (D-268). Also on 2026-10-26, a further new phase, Dashboard time slider and stale-application tracking, was inserted ahead of Packaging and installers (numbered 14, pushing Packaging and installers to 15), from a planning discussion about Dashboard improvements the user wanted built alongside Phase 13's unrelated Electron work (D-270). Staged workflows was inserted as a new phase on 2026-10-29 (D-285), numbered 16, after Packaging and installers closed: from the user's report that Add Job's chosen workflow chain blocks the next Add Job behind it in the queue.
 
 ---
 
@@ -1323,6 +1324,40 @@ Done when
 - [x] A macOS installer produces a working, installed app on real macOS hardware (unsigned - the Gatekeeper workaround is used, not notarization, D-280). (2026-10-28: the user's contact confirmed the `.dmg`/`.zip` built by the GitHub Actions workflow opened normally on Apple Silicon, macOS 14.4.1, after clearing the quarantine flag - Gatekeeper's "Operation not permitted" block went away exactly as the workaround note describes, with no Developer ID signature or notarization needed.)
 - [x] The app's data directory lands in the right OS-idiomatic place on both platforms. (2026-10-27: Windows confirmed directly (`%LOCALAPPDATA%\LlmJobTracker\`, step 5's own evidence above); the macOS fallback to `~/Library/Application Support/LlmJobTracker` is covered by `test_data_dir_falls_back_to_macos_application_support` - not separately re-confirmed by the contact inspecting the folder on the 2026-10-28 run, since the app ran normally and nothing in that run would exercise a different path.)
 - [x] The user's go or no-go on the resulting installers. (2026-10-28: confirmed in chat, go.)
+
+---
+
+## Phase 16: Staged workflows
+
+**Goal:** adding a job application no longer has to wait behind another one's whole workflow chain; the chosen chain can be staged and started later with one click.
+
+Scope (inserted 2026-10-29, D-285, from the user's report that Add Job's "full" workflow blocks the next Add Job behind it in the single-worker FIFO queue, D-50)
+- A new `staged` `claude_jobs` status (D-286): exists in the database, skipped by the worker's `next_queued_job_id`, so it never runs on its own.
+- The Add Job overlay's chosen workflow chain (`queue_add_job_chain`) is created `staged` instead of `queued`. Closing the overlay goes straight to the job's detail page, since nothing is running yet.
+- A `trigger_staged_jobs` function and API route flip every staged Claude Job, app-wide, to `queued` in creation order (D-286), preserving the queue's FIFO execution (D-50, unchanged).
+- A global "Trigger workflows" button in the app header, beside the LLM status counter (D-288): always visible, shows the staged count, disabled at zero, fires immediately with no confirmation.
+- A new `staged` visual state on the per-application `QueueStatusBadge` and the tracker table's Queue column (D-289), distinct from `queued`.
+- Out of scope: per-step manual "Generate (LLM)" buttons on the detail page stay immediate (D-287); D-50's single-worker execution model itself is unchanged - triggered chains still run one Claude Job at a time, in order.
+
+Step list (drafted 2026-10-29, awaiting approval)
+
+1. Cut `phase-16-staged-workflows` from `main` (D-61).
+2. Migration: widen `CLAUDE_JOB_STATUSES` to add `staged`. Tests: applies on a copy of the dev database and an empty database.
+3. `claude_jobs.py`: `next_queued_job_id` excludes `staged` rows. Add a `trigger_staged_jobs(conn)` function (mirrors `resume_job`) that transitions every `staged` row to `queued`, oldest first. Tests with `FakeRunner`: a staged job is never picked up by the worker; triggering it makes it run; triggering several preserves creation order.
+4. `app.py`: `POST /claude-jobs/trigger-staged` calls `trigger_staged_jobs` and wakes the queue. Test: returns the count triggered; the queue processes them after the call.
+5. `job_pipeline.py`: `queue_add_job_chain` creates its steps `staged` instead of `queued`. Update existing Add Job tests to match (a freshly created application's steps are `staged`, not `queued`, until triggered).
+6. `AddJobOverlay.tsx`: after `create()`, since no step is running yet, close the overlay and go to the new application's detail page instead of showing the `running` stage's live progress tabs.
+7. Frontend: add `staged` to the `QueueStatus` type and `QUEUE_TONE`; `queueStatusForJobs` gets a `staged` branch; a new `stagedCount(jobs)` helper. `queueLabel` is unaffected (staged jobs don't count toward "N queued").
+8. `AppShell.tsx` / `App.tsx`: an always-visible "Trigger workflows" button beside the LLM status text, disabled at a staged count of zero, calling the new endpoint then reloading the queue.
+9. `QueueStatusBadge` and the tracker table's Queue column render the new `staged` tone/label.
+10. Tests: backend (migration, queue skip, trigger transition, API route) and frontend (vitest for the new helpers, the header button's enabled/disabled and count states, the badge's staged tone).
+11. Checks: `python scripts/check.py`. Manual verification in the browser: stage two job applications' "full" workflow, confirm neither runs and both show `staged` badges; click Trigger workflows; confirm both chains run to completion, one at a time, in the order they were staged; confirm a manual "Generate (LLM)" button elsewhere still runs immediately.
+
+Done when
+- [ ] Adding a second job application's workflow does not wait behind the first's; both reach their detail pages immediately, showing a `staged` state.
+- [ ] The header's "Trigger workflows" button shows the right staged count, is disabled at zero, and starts every staged chain in creation order on one click, with no confirmation step.
+- [ ] `python scripts/check.py` is green (output shown).
+- [ ] You confirm the behavior in chat, live against the running app.
 
 ---
 
