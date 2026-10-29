@@ -33,6 +33,7 @@ from llmjobtracker.claude_jobs import (
     set_prompt_text,
     store_answer,
     transition,
+    trigger_staged_jobs,
 )
 from llmjobtracker.pricing import compute_cost_usd
 from llmjobtracker.runner import RateLimitError, Runner, RunResult
@@ -148,11 +149,20 @@ class ClaudeJobQueue:
         job_application_id: int | None = None,
         lane_id: int | None = None,
         open_application_id: int | None = None,
+        status: str = "queued",
     ) -> int:
         job_id = create_claude_job(
-            conn, label, kind, prompts, job_application_id, lane_id, open_application_id
+            conn,
+            label,
+            kind,
+            prompts,
+            job_application_id,
+            lane_id,
+            open_application_id,
+            status=status,
         )
-        self.wake()
+        if status == "queued":
+            self.wake()
         return job_id
 
     def resume(self, conn: sqlite3.Connection, job_id: int) -> bool:
@@ -160,6 +170,13 @@ class ClaudeJobQueue:
         if resumed:
             self.wake()
         return resumed
+
+    def trigger_staged(self, conn: sqlite3.Connection) -> list[int]:
+        """Start every staged Claude Job at once (D-286/D-288's header button)."""
+        triggered = trigger_staged_jobs(conn)
+        if triggered:
+            self.wake()
+        return triggered
 
     def cancel(self, conn: sqlite3.Connection, job_id: int) -> bool:
         cancelled = cancel_job(conn, job_id)

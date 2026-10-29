@@ -646,6 +646,108 @@ def test_a_rejected_answer_is_still_kept_with_the_prompt(db_path: Path, runner: 
     assert exchange.error == "history item: id must look like H-."
 
 
+def test_a_staged_job_is_never_picked_up_by_the_worker(
+    db_path: Path, runner: FakeRunner, fake_client: TestClient
+) -> None:
+    queue = queue_of(fake_client)
+    conn = connect(db_path)
+    try:
+        job_id = queue.submit(
+            conn, "staged", "profile", [("step", "one")], status="staged"
+        )
+    finally:
+        conn.close()
+
+    assert read_job(db_path, job_id)[0] == "staged"
+    assert queue.process_next() is False  # nothing queued - the staged job is skipped
+    assert runner.prompts == []
+
+
+def test_triggering_a_staged_job_makes_it_run(
+    db_path: Path, runner: FakeRunner, fake_client: TestClient
+) -> None:
+    queue = queue_of(fake_client)
+    conn = connect(db_path)
+    try:
+        job_id = queue.submit(conn, "staged", "profile", [("step", "one")], status="staged")
+        triggered = queue.trigger_staged(conn)
+    finally:
+        conn.close()
+
+    assert triggered == [job_id]
+    assert read_job(db_path, job_id)[0] == "queued"
+    assert queue.process_next() is True
+    assert runner.prompts == ["one"]
+    assert read_job(db_path, job_id) == ("done", ["done"])
+
+
+def test_triggering_several_staged_jobs_preserves_creation_order(
+    db_path: Path, runner: FakeRunner, fake_client: TestClient
+) -> None:
+    queue = queue_of(fake_client)
+    conn = connect(db_path)
+    try:
+        first = queue.submit(conn, "first", "profile", [("step", "a")], status="staged")
+        second = queue.submit(conn, "second", "profile", [("step", "b")], status="staged")
+        triggered = queue.trigger_staged(conn)
+    finally:
+        conn.close()
+
+    assert triggered == [first, second]
+    while queue.process_next():
+        pass
+    assert runner.prompts == ["a", "b"]
+    assert read_job(db_path, first)[0] == "done"
+    assert read_job(db_path, second)[0] == "done"
+
+
+def test_triggering_staged_jobs_does_not_touch_already_queued_ones(
+    db_path: Path, fake_client: TestClient
+) -> None:
+    queue = queue_of(fake_client)
+    conn = connect(db_path)
+    try:
+        queued = queue.submit(conn, "already queued", "profile", [("step", "a")])
+        staged = queue.submit(conn, "staged", "profile", [("step", "b")], status="staged")
+        triggered = queue.trigger_staged(conn)
+    finally:
+        conn.close()
+
+    assert triggered == [staged]
+    assert read_job(db_path, queued)[0] == "queued"
+    assert read_job(db_path, staged)[0] == "queued"
+
+
+def test_trigger_staged_route_starts_every_staged_job_in_order(
+    db_path: Path, runner: FakeRunner, fake_client: TestClient
+) -> None:
+    queue = queue_of(fake_client)
+    conn = connect(db_path)
+    try:
+        first = queue.submit(conn, "first", "profile", [("step", "a")], status="staged")
+        second = queue.submit(conn, "second", "profile", [("step", "b")], status="staged")
+    finally:
+        conn.close()
+
+    response = fake_client.post("/claude-jobs/trigger-staged")
+    assert response.status_code == 200
+    assert response.json()["triggered_job_ids"] == [first, second]
+    assert read_job(db_path, first)[0] == "queued"
+    assert read_job(db_path, second)[0] == "queued"
+
+    while queue.process_next():
+        pass
+    assert runner.prompts == ["a", "b"]
+
+
+def test_trigger_staged_route_is_a_no_op_with_nothing_staged(
+    db_path: Path, fake_client: TestClient
+) -> None:
+    response = fake_client.post("/claude-jobs/trigger-staged")
+    assert response.status_code == 200
+    assert response.json()["triggered_job_ids"] == []
+
+
 def test_runner_overrides_routes_one_prompt_kind_to_its_own_runner(db_path: Path) -> None:
     """D-191: a prompt kind registered in `runner_overrides` runs against its own Runner, every
     other kind keeps using the default one, unchanged."""

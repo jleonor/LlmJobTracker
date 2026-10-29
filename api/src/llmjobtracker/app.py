@@ -309,6 +309,12 @@ class DataExported(BaseModel):
     bundle_path: str
 
 
+class StagedJobsTriggered(BaseModel):
+    """D-288's header button: every staged Claude Job that was just flipped to queued."""
+
+    triggered_job_ids: list[int]
+
+
 class LaneCreate(BaseModel):
     name: str
     description: str | None = None
@@ -1916,6 +1922,18 @@ def create_app(
     @app.get("/claude-jobs", response_model=list[ClaudeJob], dependencies=[Depends(require_token)])
     def claude_jobs(conn: Annotated[Connection, Depends(get_db)]) -> list[ClaudeJob]:
         return [_with_live_text(queue, job) for job in list_claude_jobs(conn)]
+
+    @app.post(
+        "/claude-jobs/trigger-staged",
+        response_model=StagedJobsTriggered,
+        dependencies=[Depends(require_token)],
+    )
+    def trigger_staged_claude_jobs(
+        conn: Annotated[Connection, Depends(get_db)],
+    ) -> StagedJobsTriggered:
+        """The header's "Trigger workflows" button (D-288): starts every staged Claude Job,
+        app-wide, in the order they were created (D-286)."""
+        return StagedJobsTriggered(triggered_job_ids=queue.trigger_staged(conn))
 
     @app.post(
         "/claude-jobs/{job_id}/resume",

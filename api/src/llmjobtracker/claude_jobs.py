@@ -75,8 +75,13 @@ def create_claude_job(
     job_application_id: int | None = None,
     lane_id: int | None = None,
     open_application_id: int | None = None,
+    status: str = "queued",
 ) -> int:
-    """Queue a Claude Job. `prompts` is a list of (prompt_kind, prompt_text), in run order."""
+    """Queue a Claude Job. `prompts` is a list of (prompt_kind, prompt_text), in run order.
+
+    `status` is 'queued' unless the caller wants it to start out 'staged' (D-286, Phase 16):
+    skipped by the worker (`next_queued_job_id`) until `trigger_staged_jobs` flips it to 'queued'.
+    """
     if not prompts:
         raise ValueError("A Claude Job needs at least one prompt.")
     now = _now()
@@ -86,9 +91,9 @@ def create_claude_job(
             INSERT INTO claude_jobs
                 (label, kind, job_application_id, lane_id, open_application_id,
                  status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (label, kind, job_application_id, lane_id, open_application_id, now, now),
+            (label, kind, job_application_id, lane_id, open_application_id, status, now, now),
         )
         job_id = cursor.lastrowid
         if job_id is None:
@@ -306,6 +311,19 @@ def resume_job(conn: sqlite3.Connection, job_id: int, *, reset_attempts: bool = 
         if reset_attempts:
             reset_retry_attempts(conn, job_id)
     return resumed
+
+
+def trigger_staged_jobs(conn: sqlite3.Connection) -> list[int]:
+    """Flip every staged Claude Job to queued, app-wide, in creation order (D-286).
+
+    Mirrors resume_job's own transition, applied to every staged row at once rather than one
+    paused job - the single worker (D-50, unchanged) then runs them strictly in that order.
+    Returns the ids actually triggered.
+    """
+    rows = conn.execute("SELECT id FROM claude_jobs WHERE status = 'staged' ORDER BY id").fetchall()
+    return [
+        int(row["id"]) for row in rows if transition(conn, int(row["id"]), ("staged",), "queued")
+    ]
 
 
 def resume_due_jobs(conn: sqlite3.Connection) -> list[int]:
