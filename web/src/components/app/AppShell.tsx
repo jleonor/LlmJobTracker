@@ -21,27 +21,57 @@ type Props = {
   onNavigate: (screen: Screen) => void
   queueText: string
   userName: string
+  // The header's "Trigger workflows" button (D-288): always visible (so its position never
+  // shifts), disabled at zero, next to the LLM status - the same slot the original Add Job stub
+  // button occupied before D-144 moved Add Job out of the header (that move was forced by Add
+  // Job needing to navigate to the new application; this button needs no such navigation).
+  stagedCount: number
+  onTriggerStaged: () => void
+  triggeringStaged: boolean
 }
 
-export function AppShell({ children, current, onNavigate, queueText, userName }: Props) {
+export function AppShell({
+  children,
+  current,
+  onNavigate,
+  queueText,
+  userName,
+  stagedCount,
+  onTriggerStaged,
+  triggeringStaged,
+}: Props) {
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
-      {/* The full-width top bar: title/logo left, LLM status right - no more boxed-in sidebar
-          header cell (D-278). app-drag-region/app-no-drag (index.css) make this strip the
-          Electron window's own draggable title bar, under the Windows titleBarOverlay
+      {/* The full-width top bar: title/logo left, LLM status + Trigger workflows right - no more
+          boxed-in sidebar header cell (D-278). app-drag-region/app-no-drag (index.css) make this
+          strip the Electron window's own draggable title bar, under the Windows titleBarOverlay
           (electron/main.js) - harmless, inert properties outside Electron. */}
       <header className="app-drag-region flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4">
         <div className="flex min-w-0 items-center gap-2">
           <img src="/logo-white.svg" alt="" className="size-6 shrink-0" aria-hidden="true" />
           <span className="truncate text-lg font-semibold tracking-tight">{userName}'s Job Tracker</span>
         </div>
-        <button
-          type="button"
-          onClick={() => onNavigate('queue')}
-          className="app-no-drag shrink-0 font-mono text-xs text-muted-foreground hover:text-foreground"
-        >
-          {queueText}
-        </button>
+        <div className="app-no-drag flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => onNavigate('queue')}
+            className="font-mono text-xs text-muted-foreground hover:text-foreground"
+          >
+            {queueText}
+          </button>
+          <button
+            type="button"
+            disabled={stagedCount === 0 || triggeringStaged}
+            onClick={onTriggerStaged}
+            className="rounded border border-border px-2 py-1 text-xs font-medium text-foreground transition-colors enabled:hover:bg-muted disabled:cursor-not-allowed disabled:text-muted-foreground disabled:opacity-50"
+          >
+            {triggeringStaged
+              ? 'Triggering...'
+              : stagedCount > 0
+                ? `Trigger workflows (${stagedCount} staged)`
+                : 'Trigger workflows'}
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">

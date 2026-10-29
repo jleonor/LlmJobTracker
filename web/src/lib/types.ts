@@ -445,6 +445,12 @@ export type AddJobResult = {
   claude_job_ids: number[]
 }
 
+// POST /claude-jobs/trigger-staged's result (D-288): every staged Claude Job that was just
+// flipped to queued.
+export type StagedJobsTriggered = {
+  triggered_job_ids: number[]
+}
+
 // --- Open Applications (Phase 11, D-248 to D-254) ----------------------------------------------
 
 // A second application type for talent pools, unsolicited CV drops and cold outreach - not tied

@@ -6,7 +6,8 @@ import { JobApplicationsPage } from '@/pages/JobApplicationsPage'
 import { LlmHistoryPage } from '@/pages/LlmHistoryPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { SettingsPage } from '@/pages/SettingsPage'
-import { queueLabel, useClaudeJobs } from '@/lib/useClaudeJobs'
+import { triggerStagedJobs } from '@/lib/api'
+import { queueLabel, stagedCount, useClaudeJobs } from '@/lib/useClaudeJobs'
 import { useScrollbarAutoHide } from '@/lib/scrollbarAutoHide'
 import { useSettings } from '@/lib/useSettings'
 
@@ -20,10 +21,25 @@ function App() {
   const [jobsResetSignal, setJobsResetSignal] = useState(0)
   const queue = useClaudeJobs()
   const { settings, reload: reloadSettings } = useSettings()
+  const [triggeringStaged, setTriggeringStaged] = useState(false)
 
   function navigate(next: Screen) {
     if (next === 'jobs') setJobsResetSignal((count) => count + 1)
     setScreen(next)
+  }
+
+  // The header's "Trigger workflows" button (D-288): fires immediately, no confirmation - the
+  // user's explicit choice, matching how Resume/Cancel already work elsewhere in the app.
+  async function triggerStaged() {
+    setTriggeringStaged(true)
+    try {
+      await triggerStagedJobs()
+      queue.reload()
+    } catch (failure) {
+      console.error('Could not trigger staged workflows.', failure)
+    } finally {
+      setTriggeringStaged(false)
+    }
   }
 
   return (
@@ -32,6 +48,9 @@ function App() {
       onNavigate={navigate}
       queueText={queueLabel(queue.jobs)}
       userName={settings.user_name}
+      stagedCount={stagedCount(queue.jobs)}
+      onTriggerStaged={() => void triggerStaged()}
+      triggeringStaged={triggeringStaged}
     >
       {screen === 'jobs' && <JobApplicationsPage queue={queue} resetSignal={jobsResetSignal} />}
       {screen === 'dashboard' && <DashboardPage settings={settings} queue={queue} />}

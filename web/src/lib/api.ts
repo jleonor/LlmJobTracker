@@ -41,6 +41,7 @@ import type {
   RetryPolicy,
   RunResult,
   Settings,
+  StagedJobsTriggered,
   StatusHistoryEntry,
 } from '@/lib/types'
 
@@ -854,6 +855,11 @@ export function resumeClaudeJob(id: number): Promise<ClaudeJob> {
 
 export function cancelClaudeJob(id: number): Promise<ClaudeJob> {
   return request<ClaudeJob>(`/api/claude-jobs/${id}/cancel`, { method: 'POST' })
+}
+
+// The header's "Trigger workflows" button (D-288): starts every staged Claude Job, app-wide.
+export function triggerStagedJobs(): Promise<StagedJobsTriggered> {
+  return request<StagedJobsTriggered>('/api/claude-jobs/trigger-staged', { method: 'POST' })
 }
 
 export function fetchPromptExchange(jobId: number, position: number): Promise<PromptExchange> {
