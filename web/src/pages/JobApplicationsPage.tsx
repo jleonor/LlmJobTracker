@@ -37,6 +37,7 @@ import {
   savePersistedTableState,
   serializeFilters,
 } from '@/lib/jobTableStorage'
+import { QUEUE_STATUS_TEXT } from '@/lib/tone'
 import type { JobApplication, JobApplicationDetailData, QueueStatus } from '@/lib/types'
 import { queueStatusFor, type QueueState } from '@/lib/useClaudeJobs'
 import { cn } from '@/lib/utils'
@@ -60,7 +61,7 @@ const HEAD = 'font-mono text-[10px] uppercase tracking-wider'
 
 // D-227: the per-row Claude Job indicator beside the company name, replacing the old Queue
 // column entirely. Nothing renders for idle/done/cancelled - only a state that needs attention
-// (processing, queued) or a stuck job (paused/failed) shows anything here.
+// (processing, queued, staged) or a stuck job (paused/failed) shows anything here.
 function QueueIndicator({ status }: { status: QueueStatus }) {
   if (status === 'processing') {
     return (
@@ -80,6 +81,21 @@ function QueueIndicator({ status }: { status: QueueStatus }) {
       >
         Queued
       </Badge>
+    )
+  }
+  if (status === 'staged') {
+    return (
+      <Tooltip>
+        <TooltipTrigger render={<span />} className="inline-flex shrink-0 cursor-default">
+          <Badge
+            variant="outline"
+            className={cn('rounded-sm font-mono text-[10px] font-normal', QUEUE_STATUS_TEXT.staged)}
+          >
+            Staged
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>Staged - waiting on Trigger workflows</TooltipContent>
+      </Tooltip>
     )
   }
   if (status === 'paused' || status === 'failed') {
