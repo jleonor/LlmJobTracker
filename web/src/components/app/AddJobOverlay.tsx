@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { RunTrace } from '@/components/app/RunTrace'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import {
   ApiError,
@@ -35,7 +33,7 @@ import type {
 } from '@/lib/types'
 
 type Method = ListingExtraction['method']
-type Stage = 'workflow' | 'source' | 'review' | 'identity' | 'running'
+type Stage = 'workflow' | 'source' | 'review' | 'identity' | 'created'
 
 const NONE = 'none' // sentinel distinct from any real profile_files id
 
@@ -70,8 +68,9 @@ function portalNameFromUrl(url: string): string {
 
 // Add Job (Agent/specs/intake-steps.md, D-143 to D-146): workflow + Master CV, then the same
 // source-picker/review wizard Listing's own Generate (LLM) uses, then confirming the identity
-// fields extract_job_identity suggests, then creating the row and showing the whole chosen
-// chain's progress as tabs the active one auto-follows (D-144, AnalysisOverlay's own pattern).
+// fields extract_job_identity suggests, then creating the row. The chosen chain is queued staged,
+// not queued (D-286/D-287, Phase 16) - it does not run until the header's Trigger workflows
+// button (D-288) starts it, so this overlay shows a staged summary instead of live progress.
 export function AddJobOverlay({
   open,
   onOpenChange,
@@ -116,9 +115,8 @@ export function AddJobOverlay({
   const [portalName, setPortalName] = useState('')
   const [portalUrl, setPortalUrl] = useState('')
 
-  // Stage: running
+  // Stage: created
   const [result, setResult] = useState<AddJobResult | null>(null)
-  const [runningTab, setRunningTab] = useState<string | null>(null)
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -126,8 +124,7 @@ export function AddJobOverlay({
   const { jobs } = useClaudeJobs()
   const checkJob = jobs.find((job) => job.id === checkJobId) ?? null
   const identityJob = jobs.find((job) => job.id === identityJobId) ?? null
-  const runningJobs = result?.claude_job_ids.map((id) => jobs.find((job) => job.id === id) ?? null) ?? []
-  const activeRunningTab = runningJobs.find((job) => job?.status === 'processing')?.id ?? null
+  const stagedJobs = result?.claude_job_ids.map((id) => jobs.find((job) => job.id === id) ?? null) ?? []
 
   function resetWizard() {
     setStage('workflow')
@@ -150,7 +147,6 @@ export function AddJobOverlay({
     setPortalName('')
     setPortalUrl('')
     setResult(null)
-    setRunningTab(null)
     setBusy(false)
     setError(null)
   }
@@ -257,18 +253,6 @@ export function AddJobOverlay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identityJob?.status, identityJobId, extraction])
 
-  // The active progress tab follows whichever queued job is currently processing, the same
-  // pattern AnalysisOverlay uses across one job's prompts, applied here across several jobs.
-  useEffect(() => {
-    if (stage !== 'running') return
-    if (activeRunningTab !== null) {
-      setRunningTab(String(activeRunningTab))
-    } else if (runningTab === null && result) {
-      setRunningTab(String(result.claude_job_ids[0]))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRunningTab, stage])
-
   function startReview(extracted: ListingExtraction) {
     setExtraction(extracted)
     if (extracted.status !== 'ok') {
@@ -342,7 +326,7 @@ export function AddJobOverlay({
         master_cv_profile_file_id: masterCvId,
       })
       setResult(created)
-      setStage('running')
+      setStage('created')
       onCreated(created.application_id)
     } catch (failure) {
       setError(failure instanceof ApiError ? failure.message : 'This could not be created.')
@@ -659,35 +643,27 @@ export function AddJobOverlay({
             </div>
           )}
 
-          {stage === 'running' && result && (
-            <Tabs
-              value={runningTab ?? String(result.claude_job_ids[0])}
-              onValueChange={(value) => setRunningTab(String(value))}
-              className="flex min-h-0 flex-1 flex-col gap-3"
-            >
-              <TabsList>
+          {stage === 'created' && result && (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">
+                {stagedJobs.length} step{stagedJobs.length === 1 ? '' : 's'} staged. They run once
+                you click "Trigger workflows" in the header.
+              </p>
+              <ul className="flex flex-col gap-1">
                 {result.claude_job_ids.map((id) => {
-                  const job = runningJobs.find((candidate) => candidate?.id === id) ?? null
+                  const job = stagedJobs.find((candidate) => candidate?.id === id) ?? null
                   return (
-                    <TabsTab key={id} value={String(id)}>
+                    <li key={id} className="text-sm text-muted-foreground">
                       {job?.label ?? `Job ${id}`}
-                      {job?.status === 'processing' && (
-                        <span className="size-1.5 rounded-full bg-primary" aria-label="Processing" />
-                      )}
-                    </TabsTab>
+                    </li>
                   )
                 })}
-              </TabsList>
-              {result.claude_job_ids.map((id) => (
-                <TabsPanel key={id} value={String(id)} keepMounted className="flex min-h-0 flex-1 flex-col">
-                  <RunTrace job={runningJobs.find((candidate) => candidate?.id === id) ?? null} />
-                </TabsPanel>
-              ))}
-            </Tabs>
+              </ul>
+            </div>
           )}
         </div>
         <DialogFooter>
-          {stage === 'running' && result ? (
+          {stage === 'created' && result ? (
             <>
               <Button
                 variant="outline"

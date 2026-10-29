@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ClaudeJob } from './types'
-import { queueLabel, queueStatusFor } from './useClaudeJobs'
+import { queueLabel, queueStatusFor, stagedCount } from './useClaudeJobs'
 
 function job(
   id: number,
@@ -40,6 +40,19 @@ describe('queueLabel', () => {
     expect(queueLabel([job(1, 'queued'), job(2, 'paused')])).toBe('LLM: paused')
     expect(queueLabel([job(1, 'paused'), job(2, 'processing')])).toBe('LLM: processing')
   })
+
+  it('never counts staged jobs (D-286) - they wait on Trigger workflows, not the queue', () => {
+    expect(queueLabel([job(1, 'staged'), job(2, 'staged')])).toBe('LLM: idle')
+    expect(queueLabel([job(1, 'staged'), job(2, 'queued')])).toBe('LLM: 1 queued')
+  })
+})
+
+describe('stagedCount', () => {
+  it('counts staged jobs app-wide, ignoring every other status', () => {
+    expect(stagedCount([])).toBe(0)
+    expect(stagedCount([job(1, 'queued'), job(2, 'done')])).toBe(0)
+    expect(stagedCount([job(1, 'staged'), job(2, 'staged'), job(3, 'queued')])).toBe(2)
+  })
 })
 
 describe('queueStatusFor', () => {
@@ -56,10 +69,16 @@ describe('queueStatusFor', () => {
     expect(queueStatusFor([job(1, 'failed', 1)], 1)).toBe('failed')
   })
 
-  it('ranks processing above paused above queued above failed', () => {
+  it('ranks processing above paused above queued above staged above failed', () => {
     expect(queueStatusFor([job(1, 'queued', 1), job(2, 'failed', 1)], 1)).toBe('queued')
     expect(queueStatusFor([job(1, 'paused', 1), job(2, 'queued', 1)], 1)).toBe('paused')
     expect(queueStatusFor([job(1, 'processing', 1), job(2, 'paused', 1)], 1)).toBe('processing')
+    expect(queueStatusFor([job(1, 'staged', 1), job(2, 'failed', 1)], 1)).toBe('staged')
+    expect(queueStatusFor([job(1, 'queued', 1), job(2, 'staged', 1)], 1)).toBe('queued')
+  })
+
+  it('reads a staged-only application as staged, not idle', () => {
+    expect(queueStatusFor([job(1, 'staged', 1)], 1)).toBe('staged')
   })
 
   it('only looks at the most recently updated job for paused/failed (D-231) - an old failure superseded by a later success reads as idle', () => {

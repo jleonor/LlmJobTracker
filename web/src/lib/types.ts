@@ -54,8 +54,17 @@ export type JobApplicationFile = {
 }
 
 // A Job Application's own Claude Jobs (D-49 to D-52), shown beside its status tag (D-56). Idle
-// means nothing is queued for this application; the rest mirror CLAUDE_JOB_STATUSES.
-export type QueueStatus = 'idle' | 'queued' | 'processing' | 'paused' | 'cancelled' | 'done' | 'failed'
+// means nothing is queued for this application; the rest mirror CLAUDE_JOB_STATUSES. staged
+// (D-286, Phase 16) is waiting on the user's Trigger workflows click, not on the queue.
+export type QueueStatus =
+  | 'idle'
+  | 'staged'
+  | 'queued'
+  | 'processing'
+  | 'paused'
+  | 'cancelled'
+  | 'done'
+  | 'failed'
 
 // The defined stage order (D-44, D-101), used for the tracker table's Status sort and filter -
 // not alphabetical, since the stages have a real sequence. Matches StatusBadge's own tone order.
@@ -74,6 +83,7 @@ export const STATUS_ORDER = [
 // own tone order.
 export const QUEUE_STATUS_ORDER: readonly QueueStatus[] = [
   'idle',
+  'staged',
   'queued',
   'processing',
   'paused',

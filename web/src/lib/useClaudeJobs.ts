@@ -46,13 +46,20 @@ export function useClaudeJobs(): QueueState {
 }
 
 // What the header shows: processing, paused, queued, or idle. Reads "LLM", not "Claude" (D-100,
-// narrows D-59's "Claude: queued" wording).
+// narrows D-59's "Claude: queued" wording). Staged jobs (D-286) are never counted here - they are
+// waiting on the user, not the queue, and have their own count via stagedCount below.
 export function queueLabel(jobs: ClaudeJob[]): string {
   if (jobs.some((job) => job.status === 'processing')) return 'LLM: processing'
   if (jobs.some((job) => job.status === 'paused')) return 'LLM: paused'
   const queued = jobs.filter((job) => job.status === 'queued').length
   if (queued > 0) return `LLM: ${queued} queued`
   return 'LLM: idle'
+}
+
+// The header's "Trigger workflows" button (D-288): how many Claude Jobs, app-wide, are staged
+// and waiting for that click.
+export function stagedCount(jobs: ClaudeJob[]): number {
+  return jobs.filter((job) => job.status === 'staged').length
 }
 
 // The per-application queue badge (D-56's "beside the status tag", D-227's inline table
@@ -80,6 +87,9 @@ function queueStatusForJobs(mine: ClaudeJob[]): QueueStatus {
   )
   if (mostRecent?.status === 'paused') return 'paused'
   if (mine.some((job) => job.status === 'queued')) return 'queued'
+  // staged (D-286): nothing is queued or running yet, but a chain is waiting on the user to
+  // trigger it (D-288) - shown ahead of a past failure, since it is the more actionable state.
+  if (mine.some((job) => job.status === 'staged')) return 'staged'
   if (mostRecent?.status === 'failed') return 'failed'
   return 'idle'
 }

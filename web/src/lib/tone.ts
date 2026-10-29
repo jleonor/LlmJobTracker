@@ -12,6 +12,7 @@ const PURPLE_TONE = 'border-[#4a3f7a] bg-[#1d1733] text-[#c9bcff]'
 const AMBER_TONE = 'border-[#5c4300] bg-[#2a1800] text-[#ffca85]'
 const GREEN_TONE = 'border-[#005333] bg-[#00210f] text-[#84e7b0]'
 const RED_TONE = 'border-[#93000a] bg-[#2a0a0a] text-[#ffb4ab]'
+const TEAL_TONE = 'border-[#1b4f49] bg-[#00201c] text-[#6dddc9]'
 const CANCELLED_TONE = 'border-muted-foreground/30 text-muted-foreground line-through'
 
 // Just the text-color half of each tone above, for a plain colored label rather than a full
@@ -21,12 +22,16 @@ const PURPLE_TEXT = 'text-[#c9bcff]'
 const AMBER_TEXT = 'text-[#ffca85]'
 const GREEN_TEXT = 'text-[#84e7b0]'
 const RED_TEXT = 'text-[#ffb4ab]'
+const TEAL_TEXT = 'text-[#6dddc9]'
 const CANCELLED_TEXT = 'text-muted-foreground line-through'
 
-// QueueStatusBadge's and LlmHistoryPage's queue states (idle/queued/processing/paused/done/
-// failed/cancelled, D-49 to D-52).
+// QueueStatusBadge's and LlmHistoryPage's queue states (idle/staged/queued/processing/paused/
+// done/failed/cancelled, D-49 to D-52, D-286/D-289 for staged). staged gets its own teal tone,
+// distinct from queued's amber - a staged chain is waiting on the user (Trigger workflows), not
+// on the queue, so it should never read as already in motion.
 export const QUEUE_TONE: Record<string, string> = {
   idle: MUTED_TONE,
+  staged: TEAL_TONE,
   queued: AMBER_TONE,
   processing: BLUE_TONE,
   paused: PURPLE_TONE,
@@ -37,6 +42,7 @@ export const QUEUE_TONE: Record<string, string> = {
 
 export const QUEUE_STATUS_TEXT: Record<string, string> = {
   idle: 'text-muted-foreground',
+  staged: TEAL_TEXT,
   queued: AMBER_TEXT,
   processing: BLUE_TEXT,
   paused: PURPLE_TEXT,
