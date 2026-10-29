@@ -83,7 +83,15 @@ OPEN_APPLICATION_REVISE_SECTION_KINDS = (
 )
 
 # Phase 2 values (D-62, D-64, D-66; Agent/specs/profile-steps.md).
-CLAUDE_JOB_STATUSES = ("queued", "processing", "paused", "cancelled", "done", "failed")
+# Migration 3's own five-status shape (plus "failed", added by a later migration before Phase
+# 16 existed). Frozen here, same reason _V2_STATUSES is kept above: migration 3's own CREATE
+# TABLE must stay exactly what it applied.
+_V3_CLAUDE_JOB_STATUSES = ("queued", "processing", "paused", "cancelled", "done", "failed")
+# Migration 41 (D-286, Phase 16): adds "staged" - a Claude Job that exists but is skipped by the
+# queue worker until explicitly triggered. Used everywhere else in the app (claude_jobs.py,
+# claude_job_queue.py, job_pipeline.py) and by migration 41's own new table shape; migration 3's
+# table keeps using the frozen tuple above.
+CLAUDE_JOB_STATUSES = (*_V3_CLAUDE_JOB_STATUSES, "staged")
 PROMPT_STATUSES = ("queued", "running", "done", "failed", "cancelled")
 # Kinds as migration 3 defined them. Kept here so that migration stays as it was applied.
 _V3_FILE_KINDS = (
@@ -213,10 +221,53 @@ CREATE TABLE claude_jobs (
     label TEXT NOT NULL,
     kind TEXT NOT NULL,
     job_application_id INTEGER REFERENCES job_applications(id) ON DELETE CASCADE,
-    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ({_in_list(CLAUDE_JOB_STATUSES)})),
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ({_in_list(_V3_CLAUDE_JOB_STATUSES)})),
     error TEXT,
     created_at TEXT NOT NULL DEFAULT ({_NOW}),
     updated_at TEXT NOT NULL DEFAULT ({_NOW})
+)
+"""
+
+# Migration 41 (D-286, Phase 16): widens claude_jobs.status's CHECK to add "staged" - a table
+# rebuild, since SQLite can't ALTER a CHECK. claude_jobs has grown several columns since migration
+# 3's own rebuild (all added via ALTER TABLE ADD COLUMN: resume_at/8, retry_attempts/25, lane_id/32,
+# open_application_id/35), so this rebuild's shape is the table's full current column list. Several
+# other tables reference claude_jobs as a parent (claude_job_prompts, profile_outputs,
+# job_revise_turns, open_application_revise_turns, …), so this needs migration 13/30's FK-toggling
+# (rebuild=True).
+_V41_CLAUDE_JOBS_NEW = f"""
+CREATE TABLE claude_jobs_new (
+    id INTEGER PRIMARY KEY,
+    label TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    job_application_id INTEGER REFERENCES job_applications(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ({_in_list(CLAUDE_JOB_STATUSES)})),
+    error TEXT,
+    created_at TEXT NOT NULL DEFAULT ({_NOW}),
+    updated_at TEXT NOT NULL DEFAULT ({_NOW}),
+    resume_at TEXT,
+    retry_attempts INTEGER NOT NULL DEFAULT 0 CHECK (retry_attempts >= 0),
+    lane_id INTEGER REFERENCES lanes(id) ON DELETE CASCADE,
+    open_application_id INTEGER REFERENCES open_applications(id) ON DELETE CASCADE
+)
+"""
+
+# migration 41's down step: back to the pre-"staged" shape (migration 3's status set, migration
+# 3/8/25/32/35's column list).
+_V41_CLAUDE_JOBS_OLD = f"""
+CREATE TABLE claude_jobs_old (
+    id INTEGER PRIMARY KEY,
+    label TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    job_application_id INTEGER REFERENCES job_applications(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ({_in_list(_V3_CLAUDE_JOB_STATUSES)})),
+    error TEXT,
+    created_at TEXT NOT NULL DEFAULT ({_NOW}),
+    updated_at TEXT NOT NULL DEFAULT ({_NOW}),
+    resume_at TEXT,
+    retry_attempts INTEGER NOT NULL DEFAULT 0 CHECK (retry_attempts >= 0),
+    lane_id INTEGER REFERENCES lanes(id) ON DELETE CASCADE,
+    open_application_id INTEGER REFERENCES open_applications(id) ON DELETE CASCADE
 )
 """
 
@@ -1402,6 +1453,27 @@ MIGRATIONS: tuple[Migration, ...] = (
         name="add job_applications.folder_suffix (D-284)",
         up=("ALTER TABLE job_applications ADD COLUMN folder_suffix INTEGER",),
         down=("ALTER TABLE job_applications DROP COLUMN folder_suffix",),
+    ),
+    Migration(
+        version=41,
+        name="widen claude_jobs.status to add staged (D-286)",
+        rebuild=True,
+        up=(
+            _V41_CLAUDE_JOBS_NEW,
+            "INSERT INTO claude_jobs_new SELECT * FROM claude_jobs",
+            "DROP TABLE claude_jobs",
+            "ALTER TABLE claude_jobs_new RENAME TO claude_jobs",
+        ),
+        down=(
+            _V41_CLAUDE_JOBS_OLD,
+            # Any row actually set to 'staged' has no pre-41 equivalent - falls back to 'queued',
+            # the status a Claude Job always had immediately after creation before Phase 16,
+            # rather than failing the rebuild (same approach as migration 30's Expired fallback).
+            "UPDATE claude_jobs SET status = 'queued' WHERE status = 'staged'",
+            "INSERT INTO claude_jobs_old SELECT * FROM claude_jobs",
+            "DROP TABLE claude_jobs",
+            "ALTER TABLE claude_jobs_old RENAME TO claude_jobs",
+        ),
     ),
 )
 
