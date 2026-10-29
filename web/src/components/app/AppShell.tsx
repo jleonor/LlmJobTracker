@@ -1,6 +1,7 @@
 import { BriefcaseBusiness, LayoutDashboard, ListOrdered, Settings, UserRound } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { useTitlebarOverlayGutter } from '@/lib/useTitlebarOverlayGutter'
 import { cn } from '@/lib/utils'
 
 export type Screen = 'jobs' | 'dashboard' | 'profile' | 'queue' | 'settings'
@@ -40,13 +41,23 @@ export function AppShell({
   onTriggerStaged,
   triggeringStaged,
 }: Props) {
+  // Reserves exactly as much right-edge space as Windows' native title bar controls need, so
+  // the header's own right-aligned content never renders underneath them (see the hook's own
+  // comment - found live once Trigger workflows widened that group enough to reach them).
+  const titlebarGutter = useTitlebarOverlayGutter()
+
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       {/* The full-width top bar: title/logo left, LLM status + Trigger workflows right - no more
           boxed-in sidebar header cell (D-278). app-drag-region/app-no-drag (index.css) make this
           strip the Electron window's own draggable title bar, under the Windows titleBarOverlay
           (electron/main.js) - harmless, inert properties outside Electron. */}
-      <header className="app-drag-region flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4">
+      <header
+        className="app-drag-region flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4"
+        // px-4's own 1rem (16px) stays in charge when there's no overlay to clear (titlebarGutter
+        // is 0 outside Electron/Windows) - only added to, never replaced, when there is one.
+        style={titlebarGutter > 0 ? { paddingRight: titlebarGutter + 16 } : undefined}
+      >
         <div className="flex min-w-0 items-center gap-2">
           <img src="/logo-white.svg" alt="" className="size-6 shrink-0" aria-hidden="true" />
           <span className="truncate text-lg font-semibold tracking-tight">{userName}'s Job Tracker</span>
