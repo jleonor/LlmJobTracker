@@ -1737,6 +1737,17 @@ def _mask_exempt_phrases(text: str, exempt: list[str]) -> str:
     return masked
 
 
+# A URL the letter cites (a portfolio, LinkedIn, GitHub) legitimately has a colon in its scheme
+# (https://) - not the model's own sentence punctuation, the same way a given name's own dash or
+# colon isn't (_mask_exempt_phrases above). Confirmed needed by a real letter rejected over
+# "https://github.com/jleonor".
+_URL = re.compile(r"https?://\S+")
+
+
+def _mask_urls(text: str) -> str:
+    return _URL.sub(lambda match: match.group(0).translate(_MASK_TABLE), text)
+
+
 def check_cover_letter_style(text: str, *, exempt: list[str] | None = None) -> None:
     """The writing rules' mechanical punctuation rule, enforced in code rather than trusted
     (job-llm-steps.md §6, confirmed against real letters: zero exceptions once verbatim titles
@@ -1746,9 +1757,10 @@ def check_cover_letter_style(text: str, *, exempt: list[str] | None = None) -> N
 
     `exempt` is the job's own title and the company's own name, masked out before the dash/colon
     checks (never the word-count check) - a given name may legitimately contain either character,
-    which is not the same thing as the model using one as its own sentence punctuation.
+    which is not the same thing as the model using one as its own sentence punctuation. Any
+    `https://` URL the letter cites is masked out the same way, for the same reason.
     """
-    masked = _mask_exempt_phrases(text, exempt or [])
+    masked = _mask_urls(_mask_exempt_phrases(text, exempt or []))
     dash = _SENTENCE_DASH.search(masked)
     if dash is not None:
         start = max(0, dash.start() - 20)

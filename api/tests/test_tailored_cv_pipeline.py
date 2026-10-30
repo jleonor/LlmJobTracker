@@ -411,6 +411,24 @@ def test_check_cover_letter_style_with_no_exempt_phrases_behaves_as_before() -> 
         check_cover_letter_style(_words(100) + " roles - I apply " + _words(100), exempt=[])
 
 
+def test_check_cover_letter_style_exempts_a_url() -> None:
+    # Confirmed by a real letter: "accessible sur https://github.com/jleonor" was rejected over
+    # the colon in the URL's own scheme, not any sentence punctuation the model wrote.
+    letter = _words(100) + " accessible sur https://github.com/jleonor " + _words(100)
+    check_cover_letter_style(letter)
+
+
+def test_check_cover_letter_style_still_rejects_a_colon_outside_a_url() -> None:
+    # The URL is masked, but a genuine colon elsewhere still fails.
+    letter = (
+        _words(100)
+        + " accessible sur https://github.com/jleonor, role: data analyst "
+        + _words(100)
+    )
+    with pytest.raises(PromptRejected, match="punctuation"):
+        check_cover_letter_style(letter)
+
+
 # --- Gates ------------------------------------------------------------------------------------
 
 
