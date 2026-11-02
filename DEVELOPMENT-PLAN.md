@@ -10,7 +10,7 @@ Phase 14 (Dashboard time slider and stale-application tracking) closed out 2026-
 
 Phase 15 (Packaging and installers) closed out 2026-10-28: a Windows installer verified locally end-to-end (no dev Python/Node install needed, app data in the right place, a real Claude Job working), and a macOS installer (unsigned, D-280) confirmed by the user's contact on real Apple Silicon hardware (macOS 14.4.1) after the documented Gatekeeper workaround, were both confirmed, on the user's go in chat. One commit (`.github/workflows/package.yml`'s registration) was applied directly to `main` ahead of the merge - GitHub's `workflow_dispatch` trigger only works for a workflow file already present on the default branch, so there was no way to wait for the phase's own close-out without blocking the user from running the workflow at all in the meantime. Merged into local `main` with `git merge --ff-only` (D-61) once that commit was folded back into the branch; the branch is kept, nothing pushed by Claude.
 
-Phase 16 (Staged workflows) was inserted 2026-10-29 (D-285), from a planning discussion with the user about Add Job's queueing behavior; its step list is below, awaiting approval.
+Phase 16 (Staged workflows) closed out 2026-11-02: staging Add Job's workflow chain instead of running it immediately, the header's Trigger workflows button, and the staged visual state on the queue badge were all confirmed, on the user's go in chat. Three ad hoc fixes found testing live (D-290 to D-292) were folded in before the close. Merged into local `main` with `git merge --ff-only` (D-61); the branch is kept, nothing pushed by Claude.
 
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
@@ -1357,7 +1357,7 @@ Done when
 - [x] Adding a second job application's workflow does not wait behind the first's; both reach their detail pages immediately, showing a `staged` state. (2026-10-29: verified live, in the browser, against an isolated instance with a scratch database - a "basic" workflow Add Job showed "2 steps staged. They run once you click 'Trigger workflows'" instead of live progress tabs; clicking Add another job reset the wizard while the first job's steps stayed staged; the tracker table showed a teal "Staged" badge.)
 - [x] The header's "Trigger workflows" button shows the right staged count, is disabled at zero, and starts every staged chain in creation order on one click, with no confirmation step. (2026-10-29: the header read "Trigger workflows (2 staged)", enabled; one click with no confirmation flipped both to queued, the header read "LLM: processing", and both finished - the table's badge cleared and the job detail page showed a real generated Job details description.)
 - [x] `python scripts/check.py` is green (output shown). (2026-10-29: `[PASS] api: lint`, `format`, `types`, `tests` (852 passed, 2 deselected); `[PASS] web: lint`, `types and build`, `tests` (81 passed).)
-- [ ] You confirm the behavior in chat, live against the running app.
+- [x] You confirm the behavior in chat, live against the running app. (2026-11-02: confirmed by the user in chat.)
 
 ---
 
