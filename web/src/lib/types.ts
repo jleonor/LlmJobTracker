@@ -184,12 +184,20 @@ export type Settings = {
   llm_export_path: string | null
 }
 
-// "Open LLM app" (D-202, D-210): which backend's desktop app was launched, and where the
-// export it was pointed at lives.
+// "Open LLM app" (D-202, D-210): which backend's desktop app was launched. D-293 (Phase 17)
+// splits what used to be one path into two - bundle_path is where the backup export landed,
+// opened_path is the live app-data folder the deep link actually opened.
 export type LlmAppOpened = {
   backend: Backend
   bundle_path: string
+  opened_path: string
 }
+
+// D-294 (Phase 17): names one application for "Open LLM app"'s per-application button; omitted
+// (or both omitted) is the existing global, whole-dataset open.
+export type OpenLlmAppTarget =
+  | { job_application_id: number }
+  | { open_application_id: number }
 
 // "Export Data" (D-265, Phase 13): the same export, without opening anything.
 export type DataExported = {

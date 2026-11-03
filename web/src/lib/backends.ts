@@ -12,3 +12,12 @@ export const MODEL_FIELD: Record<Backend, 'claude_code_model' | 'codex_model'> =
   claude_code: 'claude_code_model',
   codex: 'codex_model',
 }
+
+// "Open LLM app" (D-202, D-210) launches the desktop *app*, not the reasoning-task CLI
+// BACKEND_LABELS otherwise names - "Claude Code" there would wrongly suggest the CLI. Moved here
+// (Phase 17, D-294) once the per-application Open LLM app button needed the same label Settings'
+// own section already showed.
+export const LLM_APP_LABELS: Record<Backend, string> = {
+  claude_code: 'Claude Desktop',
+  codex: 'the ChatGPT desktop app',
+}

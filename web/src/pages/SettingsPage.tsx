@@ -29,7 +29,7 @@ import {
   saveModelPrices,
   savePricingUrl,
 } from '@/lib/api'
-import { BACKEND_LABELS, BACKENDS, MODEL_FIELD } from '@/lib/backends'
+import { BACKEND_LABELS, BACKENDS, LLM_APP_LABELS, MODEL_FIELD } from '@/lib/backends'
 import type { QueueState } from '@/lib/useClaudeJobs'
 import type {
   AuthStatus,
@@ -41,12 +41,6 @@ import type {
   Settings,
 } from '@/lib/types'
 
-// "Open LLM app" (D-202, D-210) launches the desktop *app*, not the reasoning-task CLI the
-// same setting otherwise names - "Claude Code" there would wrongly suggest the CLI.
-const LLM_APP_LABELS: Record<Backend, string> = {
-  claude_code: 'Claude Desktop',
-  codex: 'the ChatGPT desktop app',
-}
 const RETRY_POLICY_LABELS: Record<RetryPolicy, string> = {
   reset_time: 'Auto-resume at the reported reset time',
   fixed_interval: 'Retry on a fixed interval',
@@ -272,7 +266,7 @@ function OpenLlmAppSection({
     setError(null)
     try {
       const result = await openLlmApp()
-      setOpened(result.bundle_path)
+      setOpened(result.opened_path)
       setConfirmOpen(false)
     } catch (failure) {
       setError(failure instanceof ApiError ? failure.message : 'Could not open the LLM app.')
@@ -372,8 +366,9 @@ function OpenLlmAppSection({
 
       <div className="flex items-center justify-between gap-4 border-t border-border pt-3">
         <p className="text-xs text-muted-foreground">
-          Exports a read-only copy of every job application, your profile documents, and a
-          database snapshot, then opens it in {LLM_APP_LABELS[settings.backend]}.
+          Rebuilds a backup export of every job application, your profile documents, and a
+          database snapshot, then opens your real, live data folder in{' '}
+          {LLM_APP_LABELS[settings.backend]} - it can read and change the live files there.
         </p>
         <Button
           disabled={!installed}
@@ -385,8 +380,7 @@ function OpenLlmAppSection({
       </div>
       {opened && (
         <p className="text-xs text-muted-foreground">
-          Exported to <span className="font-mono">{opened}</span> and opened in{' '}
-          {LLM_APP_LABELS[settings.backend]}.
+          Opened <span className="font-mono">{opened}</span> in {LLM_APP_LABELS[settings.backend]}.
         </p>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -397,10 +391,10 @@ function OpenLlmAppSection({
             <DialogTitle>Open LLM app?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            {appCount === null ? 'Every' : appCount} job application
+            A backup export of {appCount === null ? 'every' : appCount} job application
             {appCount === 1 ? '' : 's'} and their files, your profile documents, and a database
-            snapshot will be exported and opened in {LLM_APP_LABELS[settings.backend]}. Nothing
-            you do there changes the live tracker.
+            snapshot will be rebuilt first, then your real, live data folder will open in{' '}
+            {LLM_APP_LABELS[settings.backend]} - it can read and change the live files there.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmOpen(false)}>

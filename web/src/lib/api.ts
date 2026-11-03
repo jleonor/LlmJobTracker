@@ -30,6 +30,7 @@ import type {
   OpenApplicationIdentityAnswer,
   OpenApplicationResearchItem,
   OpenApplicationResearchItemPreview,
+  OpenLlmAppTarget,
   ParsedModelPrice,
   PositioningRescoreSummary,
   ProfileFile,
@@ -473,10 +474,16 @@ export function runLlmCheck(): Promise<RunResult> {
   return request<RunResult>('/api/runs/check', { method: 'POST' })
 }
 
-// "Open LLM app" (D-202, D-210): rebuilds the full-data export and launches it in whichever
-// desktop app the selected backend (D-195) points at.
-export function openLlmApp(): Promise<LlmAppOpened> {
-  return request<LlmAppOpened>('/api/llm-app/open', { method: 'POST' })
+// "Open LLM app" (D-202, D-210, D-293): rebuilds the backup export, then opens the live
+// app-data folder in whichever desktop app the selected backend (D-195) points at. `target`
+// (D-294) names one application for a full-context, per-application prompt; omitted is the
+// existing global, whole-dataset open.
+export function openLlmApp(target?: OpenLlmAppTarget): Promise<LlmAppOpened> {
+  return request<LlmAppOpened>('/api/llm-app/open', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(target ?? {}),
+  })
 }
 
 // "Export Data" (D-265, Phase 13): the same export, as a manual backup, without opening anything.

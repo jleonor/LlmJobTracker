@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { FilePreview, FilePreviewBody, useFilePreview } from '@/components/app/FilePreview'
 import { GenerateSectionOverlay } from '@/components/app/GenerateSectionOverlay'
 import { OpenApplicationReviseOverlay } from '@/components/app/OpenApplicationReviseOverlay'
+import { OpenLlmAppButton } from '@/components/app/OpenLlmAppButton'
 import { QueueStatusBadge } from '@/components/app/QueueStatusBadge'
 import { StatusBadge } from '@/components/app/StatusBadge'
 import { Badge } from '@/components/ui/badge'
@@ -143,9 +144,20 @@ export function OpenApplicationDetailPage({
           <ArrowLeft className="size-4" aria-hidden="true" />
           Open Applications
         </Button>
-        <Button variant="destructive" size="sm" disabled={deleting} onClick={() => void handleDelete()}>
-          {deleting ? 'Deleting...' : 'Delete'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <OpenLlmAppButton
+            target={{ open_application_id: application.id }}
+            label={application.target_name ?? 'this application'}
+          />
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={deleting}
+            onClick={() => void handleDelete()}
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </div>
       </div>
       {deleteError && (
         <p role="alert" className="text-sm text-destructive">
