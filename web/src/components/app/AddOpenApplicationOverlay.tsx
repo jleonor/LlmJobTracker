@@ -1,6 +1,7 @@
 import { Plus, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { QueueStatusBadge } from '@/components/app/QueueStatusBadge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -12,15 +13,23 @@ import {
   createOpenApplication,
   extractOpenApplicationResearch,
   fetchOpenApplicationIdentityResult,
+  fetchProfileFiles,
   startOpenApplicationIdentity,
 } from '@/lib/api'
 import { useClaudeJobs } from '@/lib/useClaudeJobs'
-import type { OpenApplicationIdentityAnswer, OpenApplicationTargetType } from '@/lib/types'
+import type {
+  AddOpenApplicationResult,
+  AddOpenApplicationWorkflow,
+  OpenApplicationIdentityAnswer,
+  OpenApplicationTargetType,
+  ProfileFile,
+  QueueStatus,
+} from '@/lib/types'
 
 const MAX_RESEARCH_ITEMS = 5
 const NONE = 'none'
 
-type Stage = 'source' | 'review' | 'fields' | 'done'
+type Stage = 'workflow' | 'source' | 'review' | 'fields' | 'done'
 type ResearchItemDraft = { sourceType: 'url' | 'text'; content: string }
 
 const TARGET_TYPE_ITEMS: Record<string, string> = {
@@ -29,17 +38,46 @@ const TARGET_TYPE_ITEMS: Record<string, string> = {
   cold_outreach: 'Cold outreach',
 }
 
+// D-296: which of Sources/Relevance/CV & Cover letter/CV & Introduction message get staged
+// right after the row is created - matches AddJobOverlay's own WORKFLOWS title/subtitle list,
+// branching after CV instead of nesting, since Open Applications have two separate optional
+// deliverables rather than one combined "full" chain.
+const WORKFLOWS: { value: AddOpenApplicationWorkflow; title: string; subtitle: string }[] = [
+  {
+    value: 'sources',
+    title: 'Sources',
+    subtitle: 'Just clean up the research sources into their own files.',
+  },
+  {
+    value: 'relevance',
+    title: '+ Relevance',
+    subtitle: 'Also fill in Industry, Company type, Summary and Relevance.',
+  },
+  {
+    value: 'cv_cover_letter',
+    title: '+ CV & Cover letter',
+    subtitle: 'Also write a tailored CV and cover letter (needs a Master CV).',
+  },
+  {
+    value: 'cv_introduction',
+    title: '+ CV & Introduction message',
+    subtitle: 'Also write a tailored CV and an introduction message (needs a Master CV).',
+  },
+]
+
 function emptyItem(): ResearchItemDraft {
   return { sourceType: 'text', content: '' }
 }
 
-// "Add Open Application" (D-251, revised): a staged wizard mirroring Add Job's own source/
-// review/identity flow. 1) only research sources are given - no manual fields yet. 2) each
-// source is extracted (code-only) and merged into one combined, editable text box. 3) that
-// reviewed text is run through Company details' own field-mapping prompt before any row exists;
-// the result pre-fills the fields below, all still editable. 4) "Create" writes the row with
-// the reviewed text as this application's research and the confirmed fields - nothing is queued
-// at creation, since Company details is already resolved.
+// "Add Open Application" (D-251, revised; D-296 adds the workflow stage): a staged wizard
+// mirroring Add Job's own workflow/source/review/identity flow. 0) choose the workflow chain
+// (and a Master CV for the two that need one). 1) only research sources are given - no manual
+// fields yet. 2) each source is extracted (code-only) and merged into one combined, editable
+// text box. 3) that reviewed text is run through Company details' own field-mapping prompt
+// before any row exists; the result pre-fills the fields below, all still editable. 4) "Create"
+// writes the row with the reviewed text as this application's research and the confirmed
+// fields, then queues the chosen workflow chain (staged, D-286) - Company details' own fields
+// are never queued at creation, since they're already resolved by step 3.
 export function AddOpenApplicationOverlay({
   open,
   onOpenChange,
@@ -51,9 +89,14 @@ export function AddOpenApplicationOverlay({
   onCreated: () => void
   onOpenApplication: (applicationId: number) => void
 }) {
-  const [stage, setStage] = useState<Stage>('source')
+  const [stage, setStage] = useState<Stage>('workflow')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Stage: workflow
+  const [workflow, setWorkflow] = useState<AddOpenApplicationWorkflow>('sources')
+  const [masterCvOptions, setMasterCvOptions] = useState<ProfileFile[] | null>(null)
+  const [masterCvId, setMasterCvId] = useState<number | null>(null)
 
   // Stage: source
   const [items, setItems] = useState<ResearchItemDraft[]>([emptyItem()])
@@ -75,15 +118,18 @@ export function AddOpenApplicationOverlay({
   const [otherNotes, setOtherNotes] = useState('')
 
   // Stage: done
-  const [createdId, setCreatedId] = useState<number | null>(null)
+  const [result, setResult] = useState<AddOpenApplicationResult | null>(null)
 
   const { jobs } = useClaudeJobs()
   const identityJob = identityJobId === null ? null : (jobs.find((job) => job.id === identityJobId) ?? null)
+  const stagedJobs = result?.claude_job_ids.map((id) => jobs.find((job) => job.id === id) ?? null) ?? []
 
   function reset() {
-    setStage('source')
+    setStage('workflow')
     setBusy(false)
     setError(null)
+    setWorkflow('sources')
+    setMasterCvId(null)
     setItems([emptyItem()])
     setReviewText('')
     setIdentityJobId(null)
@@ -97,7 +143,7 @@ export function AddOpenApplicationOverlay({
     setAngle('')
     setWhyThisCompany('')
     setOtherNotes('')
-    setCreatedId(null)
+    setResult(null)
   }
 
   // Reset to a clean wizard each time the overlay opens, so a cancelled attempt never leaks
@@ -106,6 +152,20 @@ export function AddOpenApplicationOverlay({
     if (open) reset()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchProfileFiles()
+      .then((files) => {
+        if (!cancelled) setMasterCvOptions(files.filter((file) => file.kind === 'master_cv'))
+      })
+      .catch(() => {
+        if (!cancelled) setMasterCvOptions([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function updateItem(index: number, next: Partial<ResearchItemDraft>) {
     setItems((current) => current.map((item, i) => (i === index ? { ...item, ...next } : item)))
@@ -199,7 +259,7 @@ export function AddOpenApplicationOverlay({
     setBusy(true)
     setError(null)
     try {
-      const result = await createOpenApplication({
+      const created = await createOpenApplication({
         target_name: targetName.trim() || null,
         target_type: targetType || null,
         contact_name: contactName.trim() || null,
@@ -212,9 +272,11 @@ export function AddOpenApplicationOverlay({
         research_items: reviewText.trim()
           ? [{ source_type: 'text', content: reviewText.trim() }]
           : [],
+        workflow,
+        master_cv_profile_file_id: masterCvId,
       })
       onCreated()
-      setCreatedId(result.application_id)
+      setResult(created)
       setStage('done')
     } catch (failure) {
       setError(failure instanceof ApiError ? failure.message : 'This could not be created.')
@@ -230,6 +292,10 @@ export function AddOpenApplicationOverlay({
 
   const canFetch = items.some((item) => item.content.trim() !== '')
   const targetTypeItems: Record<string, string> = { [NONE]: 'Not set', ...TARGET_TYPE_ITEMS }
+  const needsMasterCv = workflow === 'cv_cover_letter' || workflow === 'cv_introduction'
+  const canUseWorkflow = !needsMasterCv || masterCvId !== null
+  const masterCvItems: Record<string, string> = { [NONE]: 'Not selected' }
+  for (const file of masterCvOptions ?? []) masterCvItems[String(file.id)] = file.original_name
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -238,6 +304,62 @@ export function AddOpenApplicationOverlay({
           <DialogTitle>Add Open Application</DialogTitle>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+          {stage === 'workflow' && (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-muted-foreground">
+                Choose how much to run automatically once this application is added.
+              </p>
+              <div className="flex flex-col gap-2">
+                {WORKFLOWS.map((candidate) => (
+                  <button
+                    key={candidate.value}
+                    type="button"
+                    onClick={() => setWorkflow(candidate.value)}
+                    className={
+                      'flex flex-col gap-0.5 rounded border px-3 py-2 text-left transition-colors ' +
+                      (workflow === candidate.value
+                        ? 'border-primary bg-secondary'
+                        : 'border-border hover:bg-muted')
+                    }
+                  >
+                    <span className="text-sm font-semibold">{candidate.title}</span>
+                    <span className="text-xs text-muted-foreground">{candidate.subtitle}</span>
+                  </button>
+                ))}
+              </div>
+              {needsMasterCv && (
+                <div className="flex flex-col gap-2">
+                  <Label>Master CV</Label>
+                  <Select
+                    items={masterCvItems}
+                    value={masterCvId === null ? NONE : String(masterCvId)}
+                    onValueChange={(next) =>
+                      setMasterCvId(next === NONE || !next ? null : Number(next))
+                    }
+                    disabled={masterCvOptions === null}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Not selected" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>Not selected</SelectItem>
+                      {masterCvOptions?.map((file) => (
+                        <SelectItem key={file.id} value={String(file.id)}>
+                          {file.original_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {masterCvId === null && (
+                    <p className="text-xs text-muted-foreground">
+                      The CV workflows need a Master CV selected.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {stage === 'source' && (
             <div className="flex flex-col gap-2">
               <Label>Research (up to {MAX_RESEARCH_ITEMS}) - a URL or pasted text each</Label>
@@ -397,8 +519,27 @@ export function AddOpenApplicationOverlay({
             </div>
           )}
 
-          {stage === 'done' && (
-            <p className="text-sm text-muted-foreground">Open Application created.</p>
+          {stage === 'done' && result && (
+            <div className="flex flex-col gap-2">
+              {/* Read from live-polled job data (stagedJobs), not assumed from result alone -
+                  mirrors AddJobOverlay's own staged summary (D-288). */}
+              <p className="text-sm text-muted-foreground">
+                {stagedJobs.length > 0 && stagedJobs.every((job) => job?.status === 'staged')
+                  ? `${stagedJobs.length} step${stagedJobs.length === 1 ? '' : 's'} staged. They run once you click "Trigger workflows" in the header.`
+                  : 'Added. Each step below runs on its own; its status updates live.'}
+              </p>
+              <ul className="flex flex-col gap-1">
+                {result.claude_job_ids.map((id) => {
+                  const job = stagedJobs.find((candidate) => candidate?.id === id) ?? null
+                  return (
+                    <li key={id} className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>{job?.label ?? `Job ${id}`}</span>
+                      {job && <QueueStatusBadge status={job.status as QueueStatus} />}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
           )}
 
           {error && (
@@ -408,10 +549,20 @@ export function AddOpenApplicationOverlay({
           )}
         </div>
         <DialogFooter>
-          {stage === 'source' && (
+          {stage === 'workflow' && (
             <>
               <Button variant="outline" onClick={() => close(false)}>
                 Cancel
+              </Button>
+              <Button disabled={!canUseWorkflow} onClick={() => setStage('source')}>
+                Next
+              </Button>
+            </>
+          )}
+          {stage === 'source' && (
+            <>
+              <Button variant="outline" onClick={() => setStage('workflow')}>
+                Back
               </Button>
               <Button disabled={busy || !canFetch} onClick={() => void fetchAndReview()}>
                 {busy ? 'Fetching...' : 'Fetch'}
@@ -438,14 +589,14 @@ export function AddOpenApplicationOverlay({
               </Button>
             </>
           )}
-          {stage === 'done' && createdId !== null && (
+          {stage === 'done' && result && (
             <>
               <Button variant="outline" onClick={reset}>
                 Add another
               </Button>
               <Button
                 onClick={() => {
-                  const id = createdId
+                  const id = result.application_id
                   close(false)
                   onOpenApplication(id)
                 }}

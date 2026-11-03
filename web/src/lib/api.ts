@@ -958,9 +958,10 @@ export function fetchOpenApplicationResearchItems(
   return request<OpenApplicationResearchItem[]>(`/api/open-applications/${id}/research-items`)
 }
 
-// "Add Open Application"'s final "Create" step (D-251, revised): the wizard has already resolved
-// every field via extractOpenApplicationResearch/startOpenApplicationIdentity below, so this just
-// writes the row - nothing is queued here.
+// "Add Open Application"'s final "Create" step (D-251, revised; D-296 adds workflow): the wizard
+// has already resolved Company details' fields via extractOpenApplicationResearch/
+// startOpenApplicationIdentity below, so this writes the row and queues (staged) the chosen
+// workflow chain right after.
 export function createOpenApplication(
   body: CreateOpenApplicationRequest,
 ): Promise<AddOpenApplicationResult> {

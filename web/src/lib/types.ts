@@ -544,9 +544,16 @@ export type OpenApplicationEdit = Partial<{
   due_date: string | null
 }>
 
-// "Add Open Application"'s final "Create" step (D-251, revised): the wizard has already run the
-// research through the extraction preview and the pre-creation identity step below, so every
-// field here is the already-reviewed, final value - nothing is queued at creation anymore.
+// The four Add Open Application workflow chains (D-296, Phase 17): which of Sources/Relevance/
+// CV & Cover letter/CV & Introduction message get queued (staged) right after the row is
+// created. Mirrors AddJobWorkflow's shape, branching after "cv" instead of nesting.
+export type AddOpenApplicationWorkflow = 'sources' | 'relevance' | 'cv_cover_letter' | 'cv_introduction'
+
+// "Add Open Application"'s final "Create" step (D-251, revised; D-296 adds workflow/master CV):
+// the wizard has already run the research through the extraction preview and the pre-creation
+// identity step below, so every Company-details field here is the already-reviewed, final value.
+// `workflow` picks what gets staged after creation; `master_cv_profile_file_id` is required for
+// the two CV workflows.
 export type CreateOpenApplicationRequest = Partial<{
   target_name: string | null
   target_type: OpenApplicationTargetType | null
@@ -557,12 +564,15 @@ export type CreateOpenApplicationRequest = Partial<{
   angle: string | null
   why_this_company: string | null
   other_notes: string | null
+  workflow: AddOpenApplicationWorkflow
+  master_cv_profile_file_id: number | null
 }> & {
   research_items: { source_type: 'url' | 'text'; content: string }[]
 }
 
 export type AddOpenApplicationResult = {
   application_id: number
+  claude_job_ids: number[]
 }
 
 // POST /open-applications/intake/extract's per-item result (D-251's wizard "source" stage) -
