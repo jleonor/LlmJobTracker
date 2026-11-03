@@ -139,17 +139,19 @@ from llmjobtracker.open_application_files import (
     delete_open_application_file,
     store_open_application_file,
 )
-from llmjobtracker.open_application_pipeline import SECTION_KINDS as OPEN_APPLICATION_SECTION_KINDS
 from llmjobtracker.open_application_pipeline import (
+    ADD_OPEN_APPLICATION_WORKFLOWS,
     OpenApplicationIdentityAnswer,
     OpenApplicationReviseNotReady,
     OpenApplicationStepNotReady,
     make_pipeline,
     parse_open_application_identity_answer,
+    queue_add_open_application_chain,
     submit_extract_open_application_identity,
     submit_generate_introduction_message,
     submit_open_application_revise_turn,
 )
+from llmjobtracker.open_application_pipeline import SECTION_KINDS as OPEN_APPLICATION_SECTION_KINDS
 from llmjobtracker.open_application_pipeline import (
     create_open_application as create_open_application_row,
 )
@@ -434,7 +436,10 @@ class CreateOpenApplicationRequest(BaseModel):
     and possibly edited both - so every field here is the already-resolved, final value, written
     straight to the row with nothing queued at creation (D-251, revised). Nothing is required on
     its own; the route rejects only a request with neither a research item nor a single field
-    filled in."""
+    filled in. `workflow` (D-296, Phase 17) picks which of Sources/Relevance/CV & Cover letter/
+    CV & Introduction message gets queued (staged) right after the row is created;
+    `master_cv_profile_file_id` is required for the two CV workflows, same as Add Job's own
+    Master CV gate."""
 
     target_name: str | None = None
     target_type: str | None = None
@@ -446,10 +451,15 @@ class CreateOpenApplicationRequest(BaseModel):
     why_this_company: str | None = None
     other_notes: str | None = None
     research_items: list[ResearchItemInput] = []
+    workflow: str = "sources"
+    master_cv_profile_file_id: int | None = None
 
 
 class AddOpenApplicationResult(BaseModel):
     application_id: int
+    # The chosen workflow's staged Claude Job ids (D-296, Phase 17), mirroring Add Job's own
+    # AddJobResult shape - lets the frontend show a staged-steps summary without a second fetch.
+    claude_job_ids: list[int]
 
 
 class OpenApplicationResearchExtractRequest(BaseModel):
@@ -1483,6 +1493,21 @@ def create_app(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Give at least one research item or a field to start from.",
             )
+        if body.workflow not in ADD_OPEN_APPLICATION_WORKFLOWS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown workflow: {body.workflow}.",
+            )
+        if (
+            body.workflow in ("cv_cover_letter", "cv_introduction")
+            and body.master_cv_profile_file_id is None
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tailored CV needs a Master CV selected.",
+            )
+        _require_master_cv_kind(conn, body.master_cv_profile_file_id)
+
         application_id = create_open_application_row(
             conn,
             {
@@ -1498,7 +1523,14 @@ def create_app(
             },
             body.research_items,
         )
-        return AddOpenApplicationResult(application_id=application_id)
+        if body.master_cv_profile_file_id is not None:
+            set_open_application_master_cv(conn, application_id, body.master_cv_profile_file_id)
+        claude_job_ids = queue_add_open_application_chain(
+            conn, queue, application_id, body.workflow
+        )
+        return AddOpenApplicationResult(
+            application_id=application_id, claude_job_ids=claude_job_ids
+        )
 
     @app.post(
         "/open-applications/intake/extract",

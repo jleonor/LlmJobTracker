@@ -358,6 +358,37 @@ def test_revise_company_details_patches_one_field(db_path: Path) -> None:
     assert detail.target_name == "Acme Talent Pool"  # unmentioned fields stay as they were
 
 
+def test_revise_company_details_can_patch_industry_and_relevance(db_path: Path) -> None:
+    """D-297/D-299: the four fields generate_open_application_relevance produces are revised
+    through this same chat, not one of their own."""
+    queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
+    application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
+
+    conn = connect(db_path)
+    queue.set_runner(
+        FakeRunner(
+            text="=== FIELD PATCH ===\n"
+            "FIELD: INDUSTRY\n"
+            "VALUE: IT\n"
+            "=== END FIELD PATCH ===\n\n"
+            "=== FIELD PATCH ===\n"
+            "FIELD: RELEVANCE\n"
+            "VALUE: Matches your data background.\n"
+            "=== END FIELD PATCH ===\n"
+        )
+    )
+    submit_open_application_revise_turn(
+        conn, queue, application_id, "company_details", "Set the industry and relevance"
+    )
+    run_all(queue)
+
+    detail = get_open_application_detail(conn, application_id)
+    assert detail is not None
+    assert detail.industry == "IT"
+    assert detail.relevance == "Matches your data background."
+    assert detail.target_name == "Acme Talent Pool"  # unmentioned fields stay as they were
+
+
 def test_company_details_revise_reads_every_research_item_by_default(db_path: Path) -> None:
     queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
     application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)

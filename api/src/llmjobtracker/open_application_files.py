@@ -230,6 +230,44 @@ def write_generated_open_application_file(
     )
 
 
+def write_generated_open_application_source_files(
+    conn: sqlite3.Connection,
+    files_root: Path,
+    application_id: int,
+    target_name: str | None,
+    items: list[tuple[str, str]],
+) -> list[OpenApplicationFile]:
+    """Replaces every `source`-kind file at once with `items` (D-295) - `(name, text)` pairs, one
+    per cleaned research item. Unlike `write_generated_open_application_file`, which clears and
+    writes a single file, this clears the whole `source` slot once up front and then inserts each
+    item without clearing again in between - several `source` files coexist (like `other`'s
+    multi-file kind), so a per-item clear would delete the previous item written in the same run.
+    """
+    clear_open_application_files_of_kind(conn, files_root, application_id, "source")
+    folder = managed_folder(files_root, target_name, application_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    written: list[OpenApplicationFile] = []
+    for name, text in items:
+        content = text.encode("utf-8")
+        target, final_name = _unique_target(folder, name, content)
+        target.write_bytes(content)
+        file_id = insert_open_application_file(
+            conn,
+            application_id,
+            kind="source",
+            name=final_name,
+            stored_path=target.relative_to(files_root).as_posix(),
+            sha256=hashlib.sha256(content).hexdigest(),
+            extraction_status="ok",
+            extracted_text=text,
+        )
+        written.append(
+            OpenApplicationFile(id=file_id, kind="source", name=final_name, extraction_status="ok")
+        )
+    conn.commit()
+    return written
+
+
 def store_open_application_file(
     conn: sqlite3.Connection,
     files_root: Path,

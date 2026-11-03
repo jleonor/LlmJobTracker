@@ -197,11 +197,13 @@ table, built before Phase 17 for the wizard's own fields) is the one place all n
 details fields are revised from, regardless of which step originally produced them — extended
 here to also patch `INDUSTRY`, `COMPANY_TYPE`, `SUMMARY` and `RELEVANCE`.
 
-Prompt order: every research item's Source file text, `other_notes`, the career history/
-questionnaire analysis/strategy documents (whichever exist, for a `RELEVANCE` patch), the
-current value of every field above, the conversation so far (`Turn 1: <message>`, ...), the new
-message. The answer is one block per field actually being changed — a field not mentioned stays
-exactly as it is:
+Prompt order: every research item's raw extracted text (unchanged from before Phase 17 - this
+chat's own research context stays the DB concatenation, not §1's Source files; only the two
+Generate steps above read Source files), `other_notes`, the career history/questionnaire
+analysis/strategy documents (new - whichever exist, for a `RELEVANCE` patch), the current value
+of every field above, the conversation so far (`Turn 1: <message>`, ...), the new message. The
+answer is one block per field actually being changed — a field not mentioned stays exactly as it
+is:
 
 ```
 === FIELD PATCH ===
@@ -221,10 +223,10 @@ to 5 exist per application, few enough to list and exclude one at a time, the sa
 `job-revise-steps.md`'s Application history uses for filed emails and Additional files. The
 excluded set (a list of `open_application_research_items.id`) is stored on the turn
 (`open_application_revise_turns.excluded_context`, a JSON array), read back when the job runs, and
-excludes that item's Source file from the revise prompt (unchanged in effect from before Phase 17 -
-only the text's source changed, from the raw DB row to its generated Source file). It has no
-effect on §1's `generate_open_application_sources` or §2's `generate_open_application_relevance`,
-which always read every Source file on their own (non-chat) Generate run. No other Open
+excludes that item's raw text from the revise prompt, exactly as before Phase 17 - unaffected by
+§1/§2's own Source files. It has no effect on §1's `generate_open_application_sources` or §2's
+`generate_open_application_relevance` either, which always read every Source file on their own
+(non-chat) Generate run, regardless of what any revise turn has excluded. No other Open
 Application section has a group to exclude: Tailored CV, Cover letter and Introduction message
 each read Company details' already-composed text and the three profile documents, not the Source
 files directly.

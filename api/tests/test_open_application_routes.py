@@ -35,6 +35,63 @@ def test_create_with_a_research_item_creates_the_row(client: TestClient) -> None
     assert len(detail["status_history"]) == 1
 
 
+def test_create_defaults_to_the_sources_workflow_and_queues_one_staged_job(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/open-applications",
+        json={"research_items": [{"source_type": "text", "content": "Acme is hiring."}]},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert len(body["claude_job_ids"]) == 1
+
+    jobs = client.get("/claude-jobs").json()
+    job = next(j for j in jobs if j["id"] == body["claude_job_ids"][0])
+    assert job["kind"] == "generate_open_application_sources"
+    assert job["status"] == "staged"
+
+
+def test_create_with_relevance_workflow_queues_two_staged_jobs(client: TestClient) -> None:
+    response = client.post(
+        "/open-applications",
+        json={
+            "research_items": [{"source_type": "text", "content": "Acme is hiring."}],
+            "workflow": "relevance",
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert len(body["claude_job_ids"]) == 2
+
+    jobs = {j["id"]: j for j in client.get("/claude-jobs").json()}
+    kinds = [jobs[job_id]["kind"] for job_id in body["claude_job_ids"]]
+    assert kinds == ["generate_open_application_sources", "generate_open_application_relevance"]
+    assert all(jobs[job_id]["status"] == "staged" for job_id in body["claude_job_ids"])
+
+
+def test_create_rejects_an_unknown_workflow(client: TestClient) -> None:
+    response = client.post(
+        "/open-applications",
+        json={
+            "research_items": [{"source_type": "text", "content": "Acme is hiring."}],
+            "workflow": "deluxe",
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_create_cv_workflow_without_a_master_cv_is_rejected(client: TestClient) -> None:
+    response = client.post(
+        "/open-applications",
+        json={
+            "research_items": [{"source_type": "text", "content": "Acme is hiring."}],
+            "workflow": "cv_cover_letter",
+        },
+    )
+    assert response.status_code == 400
+
+
 def test_research_items_route_lists_what_was_saved(client: TestClient) -> None:
     created = client.post(
         "/open-applications",
