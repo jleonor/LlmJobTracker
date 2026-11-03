@@ -237,6 +237,10 @@ function CompanyDetails({
         </Field>
         <Field label="Angle">{application.angle ?? EMPTY}</Field>
         <Field label="Why this company">{application.why_this_company ?? EMPTY}</Field>
+        <Field label="Industry">{application.industry ?? EMPTY}</Field>
+        <Field label="Company type">{application.company_type ?? EMPTY}</Field>
+        <Field label="Summary">{application.summary ?? EMPTY}</Field>
+        <Field label="Relevance">{application.relevance ?? EMPTY}</Field>
         <Field label="Other">{application.other_notes ?? EMPTY}</Field>
       </div>
 
@@ -313,6 +317,10 @@ function CompanyDetailsPane({ application }: { application: OpenApplicationDetai
       </Field>
       <Field label="Contact">{application.contact_name ?? EMPTY}</Field>
       <Field label="Why this company">{application.why_this_company ?? EMPTY}</Field>
+      <Field label="Industry">{application.industry ?? EMPTY}</Field>
+      <Field label="Company type">{application.company_type ?? EMPTY}</Field>
+      <Field label="Summary">{application.summary ?? EMPTY}</Field>
+      <Field label="Relevance">{application.relevance ?? EMPTY}</Field>
       <Field label="Other">{application.other_notes ?? EMPTY}</Field>
     </div>
   )
@@ -337,6 +345,10 @@ function CompanyDetailsEditDialog({
   const [contactUrl, setContactUrl] = useState('')
   const [angle, setAngle] = useState('')
   const [whyThisCompany, setWhyThisCompany] = useState('')
+  const [industry, setIndustry] = useState('')
+  const [companyType, setCompanyType] = useState('')
+  const [summary, setSummary] = useState('')
+  const [relevance, setRelevance] = useState('')
   const [otherNotes, setOtherNotes] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -351,6 +363,10 @@ function CompanyDetailsEditDialog({
     setContactUrl(application.contact_url ?? '')
     setAngle(application.angle ?? '')
     setWhyThisCompany(application.why_this_company ?? '')
+    setIndustry(application.industry ?? '')
+    setCompanyType(application.company_type ?? '')
+    setSummary(application.summary ?? '')
+    setRelevance(application.relevance ?? '')
     setOtherNotes(application.other_notes ?? '')
     setError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -366,6 +382,10 @@ function CompanyDetailsEditDialog({
       contact_url: contactUrl.trim() || null,
       angle: angle.trim() || null,
       why_this_company: whyThisCompany.trim() || null,
+      industry: industry.trim() || null,
+      company_type: companyType.trim() || null,
+      summary: summary.trim() || null,
+      relevance: relevance.trim() || null,
       other_notes: otherNotes.trim() || null,
     }
     setBusy(true)
@@ -434,6 +454,32 @@ function CompanyDetailsEditDialog({
               rows={2}
               value={whyThisCompany}
               onChange={(event) => setWhyThisCompany(event.target.value)}
+            />
+          </FormField>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FormField label="Industry">
+              <Input
+                placeholder="e.g. IT, Construction, Recruitment"
+                value={industry}
+                onChange={(event) => setIndustry(event.target.value)}
+              />
+            </FormField>
+            <FormField label="Company type">
+              <Input
+                placeholder="e.g. Recruitment agency, SaaS vendor"
+                value={companyType}
+                onChange={(event) => setCompanyType(event.target.value)}
+              />
+            </FormField>
+          </div>
+          <FormField label="Summary">
+            <Textarea rows={2} value={summary} onChange={(event) => setSummary(event.target.value)} />
+          </FormField>
+          <FormField label="Relevance">
+            <Textarea
+              rows={2}
+              value={relevance}
+              onChange={(event) => setRelevance(event.target.value)}
             />
           </FormField>
           <FormField label="Other">
@@ -1046,6 +1092,7 @@ function Files({ application, onChanged }: { application: OpenApplicationDetail;
   const coverLetter = files.filter((file) => file.kind === 'cover_letter')
   const introMessage = files.filter((file) => file.kind === 'introduction_message')
   const additional = files.filter((file) => file.kind === 'other')
+  const sources = files.filter((file) => file.kind === 'source')
 
   const [cvOverlayOpen, setCvOverlayOpen] = useState(false)
   const [letterOverlayOpen, setLetterOverlayOpen] = useState(false)
@@ -1101,6 +1148,13 @@ function Files({ application, onChanged }: { application: OpenApplicationDetail;
     <Section title="Files">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <MasterCvField application={application} onChanged={onChanged} />
+        <FileGroup
+          applicationId={application.id}
+          title="Sources"
+          files={sources}
+          empty="No sources generated yet."
+          onChanged={onChanged}
+        />
         <FileGroup
           applicationId={application.id}
           title="Tailored CV"
