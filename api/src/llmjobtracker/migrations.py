@@ -66,7 +66,10 @@ JOB_REVISE_SECTION_KINDS = (*_V18_JOB_REVISE_SECTION_KINDS, "interview_prep")
 # STATUSES above - Screening, Interview and Offer are never written to open_applications.
 OPEN_APPLICATION_STATUSES = ("Identified", "Applied", "Rejected", "Withdrawn", "Expired")
 OPEN_APPLICATION_TARGET_TYPES = ("talent_pool", "unsolicited", "cold_outreach")
-OPEN_APPLICATION_FILE_KINDS = ("tailored_cv", "cover_letter", "introduction_message", "other")
+# Migration 35's own four-kind shape, frozen here the same way _V35_OPEN_APPLICATION_REVISE_
+# SECTION_KINDS is below - migration 42 widens the CHECK to add "source" (D-295).
+_V35_OPEN_APPLICATION_FILE_KINDS = ("tailored_cv", "cover_letter", "introduction_message", "other")
+OPEN_APPLICATION_FILE_KINDS = (*_V35_OPEN_APPLICATION_FILE_KINDS, "source")
 OPEN_APPLICATION_RESEARCH_SOURCE_TYPES = ("url", "text")
 # Migration 35's own four-kind shape, frozen here the same way _V18_JOB_REVISE_SECTION_KINDS is -
 # migration 39 widens the CHECK to add "application_history" (D-282), reopening D-253's "manual
@@ -268,6 +271,50 @@ CREATE TABLE claude_jobs_old (
     retry_attempts INTEGER NOT NULL DEFAULT 0 CHECK (retry_attempts >= 0),
     lane_id INTEGER REFERENCES lanes(id) ON DELETE CASCADE,
     open_application_id INTEGER REFERENCES open_applications(id) ON DELETE CASCADE
+)
+"""
+
+# Migration 42 (D-295, Phase 17): widens open_application_files.kind's CHECK to add "source" - a
+# table rebuild, since SQLite can't ALTER a CHECK (same reason as migration 41 above). The column
+# list is migration 35's original shape unchanged - no column has been added to this table since.
+_V42_OPEN_APPLICATION_FILES_NEW = f"""
+CREATE TABLE open_application_files_new (
+    id INTEGER PRIMARY KEY,
+    open_application_id INTEGER NOT NULL
+        REFERENCES open_applications(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ({_in_list(OPEN_APPLICATION_FILE_KINDS)})),
+    name TEXT NOT NULL,
+    stored_path TEXT NOT NULL,
+    subject TEXT,
+    sha256 TEXT,
+    extraction_status TEXT
+        CHECK (
+            extraction_status IS NULL
+            OR extraction_status IN ({_in_list(EXTRACTION_STATUSES)})
+        ),
+    extraction_message TEXT,
+    extracted_text TEXT
+)
+"""
+
+# migration 42's down step: back to migration 35's four-kind shape.
+_V42_OPEN_APPLICATION_FILES_OLD = f"""
+CREATE TABLE open_application_files_old (
+    id INTEGER PRIMARY KEY,
+    open_application_id INTEGER NOT NULL
+        REFERENCES open_applications(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ({_in_list(_V35_OPEN_APPLICATION_FILE_KINDS)})),
+    name TEXT NOT NULL,
+    stored_path TEXT NOT NULL,
+    subject TEXT,
+    sha256 TEXT,
+    extraction_status TEXT
+        CHECK (
+            extraction_status IS NULL
+            OR extraction_status IN ({_in_list(EXTRACTION_STATUSES)})
+        ),
+    extraction_message TEXT,
+    extracted_text TEXT
 )
 """
 
@@ -1324,7 +1371,7 @@ MIGRATIONS: tuple[Migration, ...] = (
                 id INTEGER PRIMARY KEY,
                 open_application_id INTEGER NOT NULL
                     REFERENCES open_applications(id) ON DELETE CASCADE,
-                kind TEXT NOT NULL CHECK (kind IN ({_in_list(OPEN_APPLICATION_FILE_KINDS)})),
+                kind TEXT NOT NULL CHECK (kind IN ({_in_list(_V35_OPEN_APPLICATION_FILE_KINDS)})),
                 name TEXT NOT NULL,
                 stored_path TEXT NOT NULL,
                 subject TEXT,
@@ -1473,6 +1520,35 @@ MIGRATIONS: tuple[Migration, ...] = (
             "INSERT INTO claude_jobs_old SELECT * FROM claude_jobs",
             "DROP TABLE claude_jobs",
             "ALTER TABLE claude_jobs_old RENAME TO claude_jobs",
+        ),
+    ),
+    Migration(
+        version=42,
+        name="add open_applications' Industry/Company type/Summary/Relevance and the "
+        "open_application_files 'source' kind (D-295, D-297)",
+        rebuild=True,
+        up=(
+            "ALTER TABLE open_applications ADD COLUMN industry TEXT",
+            "ALTER TABLE open_applications ADD COLUMN company_type TEXT",
+            "ALTER TABLE open_applications ADD COLUMN summary TEXT",
+            "ALTER TABLE open_applications ADD COLUMN relevance TEXT",
+            _V42_OPEN_APPLICATION_FILES_NEW,
+            "INSERT INTO open_application_files_new SELECT * FROM open_application_files",
+            "DROP TABLE open_application_files",
+            "ALTER TABLE open_application_files_new RENAME TO open_application_files",
+        ),
+        down=(
+            # A "source" file has no pre-42 kind to fall back to - deleted going down, the same
+            # way migration 37's additional_file rows were.
+            "DELETE FROM open_application_files WHERE kind = 'source'",
+            _V42_OPEN_APPLICATION_FILES_OLD,
+            "INSERT INTO open_application_files_old SELECT * FROM open_application_files",
+            "DROP TABLE open_application_files",
+            "ALTER TABLE open_application_files_old RENAME TO open_application_files",
+            "ALTER TABLE open_applications DROP COLUMN relevance",
+            "ALTER TABLE open_applications DROP COLUMN summary",
+            "ALTER TABLE open_applications DROP COLUMN company_type",
+            "ALTER TABLE open_applications DROP COLUMN industry",
         ),
     ),
 )
