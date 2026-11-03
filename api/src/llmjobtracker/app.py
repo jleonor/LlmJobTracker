@@ -36,6 +36,7 @@ from llmjobtracker.export_llm_bundle import (
     LlmExportBundleBusy,
     export_llm_bundle,
     llm_app_status,
+    write_live_seed_file,
 )
 from llmjobtracker.file_preview import UnsupportedPreview, preview_for
 from llmjobtracker.job_applications import (
@@ -247,16 +248,29 @@ TOKEN_HEADER = "X-Launch-Token"
 
 # "Open LLM app" (D-202, D-210): the deep link each backend's desktop app answers to, confirmed
 # live against both apps - q/prompt prefills the composer (never auto-sent), folder/path roots
-# the new session at the exported bundle (the user still confirms that folder once, per app).
+# the new session at the live app-data folder (D-293, Phase 17 - previously the exported bundle;
+# the user still confirms that folder once, per app).
 LLM_APP_DEEP_LINKS: Final[dict[str, str]] = {
     "claude_code": "claude://code/new?q={prompt}&folder={path}",
     "codex": "codex://new?prompt={prompt}&path={path}",
 }
-# Kept short deliberately (D-202's 14,000-character q limit) - the actual context lives in the
-# exported files, not the URL.
+# D-293: a fresh backup export is still rebuilt every time (unchanged from before), but the
+# session now roots at the live folder, not that backup - both prompts below say so and ask for
+# the live-write caution. Kept short deliberately (D-202's 14,000-character q limit).
 LLM_APP_PROMPT = (
-    "I've exported my job tracker data into this folder. Please read seed.md first, then "
-    "help me think through my applications."
+    "I've just rebuilt a backup export of my job tracker data, and this folder is the real, "
+    "live data behind it. Please read seed.md first, then help me think through my "
+    "applications. Before writing to tracker.db, ask me to close LlmJobTracker first."
+)
+# D-294: the per-application button's own prompt - names that one application and tells the
+# model to use its own browser tool on the URL(s), then read that application's files plus the
+# profile documents, before helping (full context for one application, not the whole dataset).
+LLM_APP_PROMPT_FOR_APPLICATION = (
+    "I've just rebuilt a backup export of my job tracker data, and this folder is the real, "
+    "live data behind it. Please read seed.md first. I want help with one specific "
+    "application: {name}. Open {urls} with your own browser tool, then read that "
+    "application's own files and my profile documents (in profile/) for full context before "
+    "helping. Before writing to tracker.db, ask me to close LlmJobTracker first."
 )
 
 # The content type the browser is told for each file_preview.Preview.kind (D-107). The frontend
@@ -302,9 +316,20 @@ class PricingUrlEdit(BaseModel):
     pricing_url: str | None = None
 
 
+class OpenLlmAppRequest(BaseModel):
+    """D-294: at most one of these, naming the application to open with full context; neither
+    given is the existing global, whole-dataset open."""
+
+    job_application_id: int | None = None
+    open_application_id: int | None = None
+
+
 class LlmAppOpened(BaseModel):
     backend: str
+    # Where the backup export (D-293) was rebuilt - no longer what got opened.
     bundle_path: str
+    # The live app-data folder the deep link actually points at (D-293).
+    opened_path: str
 
 
 class DataExported(BaseModel):
@@ -1920,9 +1945,20 @@ def create_app(
         return llm_app_status()
 
     @app.post("/llm-app/open", response_model=LlmAppOpened, dependencies=[Depends(require_token)])
-    def open_llm_app(conn: Annotated[Connection, Depends(get_db)]) -> LlmAppOpened:
-        """Rebuilds the full-data export and launches it in whichever desktop app the
-        selected backend (D-195) points at (D-202, D-210)."""
+    def open_llm_app(
+        conn: Annotated[Connection, Depends(get_db)],
+        body: OpenLlmAppRequest | None = None,
+    ) -> LlmAppOpened:
+        """Rebuilds the backup export, then launches the live app-data folder (D-293, narrowing
+        D-202/D-210's original read-only-export target) in whichever desktop app the selected
+        backend (D-195) points at. `body`'s id picks a per-application prompt (D-294); neither
+        given (or no body at all) is the existing global, whole-dataset open."""
+        body = body or OpenLlmAppRequest()
+        if body.job_application_id is not None and body.open_application_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Give at most one application id.",
+            )
         backend = get_settings(conn).backend
         if not llm_app_status()[backend].installed:
             raise HTTPException(
@@ -1933,11 +1969,39 @@ def create_app(
             bundle_root = export_llm_bundle(conn, db_path.parent)
         except LlmExportBundleBusy as error:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+        prompt = LLM_APP_PROMPT
+        if body.job_application_id is not None:
+            job = get_job_application_detail(conn, body.job_application_id)
+            if job is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+            urls = [job.portal_url] if job.portal_url else []
+            prompt = LLM_APP_PROMPT_FOR_APPLICATION.format(
+                name=f"{job.company} - {job.role_title}",
+                urls=", ".join(urls) or "(no URL on file - ask me for one)",
+            )
+        elif body.open_application_id is not None:
+            open_detail = get_open_application_detail(conn, body.open_application_id)
+            if open_detail is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+            urls = [
+                item.content
+                for item in list_research_items(conn, body.open_application_id)
+                if item.source_type == "url"
+            ]
+            prompt = LLM_APP_PROMPT_FOR_APPLICATION.format(
+                name=open_detail.target_name or "this application",
+                urls=", ".join(urls) or "(no URL on file - ask me for one)",
+            )
+
+        write_live_seed_file(conn, db_path.parent)
         link = LLM_APP_DEEP_LINKS[backend].format(
-            prompt=quote(LLM_APP_PROMPT), path=quote(str(bundle_root))
+            prompt=quote(prompt), path=quote(str(db_path.parent))
         )
         webbrowser.open(link)
-        return LlmAppOpened(backend=backend, bundle_path=str(bundle_root))
+        return LlmAppOpened(
+            backend=backend, bundle_path=str(bundle_root), opened_path=str(db_path.parent)
+        )
 
     @app.post("/data/export", response_model=DataExported, dependencies=[Depends(require_token)])
     def export_data(conn: Annotated[Connection, Depends(get_db)]) -> DataExported:

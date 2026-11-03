@@ -168,6 +168,75 @@ WHERE job_application_id = (SELECT id FROM job_applications WHERE company = 'Acm
     )
 
 
+def write_live_seed_file(conn: sqlite3.Connection, data_folder: Path) -> None:
+    """Writes (or refreshes) a `seed.md` at the root of the LIVE app-data folder (D-293) -
+    "Open LLM app"'s deep link now roots the external LLM app's session here, not at the
+    read-only export `_write_seed_file` still builds, so the live folder needs its own
+    orientation document with its own, different warning: `tracker.db` here is the real
+    database the running app itself reads and writes, not a snapshot. Only called from the
+    `/llm-app/open` route - `/data/export` (D-265) never touches the live folder."""
+    user_name = get_settings(conn).user_name
+    schema_rows = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND sql IS NOT NULL ORDER BY name"
+    ).fetchall()
+    schema = "\n\n".join(row["sql"] for row in schema_rows)
+    generated_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (data_folder / "seed.md").write_text(
+        f"""# LlmJobTracker - live data folder
+
+This is {user_name}'s job-search tracker's real, live data folder, opened on {generated_at}.
+Unlike an exported copy, anything you change here changes the real app - LlmJobTracker was
+last asked to rebuild a read-only backup of this same data immediately before opening this
+folder, so a mistake here can be recovered from that backup if needed.
+
+Before writing to `tracker.db` (the live SQLite database below), ask the user to close
+LlmJobTracker first - it may be running right now and holding its own connection to this same
+file, so a write from here while it's open risks a conflict with the app's own writes.
+
+## Folder layout
+
+- `tracker.db` - the live database (job applications, status history, Claude Job history and
+  cost, settings, model prices). How to query it, and the schema, are below.
+- `files/<Company>/<Role Title>/` - each application's own files: its listing, tailored CV,
+  cover letter, positioning breakdown, and any filed emails.
+- `profile/` - uploaded and generated profile documents: CVs, older cover letters, the
+  questionnaire, writing rules, and the three analysis documents (career history,
+  questionnaire analysis, strategy).
+
+## Querying tracker.db
+
+This is a standard SQLite3 database file - no server, no credentials. Open it with:
+
+- The `sqlite3` command-line tool: `sqlite3 tracker.db "SELECT ...;"`
+- Python's built-in `sqlite3` module: `import sqlite3; sqlite3.connect("tracker.db")`
+- Any SQLite browser (e.g. DB Browser for SQLite)
+
+A few example queries to start from:
+
+```sql
+-- Every application, newest first
+SELECT company, role_title, status, match_score FROM job_applications ORDER BY id DESC;
+
+-- Status history for one application
+SELECT status, changed_at FROM status_history
+WHERE job_application_id = (SELECT id FROM job_applications WHERE company = 'Acme Inc');
+ORDER BY changed_at;
+
+-- Every file recorded for one application (paths are relative to files/, next to this file)
+SELECT kind, name, stored_path FROM job_files
+WHERE job_application_id = (SELECT id FROM job_applications WHERE company = 'Acme Inc');
+```
+
+## Database schema
+
+```sql
+{schema}
+```
+""",
+        encoding="utf-8",
+    )
+
+
 def export_llm_bundle(conn: sqlite3.Connection, data_folder: Path) -> Path:
     """Rebuilds the full-data export (D-202) at its configured (or default) path (D-212).
     Builds into a temporary staging folder first, then swaps it into place, so a failure
