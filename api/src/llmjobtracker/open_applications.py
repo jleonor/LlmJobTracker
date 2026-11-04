@@ -56,17 +56,25 @@ class StatusHistoryEntry(BaseModel):
 
 
 class OpenApplication(BaseModel):
-    """One row of the Open Applications table (D-250). `status_history` is carried on every row
-    (not just the detail response) so the Dashboard can compute combined counts and the
-    activity heatmap client-side the same way it already does from the Job Applications list
-    (D-254) — without a second per-application fetch."""
+    """One row of the Open Applications table (D-250, widened by D-298 for the table's own
+    column registry/views). `status_history` is carried on every row (not just the detail
+    response) so the Dashboard can compute combined counts and the activity heatmap client-side
+    the same way it already does from the Job Applications list (D-254) — without a second
+    per-application fetch."""
 
     id: int
     target_name: str | None
     target_type: str | None
+    industry: str | None
+    company_type: str | None
+    contact_name: str | None
     status: str
     last_updated: str
+    next_action: str | None
+    due_date: str | None
+    notes: str | None
     status_history: list[StatusHistoryEntry]
+    has_sources: bool
     has_company_details: bool
     has_tailored_cv: bool
     has_cover_letter: bool
@@ -152,12 +160,17 @@ def list_open_applications(conn: sqlite3.Connection) -> list[OpenApplication]:
     rows = conn.execute(
         """
         SELECT
-            a.id, a.target_name, a.target_type, a.status,
+            a.id, a.target_name, a.target_type, a.industry, a.company_type, a.contact_name,
+            a.status, a.next_action, a.due_date, a.notes,
             COALESCE(
                 (SELECT MAX(h.changed_at) FROM open_application_status_history h
                  WHERE h.open_application_id = a.id),
                 a.created_at
             ) AS last_updated,
+            EXISTS(
+                SELECT 1 FROM open_application_files f
+                WHERE f.open_application_id = a.id AND f.kind = 'source'
+            ) AS has_sources,
             EXISTS(
                 SELECT 1 FROM open_application_files f
                 WHERE f.open_application_id = a.id AND f.kind = 'tailored_cv'
@@ -180,9 +193,16 @@ def list_open_applications(conn: sqlite3.Connection) -> list[OpenApplication]:
             id=row["id"],
             target_name=row["target_name"],
             target_type=row["target_type"],
+            industry=row["industry"],
+            company_type=row["company_type"],
+            contact_name=row["contact_name"],
             status=row["status"],
             last_updated=row["last_updated"],
+            next_action=row["next_action"],
+            due_date=row["due_date"],
+            notes=row["notes"],
             status_history=history_by_application.get(row["id"], []),
+            has_sources=bool(row["has_sources"]),
             has_company_details=bool(row["target_name"]),
             has_tailored_cv=bool(row["has_tailored_cv"]),
             has_cover_letter=bool(row["has_cover_letter"]),

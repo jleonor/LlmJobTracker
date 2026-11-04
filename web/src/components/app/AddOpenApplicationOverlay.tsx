@@ -25,18 +25,13 @@ import type {
   ProfileFile,
   QueueStatus,
 } from '@/lib/types'
+import { TARGET_TYPE_LABELS as TARGET_TYPE_ITEMS } from '@/lib/openApplicationLabels'
 
 const MAX_RESEARCH_ITEMS = 5
 const NONE = 'none'
 
 type Stage = 'workflow' | 'source' | 'review' | 'fields' | 'done'
 type ResearchItemDraft = { sourceType: 'url' | 'text'; content: string }
-
-const TARGET_TYPE_ITEMS: Record<string, string> = {
-  talent_pool: 'Talent pool',
-  unsolicited: 'Unsolicited CV drop',
-  cold_outreach: 'Cold outreach',
-}
 
 // D-296: which of Sources/Relevance/CV & Cover letter/CV & Introduction message get staged
 // right after the row is created - matches AddJobOverlay's own WORKFLOWS title/subtitle list,

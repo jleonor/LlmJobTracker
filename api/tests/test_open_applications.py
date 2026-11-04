@@ -48,6 +48,34 @@ def test_list_orders_by_last_updated_and_reports_has_flags(db_path: Path) -> Non
     assert rows[0].has_introduction_message is False
 
 
+def test_list_reports_the_table_registry_fields(db_path: Path) -> None:
+    """D-298, Phase 17: the Open Applications table's column registry needs Industry/Company
+    type/Contact/Next action/Due date/Notes/has_sources on the list row, not just the detail."""
+    conn = connect(db_path)
+    application_id = insert_open_application(
+        conn, {"target_name": "Acme", "contact_name": "Priya Shah"}
+    )
+    update_open_application(
+        conn,
+        application_id,
+        {
+            "industry": "IT",
+            "company_type": "SaaS vendor",
+            "next_action": "Follow up",
+            "due_date": "2026-11-10",
+            "notes": "Met at a conference.",
+        },
+    )
+    rows = list_open_applications(conn)
+    assert rows[0].industry == "IT"
+    assert rows[0].company_type == "SaaS vendor"
+    assert rows[0].contact_name == "Priya Shah"
+    assert rows[0].next_action == "Follow up"
+    assert rows[0].due_date == "2026-11-10"
+    assert rows[0].notes == "Met at a conference."
+    assert rows[0].has_sources is False
+
+
 def test_list_carries_status_history_for_the_dashboard(db_path: Path) -> None:
     conn = connect(db_path)
     application_id = insert_open_application(conn, {"target_name": "Acme"})

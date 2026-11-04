@@ -465,17 +465,36 @@ export type StagedJobsTriggered = {
 // to a specific listing. No lane, no match score (D-249).
 export type OpenApplicationTargetType = 'talent_pool' | 'unsolicited' | 'cold_outreach'
 
-// One row of the Open Applications table (D-250): Company (target name), Target type, Status,
-// Last updated, plus the same has_* flags the Job Applications table uses for its own flags.
+// The trimmed status set (D-249) - Screening/Interview/Offer never apply. Used for the Open
+// Applications table's Status sort/filter, matching STATUS_ORDER's own role for Job Applications.
+export const OPEN_APPLICATION_STATUS_ORDER = [
+  'Identified',
+  'Applied',
+  'Rejected',
+  'Withdrawn',
+  'Expired',
+] as const
+
+// One row of the Open Applications table (D-250, widened by D-298 for the table's own column
+// registry/views): Company (target name), Target type, Industry, Company type, Contact, Status,
+// Last updated, Next action/Due date, Notes, plus the same has_* flags the Job Applications
+// table uses for its own flags.
 export type OpenApplication = {
   id: number
   target_name: string | null
   target_type: OpenApplicationTargetType | null
+  industry: string | null
+  company_type: string | null
+  contact_name: string | null
   status: string
   last_updated: string
+  next_action: string | null
+  due_date: string | null
+  notes: string | null
   // Carried on every row (D-254) so the Dashboard can compute combined counts and the activity
   // heatmap client-side, the same way it already does from the Job Applications list.
   status_history: StatusHistoryEntry[]
+  has_sources: boolean
   has_company_details: boolean
   has_tailored_cv: boolean
   has_cover_letter: boolean

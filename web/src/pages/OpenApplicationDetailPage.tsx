@@ -34,6 +34,7 @@ import {
   setOpenApplicationMasterCv,
   uploadOpenApplicationFile,
 } from '@/lib/api'
+import { TARGET_TYPE_LABELS as TARGET_TYPE_ITEMS } from '@/lib/openApplicationLabels'
 import { cn } from '@/lib/utils'
 import type {
   OpenApplicationDetail,
@@ -49,12 +50,6 @@ const MAIN_STATUSES = ['Identified', 'Applied'] as const
 const END_STATUSES = ['Rejected', 'Withdrawn', 'Expired'] as const
 const ALL_STATUSES = [...MAIN_STATUSES, ...END_STATUSES]
 const NONE = 'none'
-
-const TARGET_TYPE_ITEMS: Record<string, string> = {
-  talent_pool: 'Talent pool',
-  unsolicited: 'Unsolicited CV drop',
-  cold_outreach: 'Cold outreach',
-}
 
 function todayDateOnly(): string {
   return new Date().toISOString().slice(0, 10)
