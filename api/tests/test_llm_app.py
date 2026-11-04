@@ -197,6 +197,12 @@ def test_open_llm_app_for_a_job_application_names_its_url_and_asks_to_browse(
     client: TestClient, db_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _assume_both_installed(monkeypatch)
+    # An isolated export target (same as every other test here) - without one, export_llm_bundle
+    # defaults to the real ~/Downloads/LlmJobTrackerExport on whatever machine runs this suite.
+    client.put(
+        "/settings",
+        json={"user_name": "YourName", "llm_export_path": str(db_path.parent / "export-target")},
+    )
     opened: list[str] = []
     monkeypatch.setattr(webbrowser, "open", opened.append)
     conn = connect(db_path)
@@ -226,6 +232,10 @@ def test_open_llm_app_for_an_open_application_lists_its_research_urls(
     client: TestClient, db_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _assume_both_installed(monkeypatch)
+    client.put(
+        "/settings",
+        json={"user_name": "YourName", "llm_export_path": str(db_path.parent / "export-target")},
+    )
     opened: list[str] = []
     monkeypatch.setattr(webbrowser, "open", opened.append)
     conn = connect(db_path)
@@ -258,9 +268,13 @@ def test_open_llm_app_rejects_both_ids_given(client: TestClient) -> None:
 
 
 def test_open_llm_app_404s_for_an_unknown_job_application_id(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, db_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _assume_both_installed(monkeypatch)
+    client.put(
+        "/settings",
+        json={"user_name": "YourName", "llm_export_path": str(db_path.parent / "export-target")},
+    )
     monkeypatch.setattr(webbrowser, "open", lambda url: None)
     response = client.post("/llm-app/open", json={"job_application_id": 999})
     assert response.status_code == 404

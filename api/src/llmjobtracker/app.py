@@ -1965,11 +1965,9 @@ def create_app(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="That backend's desktop app does not appear to be installed.",
             )
-        try:
-            bundle_root = export_llm_bundle(conn, db_path.parent)
-        except LlmExportBundleBusy as error:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
 
+        # Resolve the prompt - and so validate a given id - before the real, on-disk export
+        # rebuild below, so an unknown id 404s cleanly instead of paying for a wasted export.
         prompt = LLM_APP_PROMPT
         if body.job_application_id is not None:
             job = get_job_application_detail(conn, body.job_application_id)
@@ -1994,6 +1992,10 @@ def create_app(
                 urls=", ".join(urls) or "(no URL on file - ask me for one)",
             )
 
+        try:
+            bundle_root = export_llm_bundle(conn, db_path.parent)
+        except LlmExportBundleBusy as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         write_live_seed_file(conn, db_path.parent)
         link = LLM_APP_DEEP_LINKS[backend].format(
             prompt=quote(prompt), path=quote(str(db_path.parent))
