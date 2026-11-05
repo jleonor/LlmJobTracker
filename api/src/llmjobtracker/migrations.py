@@ -1551,6 +1551,37 @@ MIGRATIONS: tuple[Migration, ...] = (
             "ALTER TABLE open_applications DROP COLUMN industry",
         ),
     ),
+    Migration(
+        version=43,
+        name="rebuild open_applications' Company details field set (D-311, D-312)",
+        up=(
+            "ALTER TABLE open_applications RENAME COLUMN target_name TO company_name",
+            "ALTER TABLE open_applications ADD COLUMN company_website TEXT",
+            "ALTER TABLE open_applications ADD COLUMN company_contact_url TEXT",
+            "ALTER TABLE open_applications ADD COLUMN suggested_angle TEXT",
+            "ALTER TABLE open_applications ADD COLUMN additional_information TEXT",
+            "ALTER TABLE open_applications DROP COLUMN contact_title",
+            "ALTER TABLE open_applications DROP COLUMN contact_url",
+            "ALTER TABLE open_applications DROP COLUMN angle",
+            "ALTER TABLE open_applications DROP COLUMN why_this_company",
+            "ALTER TABLE open_applications DROP COLUMN other_notes",
+        ),
+        down=(
+            # The dropped columns' real values are gone by the time anyone rolls back - this
+            # recreates the columns empty, same as every other migration's down step that drops
+            # a column going up (e.g. migration 42's "source" file kind above).
+            "ALTER TABLE open_applications ADD COLUMN contact_title TEXT",
+            "ALTER TABLE open_applications ADD COLUMN contact_url TEXT",
+            "ALTER TABLE open_applications ADD COLUMN angle TEXT",
+            "ALTER TABLE open_applications ADD COLUMN why_this_company TEXT",
+            "ALTER TABLE open_applications ADD COLUMN other_notes TEXT",
+            "ALTER TABLE open_applications DROP COLUMN company_website",
+            "ALTER TABLE open_applications DROP COLUMN company_contact_url",
+            "ALTER TABLE open_applications DROP COLUMN suggested_angle",
+            "ALTER TABLE open_applications DROP COLUMN additional_information",
+            "ALTER TABLE open_applications RENAME COLUMN company_name TO target_name",
+        ),
+    ),
 )
 
 _LEDGER = """

@@ -7,7 +7,7 @@ import type { OpenApplication } from '@/lib/types'
 function application(overrides: Partial<OpenApplication> = {}): OpenApplication {
   return {
     id: 1,
-    target_name: 'Acme Talent Pool',
+    company_name: 'Acme Talent Pool',
     target_type: 'talent_pool',
     industry: null,
     company_type: null,

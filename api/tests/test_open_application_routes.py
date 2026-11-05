@@ -152,7 +152,7 @@ def test_intake_identity_result_for_an_unknown_job_404s(client: TestClient) -> N
 
 
 def test_create_with_only_manual_fields_is_accepted(client: TestClient) -> None:
-    response = client.post("/open-applications", json={"target_name": "Acme"})
+    response = client.post("/open-applications", json={"company_name": "Acme"})
     assert response.status_code == 201
 
 
@@ -161,29 +161,29 @@ def test_get_a_missing_application_404s(client: TestClient) -> None:
 
 
 def test_patch_updates_a_field(client: TestClient) -> None:
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     response = client.patch(
         f"/open-applications/{created['application_id']}",
-        json={"angle": "A mutual contact introduced me."},
+        json={"suggested_angle": "Lead with the shared data-pipeline work."},
     )
     assert response.status_code == 200
-    assert response.json()["angle"] == "A mutual contact introduced me."
+    assert response.json()["suggested_angle"] == "Lead with the shared data-pipeline work."
 
 
 def test_patch_ignores_a_field_the_edit_model_does_not_declare(client: TestClient) -> None:
     """Pydantic drops a key the request body model doesn't declare before it ever reaches
-    update_open_application, so this is a no-op PATCH (200, target_name unchanged) rather than
+    update_open_application, so this is a no-op PATCH (200, company_name unchanged) rather than
     the 400 a genuinely unknown *column* would raise if ever passed through by hand."""
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     response = client.patch(
         f"/open-applications/{created['application_id']}", json={"match_score": 90}
     )
     assert response.status_code == 200
-    assert response.json()["target_name"] == "Acme"
+    assert response.json()["company_name"] == "Acme"
 
 
 def test_status_history_replace_recomputes_status(client: TestClient) -> None:
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     response = client.put(
         f"/open-applications/{created['application_id']}/status-history",
         json={
@@ -198,7 +198,7 @@ def test_status_history_replace_recomputes_status(client: TestClient) -> None:
 
 
 def test_status_history_replace_with_no_entries_400s(client: TestClient) -> None:
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     response = client.put(
         f"/open-applications/{created['application_id']}/status-history", json={"entries": []}
     )
@@ -206,7 +206,7 @@ def test_status_history_replace_with_no_entries_400s(client: TestClient) -> None
 
 
 def test_delete_removes_the_application(client: TestClient) -> None:
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     application_id = created["application_id"]
     assert client.delete(f"/open-applications/{application_id}").status_code == 204
     assert client.get(f"/open-applications/{application_id}").status_code == 404
@@ -217,7 +217,7 @@ def test_delete_a_missing_application_404s(client: TestClient) -> None:
 
 
 def test_upload_an_additional_file(client: TestClient) -> None:
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     application_id = created["application_id"]
     response = client.post(
         f"/open-applications/{application_id}/files/other",
@@ -238,7 +238,7 @@ def test_upload_an_additional_file(client: TestClient) -> None:
 def test_reveal_shows_the_copy_in_the_file_manager(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     application_id = created["application_id"]
     file = client.post(
         f"/open-applications/{application_id}/files/other",
@@ -256,7 +256,7 @@ def test_reveal_shows_the_copy_in_the_file_manager(
 
 
 def test_reveal_of_a_missing_file_404s(client: TestClient) -> None:
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     application_id = created["application_id"]
 
     response = client.post(f"/open-applications/{application_id}/files/999/reveal")
@@ -265,7 +265,7 @@ def test_reveal_of_a_missing_file_404s(client: TestClient) -> None:
 
 
 def test_upload_rejects_a_non_other_kind(client: TestClient) -> None:
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     response = client.post(
         f"/open-applications/{created['application_id']}/files/tailored_cv",
         headers={"X-File-Name": "cv.docx"},
@@ -275,7 +275,7 @@ def test_upload_rejects_a_non_other_kind(client: TestClient) -> None:
 
 
 def test_generate_cv_before_ready_400s(client: TestClient) -> None:
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     response = client.post(f"/open-applications/{created['application_id']}/tailored-cv/generate")
     assert response.status_code == 400
 
@@ -285,7 +285,7 @@ def test_generate_cv_for_a_missing_application_404s(client: TestClient) -> None:
 
 
 def test_revise_turns_round_trip_for_an_unready_section(client: TestClient) -> None:
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     application_id = created["application_id"]
     listed = client.get(f"/open-applications/{application_id}/revise/tailored_cv/turns")
     assert listed.status_code == 200
@@ -299,7 +299,7 @@ def test_revise_turns_round_trip_for_an_unready_section(client: TestClient) -> N
 
 
 def test_revise_turns_unknown_section_404s(client: TestClient) -> None:
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     application_id = created["application_id"]
     response = client.get(f"/open-applications/{application_id}/revise/not_a_section/turns")
     assert response.status_code == 404
@@ -313,7 +313,7 @@ def test_generate_application_history_before_ready_400s(client: TestClient) -> N
     created = client.post(
         "/open-applications",
         json={"research_items": [{"source_type": "text", "content": "Acme is hiring."}]},
-    ).json()  # no target_name - Company details isn't ready yet
+    ).json()  # no company_name - Company details isn't ready yet
     response = client.post(
         f"/open-applications/{created['application_id']}/application-history/generate"
     )
@@ -323,7 +323,7 @@ def test_generate_application_history_before_ready_400s(client: TestClient) -> N
 def test_revise_turns_recognizes_application_history_as_a_known_section(
     client: TestClient,
 ) -> None:
-    created = client.post("/open-applications", json={"target_name": "Acme"}).json()
+    created = client.post("/open-applications", json={"company_name": "Acme"}).json()
     application_id = created["application_id"]
     listed = client.get(f"/open-applications/{application_id}/revise/application_history/turns")
     assert listed.status_code == 200

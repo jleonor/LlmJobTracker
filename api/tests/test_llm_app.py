@@ -242,7 +242,7 @@ def test_open_llm_app_for_an_open_application_lists_its_research_urls(
     try:
         application_id = create_open_application(
             conn,
-            {"target_name": "Acme Talent Pool"},
+            {"company_name": "Acme Talent Pool"},
             [
                 ResearchItemInput(source_type="url", content="https://acme.example/careers"),
                 ResearchItemInput(source_type="text", content="Pasted notes, not a URL."),

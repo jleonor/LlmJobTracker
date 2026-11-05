@@ -21,7 +21,6 @@ from llmjobtracker.open_application_pipeline import (
     cv_ready,
     introduction_message_ready,
     make_pipeline,
-    parse_company_details_answer,
     parse_introduction_message_answer,
     parse_open_application_identity_answer,
     submit_extract_open_application_identity,
@@ -47,29 +46,28 @@ FIXTURES = (
     Path(__file__).parent.parent.parent / "tests" / "fixtures" / "synthetic" / "job_documents"
 )
 
-GOOD_COMPANY_DETAILS_ANSWER = """=== TARGET NAME ===
+GOOD_IDENTITY_ANSWER = """=== COMPANY NAME ===
 Acme Talent Pool
-=== END TARGET NAME ===
+=== END COMPANY NAME ===
 
 === TARGET TYPE ===
 talent_pool
 === END TARGET TYPE ===
 
 === CONTACT NAME ===
+Info email
 === END CONTACT NAME ===
 
-=== CONTACT TITLE ===
-=== END CONTACT TITLE ===
-
 === CONTACT EMAIL ===
+info@acme.example
 === END CONTACT EMAIL ===
 
-=== ANGLE ===
-=== END ANGLE ===
+=== COMPANY WEBSITE ===
+https://acme.example
+=== END COMPANY WEBSITE ===
 
-=== WHY THIS COMPANY ===
-They have a strong data team.
-=== END WHY THIS COMPANY ===
+=== COMPANY CONTACT URL ===
+=== END COMPANY CONTACT URL ===
 """
 
 GOOD_CV_ANSWER = """=== EDIT ===
@@ -165,34 +163,31 @@ def add_open_application(db_path: Path, fields: dict[str, str | None] | None = N
 
 
 COMPANY_DETAILS_FIELDS: dict[str, str | None] = {
-    "target_name": "Acme Talent Pool",
+    "company_name": "Acme Talent Pool",
     "target_type": "talent_pool",
-    "why_this_company": "They have a strong data team.",
+    "contact_name": "Info email",
+    "contact_email": "info@acme.example",
 }
 
 
 # --- Parsing (no queue involved) ----------------------------------------------------------------
 
 
-def test_parse_company_details_answer_reads_the_fields() -> None:
-    answer = parse_company_details_answer(GOOD_COMPANY_DETAILS_ANSWER, typed_angle=None)
-    assert answer.target_name == "Acme Talent Pool"
+def test_parse_open_application_identity_answer_reads_the_fields() -> None:
+    answer = parse_open_application_identity_answer(GOOD_IDENTITY_ANSWER)
+    assert answer.company_name == "Acme Talent Pool"
     assert answer.target_type == "talent_pool"
-    assert answer.why_this_company == "They have a strong data team."
+    assert answer.contact_name == "Info email"
+    assert answer.contact_email == "info@acme.example"
+    assert answer.company_website == "https://acme.example"
+    assert answer.company_contact_url is None
 
 
-def test_parse_company_details_answer_falls_back_to_none_on_a_bad_target_type() -> None:
-    answer = parse_company_details_answer(
-        GOOD_COMPANY_DETAILS_ANSWER.replace("talent_pool", "carrier_pigeon"), typed_angle=None
+def test_parse_open_application_identity_answer_falls_back_to_none_on_a_bad_target_type() -> None:
+    answer = parse_open_application_identity_answer(
+        GOOD_IDENTITY_ANSWER.replace("talent_pool", "carrier_pigeon")
     )
     assert answer.target_type is None
-
-
-def test_parse_company_details_answer_never_overwrites_the_typed_angle() -> None:
-    answer = parse_company_details_answer(
-        GOOD_COMPANY_DETAILS_ANSWER, typed_angle="My mom knows the CTO."
-    )
-    assert answer.angle == "My mom knows the CTO."
 
 
 def test_parse_introduction_message_answer_requires_both_blocks() -> None:
@@ -207,7 +202,7 @@ def test_parse_introduction_message_answer_requires_both_blocks() -> None:
 def test_extract_identity_populates_the_fields_without_writing_to_any_row(db_path: Path) -> None:
     """The wizard's "fields" stage (D-251's revised flow): runs against raw reviewed text, with
     no Open Application row to read from or write to yet - `open_application_id` is None."""
-    queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
+    queue = make_queue(db_path, FakeRunner(text=GOOD_IDENTITY_ANSWER))
     conn = connect(db_path)
     job_id = submit_extract_open_application_identity(
         conn, queue, "Acme is a talent pool for data analysts."
@@ -224,14 +219,15 @@ def test_extract_identity_populates_the_fields_without_writing_to_any_row(db_pat
     exchange = prompt_exchange(conn, job_id, 0)
     assert exchange is not None
     answer = parse_open_application_identity_answer(exchange.result_text or "")
-    assert answer.target_name == "Acme Talent Pool"
+    assert answer.company_name == "Acme Talent Pool"
     assert answer.target_type == "talent_pool"
-    assert answer.why_this_company == "They have a strong data team."
+    assert answer.contact_name == "Info email"
+    assert answer.company_website == "https://acme.example"
 
 
 def test_build_open_application_identity_prompt_includes_the_text() -> None:
     prompt = build_open_application_identity_prompt("Acme is hiring data analysts.")
-    assert "TASK: generate_open_application_company_details" in prompt
+    assert "TASK: extract_open_application_identity" in prompt
     assert "Acme is hiring data analysts." in prompt
 
 
@@ -335,33 +331,33 @@ def test_cv_and_cover_letter_revise_prompts_include_the_edit_block_syntax(db_pat
 
 
 def test_revise_company_details_patches_one_field(db_path: Path) -> None:
-    queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
+    queue = make_queue(db_path, FakeRunner(text=GOOD_IDENTITY_ANSWER))
     application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
 
     conn = connect(db_path)
     queue.set_runner(
         FakeRunner(
             text="=== FIELD PATCH ===\n"
-            "FIELD: WHY_THIS_COMPANY\n"
-            "VALUE: They just raised a Series B.\n"
+            "FIELD: COMPANY_WEBSITE\n"
+            "VALUE: https://acme.example/careers\n"
             "=== END FIELD PATCH ===\n"
         )
     )
     submit_open_application_revise_turn(
-        conn, queue, application_id, "company_details", "Update why I'm applying"
+        conn, queue, application_id, "company_details", "Update the website"
     )
     run_all(queue)
 
     detail = get_open_application_detail(conn, application_id)
     assert detail is not None
-    assert detail.why_this_company == "They just raised a Series B."
-    assert detail.target_name == "Acme Talent Pool"  # unmentioned fields stay as they were
+    assert detail.company_website == "https://acme.example/careers"
+    assert detail.company_name == "Acme Talent Pool"  # unmentioned fields stay as they were
 
 
 def test_revise_company_details_can_patch_industry_and_relevance(db_path: Path) -> None:
     """D-297/D-299: the four fields generate_open_application_relevance produces are revised
     through this same chat, not one of their own."""
-    queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
+    queue = make_queue(db_path, FakeRunner(text=GOOD_IDENTITY_ANSWER))
     application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
 
     conn = connect(db_path)
@@ -386,11 +382,11 @@ def test_revise_company_details_can_patch_industry_and_relevance(db_path: Path) 
     assert detail is not None
     assert detail.industry == "IT"
     assert detail.relevance == "Matches your data background."
-    assert detail.target_name == "Acme Talent Pool"  # unmentioned fields stay as they were
+    assert detail.company_name == "Acme Talent Pool"  # unmentioned fields stay as they were
 
 
 def test_company_details_revise_reads_every_research_item_by_default(db_path: Path) -> None:
-    queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
+    queue = make_queue(db_path, FakeRunner(text=GOOD_IDENTITY_ANSWER))
     application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
     conn = connect(db_path)
     replace_research_items(
@@ -405,7 +401,7 @@ def test_company_details_revise_reads_every_research_item_by_default(db_path: Pa
 
     queue.set_runner(
         FakeRunner(
-            text="=== FIELD PATCH ===\nFIELD: OTHER_NOTES\nVALUE: Noted.\n=== END FIELD PATCH ===\n"
+            text="=== FIELD PATCH ===\nFIELD: SUMMARY\nVALUE: Noted.\n=== END FIELD PATCH ===\n"
         )
     )
     job_id = submit_open_application_revise_turn(
@@ -420,7 +416,7 @@ def test_company_details_revise_reads_every_research_item_by_default(db_path: Pa
 
 
 def test_company_details_revise_can_exclude_one_research_item(db_path: Path) -> None:
-    queue = make_queue(db_path, FakeRunner(text=GOOD_COMPANY_DETAILS_ANSWER))
+    queue = make_queue(db_path, FakeRunner(text=GOOD_IDENTITY_ANSWER))
     application_id = add_open_application(db_path, COMPANY_DETAILS_FIELDS)
     conn = connect(db_path)
     items = replace_research_items(
@@ -436,7 +432,7 @@ def test_company_details_revise_can_exclude_one_research_item(db_path: Path) -> 
 
     queue.set_runner(
         FakeRunner(
-            text="=== FIELD PATCH ===\nFIELD: OTHER_NOTES\nVALUE: Noted.\n=== END FIELD PATCH ===\n"
+            text="=== FIELD PATCH ===\nFIELD: SUMMARY\nVALUE: Noted.\n=== END FIELD PATCH ===\n"
         )
     )
     job_id = submit_open_application_revise_turn(
@@ -461,7 +457,7 @@ def test_company_details_revise_can_exclude_one_research_item(db_path: Path) -> 
 def test_application_history_ready_requires_company_details(db_path: Path) -> None:
     # insert_open_application already seeds an initial "Identified" status_history row at
     # creation time, so the status-history half of the gate is never actually the blocker in
-    # practice - Company details (target_name) is the one real distinguishing condition.
+    # practice - Company details (company_name) is the one real distinguishing condition.
     application_id = add_open_application(db_path, {})
     conn = connect(db_path)
     assert application_history_ready(conn, application_id) is False

@@ -10,7 +10,7 @@ import { OPEN_APPLICATION_STATUS_ORDER, type OpenApplication } from '@/lib/types
 // shape and resize/reorder/sort/filter machinery - trimmed to this entity's own fields (no Lane
 // or Match score, D-249; a 5-status set instead of 7; 5 processing flags instead of 6).
 export type ColumnId =
-  | 'target_name'
+  | 'company_name'
   | 'target_type'
   | 'industry'
   | 'company_type'
@@ -133,7 +133,7 @@ function targetTypeLabel(targetType: OpenApplication['target_type']): string | n
 }
 
 export const OPEN_APPLICATION_COLUMNS: readonly OpenApplicationColumn[] = [
-  textColumn('target_name', 'Company', 180, (app) => app.target_name),
+  textColumn('company_name', 'Company', 180, (app) => app.company_name),
   {
     id: 'target_type',
     label: 'Target type',
@@ -188,7 +188,7 @@ export const COLUMN_BY_ID: Readonly<Record<ColumnId, OpenApplicationColumn>> = O
 ) as Record<ColumnId, OpenApplicationColumn>
 
 export const DEFAULT_COLUMN_IDS: readonly ColumnId[] = [
-  'target_name',
+  'company_name',
   'target_type',
   'status',
   'last_updated',

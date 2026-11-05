@@ -73,7 +73,7 @@ export const OPEN_APPLICATION_VIEWS: readonly OpenApplicationView[] = [
     id: 'to_apply_to',
     label: 'To apply to',
     icon: Send,
-    columns: ['target_name', 'target_type', 'status', 'last_updated'],
+    columns: ['company_name', 'target_type', 'status', 'last_updated'],
     sort: { column: 'last_updated', direction: 'desc' },
     filters: statusFilter(['Identified']),
   },
@@ -81,7 +81,7 @@ export const OPEN_APPLICATION_VIEWS: readonly OpenApplicationView[] = [
     id: 'active_applications',
     label: 'Active applications',
     icon: Activity,
-    columns: ['target_name', 'target_type', 'status', 'last_updated'],
+    columns: ['company_name', 'target_type', 'status', 'last_updated'],
     sort: { column: 'last_updated', direction: 'desc' },
     // In progress (Applied, the only non-terminal status besides Identified) and touched within
     // the last 30 days - mirrors Job Applications' own Active/Cold split (D-275).
@@ -94,7 +94,7 @@ export const OPEN_APPLICATION_VIEWS: readonly OpenApplicationView[] = [
     id: 'cold_applications',
     label: 'Cold applications',
     icon: Snowflake,
-    columns: ['target_name', 'target_type', 'status', 'last_updated'],
+    columns: ['company_name', 'target_type', 'status', 'last_updated'],
     sort: { column: 'last_updated', direction: 'asc' },
     filters: (now) => ({
       ...statusFilter([...NON_DEAD_STATUSES]),
@@ -105,7 +105,7 @@ export const OPEN_APPLICATION_VIEWS: readonly OpenApplicationView[] = [
     id: 'dead_applications',
     label: 'Dead applications',
     icon: Archive,
-    columns: ['target_name', 'target_type', 'status', 'notes'],
+    columns: ['company_name', 'target_type', 'status', 'notes'],
     sort: { column: 'last_updated', direction: 'desc' },
     filters: statusFilter(DEAD_STATUSES),
   },
@@ -113,7 +113,7 @@ export const OPEN_APPLICATION_VIEWS: readonly OpenApplicationView[] = [
     id: 'upcoming_actions',
     label: 'Upcoming actions',
     icon: CalendarClock,
-    columns: ['target_name', 'target_type', 'status', 'next_action_date', 'next_action'],
+    columns: ['company_name', 'target_type', 'status', 'next_action_date', 'next_action'],
     sort: { column: 'next_action_date', direction: 'asc' },
     filters: { ...statusFilter(['Applied']), ...HAS_NEXT_ACTION_DATE },
   },
@@ -122,7 +122,7 @@ export const OPEN_APPLICATION_VIEWS: readonly OpenApplicationView[] = [
     label: 'Processing status',
     icon: ListChecks,
     columns: [
-      'target_name',
+      'company_name',
       'target_type',
       'status',
       'sources_status',
@@ -139,7 +139,7 @@ export const OPEN_APPLICATION_VIEWS: readonly OpenApplicationView[] = [
     label: 'History dates',
     icon: History,
     columns: [
-      'target_name',
+      'company_name',
       'target_type',
       'status',
       'identified_date',

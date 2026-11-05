@@ -117,7 +117,7 @@ export function OpenApplicationDetailPage({
 
   async function handleDelete() {
     const ok = window.confirm(
-      `Delete ${application.target_name ?? 'this Open Application'}? This removes its files, ` +
+      `Delete ${application.company_name ?? 'this Open Application'}? This removes its files, ` +
         'status history and LLM job history, and cannot be undone.',
     )
     if (!ok) return
@@ -142,7 +142,7 @@ export function OpenApplicationDetailPage({
         <div className="flex items-center gap-2">
           <OpenLlmAppButton
             target={{ open_application_id: application.id }}
-            label={application.target_name ?? 'this application'}
+            label={application.company_name ?? 'this application'}
           />
           <Button
             variant="destructive"
@@ -166,7 +166,7 @@ export function OpenApplicationDetailPage({
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <h1 id="open-application-detail-heading" className="text-xl font-semibold tracking-tight">
-            {application.target_name ?? '(unnamed)'}
+            {application.company_name ?? '(unnamed)'}
           </h1>
           <StatusBadge status={application.status} />
           <QueueStatusBadge status={application.queue_status} />
@@ -174,6 +174,7 @@ export function OpenApplicationDetailPage({
       </div>
 
       <CompanyDetails application={application} onChanged={onChanged} />
+      <CompanyAnalysis application={application} onChanged={onChanged} />
       <ApplicationHistory application={application} onChanged={onChanged} />
       <Files application={application} onChanged={onChanged} />
     </section>
@@ -181,6 +182,34 @@ export function OpenApplicationDetailPage({
 }
 
 // --- Company details ----------------------------------------------------------------------
+
+// D-311: Company name|Target type / Company website|Contact name (embedding Contact email) /
+// Company contact URL|Industry & Company type / Summary|Additional information - a 2-column,
+// 4-row layout, shared between the always-visible display and the Revise overlay's left pane.
+function CompanyDetailsPane({ application }: { application: OpenApplicationDetail }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <Field label="Company name">{application.company_name ?? EMPTY}</Field>
+      <Field label="Target type">
+        {application.target_type ? TARGET_TYPE_ITEMS[application.target_type] : EMPTY}
+      </Field>
+      <Field label="Company website">
+        <UrlValue url={application.company_website} />
+      </Field>
+      <Field label="Contact name">
+        <ContactValue application={application} />
+      </Field>
+      <Field label="Company contact URL">
+        <UrlValue url={application.company_contact_url} />
+      </Field>
+      <Field label="Industry & Company type">
+        <IndustryAndCompanyTypeValue application={application} />
+      </Field>
+      <Field label="Summary">{application.summary ?? EMPTY}</Field>
+      <Field label="Additional information">{application.additional_information ?? EMPTY}</Field>
+    </div>
+  )
+}
 
 function CompanyDetails({
   application,
@@ -191,7 +220,7 @@ function CompanyDetails({
 }) {
   const [editOpen, setEditOpen] = useState(false)
   const [reviseOpen, setReviseOpen] = useState(false)
-  const hasData = Boolean(application.target_name)
+  const hasData = Boolean(application.company_name)
   // Read fresh each time the overlay opens, for the clickable research-item badges (D-260,
   // D-261) - this page otherwise never needs the saved research items themselves.
   const [researchItems, setResearchItems] = useState<OpenApplicationResearchItem[]>([])
@@ -222,21 +251,78 @@ function CompanyDetails({
         </div>
       }
     >
+      <CompanyDetailsPane application={application} />
+
+      <CompanyDetailsEditDialog
+        application={application}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSaved={onChanged}
+      />
+      <OpenApplicationReviseOverlay
+        applicationId={application.id}
+        sectionKind="company_details"
+        title="Company details"
+        leftPane={<CompanyDetailsPane application={application} />}
+        contextItems={researchItems.map((item) => ({
+          id: item.id,
+          label: `Research ${item.position}: ${researchItemLabel(item)}`,
+        }))}
+        open={reviseOpen}
+        onOpenChange={setReviseOpen}
+        onChanged={onChanged}
+      />
+    </Section>
+  )
+}
+
+// D-312: a separate section between Company details and Application history - Relevance (moved
+// out of Company details) and Suggested angle (replacing the old user-typed Angle, now generated
+// by the same step as Relevance), two columns. Shares Company details' own Edit/Revise mechanism
+// (one combined form, one revise chat covering every field from both cards) rather than a second
+// one, since Revise is scoped to the whole company_details section, not to whichever step first
+// produced a given field (Agent/specs/open-application-llm-steps.md §2).
+function CompanyAnalysis({
+  application,
+  onChanged,
+}: {
+  application: OpenApplicationDetail
+  onChanged: () => void
+}) {
+  const [editOpen, setEditOpen] = useState(false)
+  const [reviseOpen, setReviseOpen] = useState(false)
+  const hasData = Boolean(application.company_name)
+  const [researchItems, setResearchItems] = useState<OpenApplicationResearchItem[]>([])
+  useEffect(() => {
+    if (!reviseOpen) return
+    let cancelled = false
+    fetchOpenApplicationResearchItems(application.id)
+      .then((items) => {
+        if (!cancelled) setResearchItems(items)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [reviseOpen, application.id])
+
+  return (
+    <Section
+      title="Company analysis"
+      actions={
+        <div className="flex shrink-0 gap-2">
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            Edit
+          </Button>
+          <Button variant="outline" size="sm" disabled={!hasData} onClick={() => setReviseOpen(true)}>
+            Revise (LLM)
+          </Button>
+        </div>
+      }
+    >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Target name">{application.target_name ?? EMPTY}</Field>
-        <Field label="Target type">
-          {application.target_type ? TARGET_TYPE_ITEMS[application.target_type] : EMPTY}
-        </Field>
-        <Field label="Contact">
-          <ContactValue application={application} />
-        </Field>
-        <Field label="Angle">{application.angle ?? EMPTY}</Field>
-        <Field label="Why this company">{application.why_this_company ?? EMPTY}</Field>
-        <Field label="Industry">{application.industry ?? EMPTY}</Field>
-        <Field label="Company type">{application.company_type ?? EMPTY}</Field>
-        <Field label="Summary">{application.summary ?? EMPTY}</Field>
         <Field label="Relevance">{application.relevance ?? EMPTY}</Field>
-        <Field label="Other">{application.other_notes ?? EMPTY}</Field>
+        <Field label="Suggested angle">{application.suggested_angle ?? EMPTY}</Field>
       </div>
 
       <CompanyDetailsEditDialog
@@ -269,55 +355,36 @@ function researchItemLabel(item: OpenApplicationResearchItem): string {
   return text.length > 28 ? `${text.slice(0, 28)}...` : text
 }
 
-// Contact as the user asked: an email renders as a clickable mailto: link, and a contact URL
-// (e.g. a LinkedIn profile) renders as its own clickable link alongside the name/title.
-function ContactValue({ application }: { application: OpenApplicationDetail }) {
-  if (!application.contact_name && !application.contact_email && !application.contact_url) {
-    return EMPTY
-  }
+function UrlValue({ url }: { url: string | null }) {
+  if (!url) return EMPTY
   return (
-    <span className="flex flex-wrap items-center gap-1">
-      {application.contact_name && <span>{application.contact_name}</span>}
-      {application.contact_title && (
-        <span className="text-muted-foreground">({application.contact_title})</span>
-      )}
-      {application.contact_email && (
-        <a
-          href={`mailto:${application.contact_email}`}
-          className="text-primary underline underline-offset-2"
-        >
-          {application.contact_email}
-        </a>
-      )}
-      {application.contact_url && (
-        <a
-          href={application.contact_url}
-          target="_blank"
-          rel="noreferrer"
-          className="text-primary underline underline-offset-2"
-        >
-          {application.contact_url}
-        </a>
-      )}
+    <a href={url} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+      {url}
+    </a>
+  )
+}
+
+function IndustryAndCompanyTypeValue({ application }: { application: OpenApplicationDetail }) {
+  if (!application.industry && !application.company_type) return EMPTY
+  return (
+    <span>
+      {application.industry ?? '-'} / {application.company_type ?? '-'}
     </span>
   )
 }
 
-function CompanyDetailsPane({ application }: { application: OpenApplicationDetail }) {
+// Contact as the user asked: the name itself is the clickable mailto: link, embedding Contact
+// email - including when the name is a generic mailbox's own label (e.g. "Info email").
+function ContactValue({ application }: { application: OpenApplicationDetail }) {
+  if (!application.contact_name) return EMPTY
+  if (!application.contact_email) return <span>{application.contact_name}</span>
   return (
-    <div className="flex flex-col gap-3 text-sm">
-      <Field label="Target name">{application.target_name ?? EMPTY}</Field>
-      <Field label="Target type">
-        {application.target_type ? TARGET_TYPE_ITEMS[application.target_type] : EMPTY}
-      </Field>
-      <Field label="Contact">{application.contact_name ?? EMPTY}</Field>
-      <Field label="Why this company">{application.why_this_company ?? EMPTY}</Field>
-      <Field label="Industry">{application.industry ?? EMPTY}</Field>
-      <Field label="Company type">{application.company_type ?? EMPTY}</Field>
-      <Field label="Summary">{application.summary ?? EMPTY}</Field>
-      <Field label="Relevance">{application.relevance ?? EMPTY}</Field>
-      <Field label="Other">{application.other_notes ?? EMPTY}</Field>
-    </div>
+    <a
+      href={`mailto:${application.contact_email}`}
+      className="text-primary underline underline-offset-2"
+    >
+      {application.contact_name}
+    </a>
   )
 }
 
@@ -332,56 +399,53 @@ function CompanyDetailsEditDialog({
   onOpenChange: (open: boolean) => void
   onSaved: () => void
 }) {
-  const [targetName, setTargetName] = useState('')
+  const [companyName, setCompanyName] = useState('')
   const [targetType, setTargetType] = useState<OpenApplicationTargetType | ''>('')
   const [contactName, setContactName] = useState('')
-  const [contactTitle, setContactTitle] = useState('')
   const [contactEmail, setContactEmail] = useState('')
-  const [contactUrl, setContactUrl] = useState('')
-  const [angle, setAngle] = useState('')
-  const [whyThisCompany, setWhyThisCompany] = useState('')
+  const [companyWebsite, setCompanyWebsite] = useState('')
+  const [companyContactUrl, setCompanyContactUrl] = useState('')
   const [industry, setIndustry] = useState('')
   const [companyType, setCompanyType] = useState('')
   const [summary, setSummary] = useState('')
+  const [additionalInformation, setAdditionalInformation] = useState('')
   const [relevance, setRelevance] = useState('')
-  const [otherNotes, setOtherNotes] = useState('')
+  const [suggestedAngle, setSuggestedAngle] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
-    setTargetName(application.target_name ?? '')
+    setCompanyName(application.company_name ?? '')
     setTargetType(application.target_type ?? '')
     setContactName(application.contact_name ?? '')
-    setContactTitle(application.contact_title ?? '')
     setContactEmail(application.contact_email ?? '')
-    setContactUrl(application.contact_url ?? '')
-    setAngle(application.angle ?? '')
-    setWhyThisCompany(application.why_this_company ?? '')
+    setCompanyWebsite(application.company_website ?? '')
+    setCompanyContactUrl(application.company_contact_url ?? '')
     setIndustry(application.industry ?? '')
     setCompanyType(application.company_type ?? '')
     setSummary(application.summary ?? '')
+    setAdditionalInformation(application.additional_information ?? '')
     setRelevance(application.relevance ?? '')
-    setOtherNotes(application.other_notes ?? '')
+    setSuggestedAngle(application.suggested_angle ?? '')
     setError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   async function save() {
     const edit: OpenApplicationEdit = {
-      target_name: targetName.trim() || null,
+      company_name: companyName.trim() || null,
       target_type: targetType || null,
       contact_name: contactName.trim() || null,
-      contact_title: contactTitle.trim() || null,
       contact_email: contactEmail.trim() || null,
-      contact_url: contactUrl.trim() || null,
-      angle: angle.trim() || null,
-      why_this_company: whyThisCompany.trim() || null,
+      company_website: companyWebsite.trim() || null,
+      company_contact_url: companyContactUrl.trim() || null,
       industry: industry.trim() || null,
       company_type: companyType.trim() || null,
       summary: summary.trim() || null,
+      additional_information: additionalInformation.trim() || null,
       relevance: relevance.trim() || null,
-      other_notes: otherNotes.trim() || null,
+      suggested_angle: suggestedAngle.trim() || null,
     }
     setBusy(true)
     setError(null)
@@ -403,8 +467,8 @@ function CompanyDetailsEditDialog({
           <DialogTitle>Edit Company details</DialogTitle>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-          <FormField label="Target name">
-            <Input value={targetName} onChange={(event) => setTargetName(event.target.value)} />
+          <FormField label="Company name">
+            <Input value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
           </FormField>
           <FormField label="Target type">
             <Select
@@ -427,28 +491,21 @@ function CompanyDetailsEditDialog({
               </SelectContent>
             </Select>
           </FormField>
+          <FormField label="Company website">
+            <Input value={companyWebsite} onChange={(event) => setCompanyWebsite(event.target.value)} />
+          </FormField>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FormField label="Contact name">
               <Input value={contactName} onChange={(event) => setContactName(event.target.value)} />
             </FormField>
-            <FormField label="Contact title">
-              <Input value={contactTitle} onChange={(event) => setContactTitle(event.target.value)} />
+            <FormField label="Contact email">
+              <Input value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} />
             </FormField>
           </div>
-          <FormField label="Contact email">
-            <Input value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} />
-          </FormField>
-          <FormField label="Contact URL (e.g. LinkedIn)">
-            <Input value={contactUrl} onChange={(event) => setContactUrl(event.target.value)} />
-          </FormField>
-          <FormField label="Angle - your own connection">
-            <Textarea rows={2} value={angle} onChange={(event) => setAngle(event.target.value)} />
-          </FormField>
-          <FormField label="Why this company">
-            <Textarea
-              rows={2}
-              value={whyThisCompany}
-              onChange={(event) => setWhyThisCompany(event.target.value)}
+          <FormField label="Company contact URL">
+            <Input
+              value={companyContactUrl}
+              onChange={(event) => setCompanyContactUrl(event.target.value)}
             />
           </FormField>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -470,6 +527,13 @@ function CompanyDetailsEditDialog({
           <FormField label="Summary">
             <Textarea rows={2} value={summary} onChange={(event) => setSummary(event.target.value)} />
           </FormField>
+          <FormField label="Additional information">
+            <Textarea
+              rows={2}
+              value={additionalInformation}
+              onChange={(event) => setAdditionalInformation(event.target.value)}
+            />
+          </FormField>
           <FormField label="Relevance">
             <Textarea
               rows={2}
@@ -477,8 +541,12 @@ function CompanyDetailsEditDialog({
               onChange={(event) => setRelevance(event.target.value)}
             />
           </FormField>
-          <FormField label="Other">
-            <Textarea rows={2} value={otherNotes} onChange={(event) => setOtherNotes(event.target.value)} />
+          <FormField label="Suggested angle">
+            <Textarea
+              rows={2}
+              value={suggestedAngle}
+              onChange={(event) => setSuggestedAngle(event.target.value)}
+            />
           </FormField>
           {error && (
             <p role="alert" className="text-xs text-destructive">
@@ -560,7 +628,7 @@ function ApplicationHistory({
   const [generateOpen, setGenerateOpen] = useState(false)
   const hasData =
     application.notes !== null || application.next_action !== null || application.due_date !== null
-  const ready = Boolean(application.target_name)
+  const ready = Boolean(application.company_name)
   return (
     <Section
       title="Application history"
@@ -1122,7 +1190,7 @@ function Files({ application, onChanged }: { application: OpenApplicationDetail;
     }
   }, [])
 
-  const hasCompanyDetails = Boolean(application.target_name)
+  const hasCompanyDetails = Boolean(application.company_name)
   const hasDocxMasterCv =
     application.master_cv_profile_file_id !== null &&
     (application.master_cv_name ?? '').toLowerCase().endsWith('.docx')

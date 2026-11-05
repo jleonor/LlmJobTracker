@@ -466,15 +466,12 @@ class CreateOpenApplicationRequest(BaseModel):
     `master_cv_profile_file_id` is required for the two CV workflows, same as Add Job's own
     Master CV gate."""
 
-    target_name: str | None = None
+    company_name: str | None = None
     target_type: str | None = None
     contact_name: str | None = None
-    contact_title: str | None = None
     contact_email: str | None = None
-    contact_url: str | None = None
-    angle: str | None = None
-    why_this_company: str | None = None
-    other_notes: str | None = None
+    company_website: str | None = None
+    company_contact_url: str | None = None
     research_items: list[ResearchItemInput] = []
     workflow: str = "sources"
     master_cv_profile_file_id: int | None = None
@@ -1512,7 +1509,7 @@ def create_app(
         body: CreateOpenApplicationRequest, conn: Annotated[Connection, Depends(get_db)]
     ) -> AddOpenApplicationResult:
         if not body.research_items and not any(
-            [body.target_name, body.target_type, body.angle, body.why_this_company]
+            [body.company_name, body.target_type, body.contact_name, body.company_website]
         ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1536,15 +1533,12 @@ def create_app(
         application_id = create_open_application_row(
             conn,
             {
-                "target_name": body.target_name,
+                "company_name": body.company_name,
                 "target_type": body.target_type,
                 "contact_name": body.contact_name,
-                "contact_title": body.contact_title,
                 "contact_email": body.contact_email,
-                "contact_url": body.contact_url,
-                "angle": body.angle,
-                "why_this_company": body.why_this_company,
-                "other_notes": body.other_notes,
+                "company_website": body.company_website,
+                "company_contact_url": body.company_contact_url,
             },
             body.research_items,
         )
@@ -1721,7 +1715,7 @@ def create_app(
             if detail is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
             return store_open_application_file(
-                conn, files_root, application_id, detail.target_name, name, content
+                conn, files_root, application_id, detail.company_name, name, content
             )
         except OpenApplicationFileUploadError as error:
             raise HTTPException(status_code=error.status, detail=error.message) from error
@@ -1988,7 +1982,7 @@ def create_app(
                 if item.source_type == "url"
             ]
             prompt = LLM_APP_PROMPT_FOR_APPLICATION.format(
-                name=open_detail.target_name or "this application",
+                name=open_detail.company_name or "this application",
                 urls=", ".join(urls) or "(no URL on file - ask me for one)",
             )
 

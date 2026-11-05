@@ -45,8 +45,8 @@ const WORKFLOWS: { value: AddOpenApplicationWorkflow; title: string; subtitle: s
   },
   {
     value: 'relevance',
-    title: '+ Relevance',
-    subtitle: 'Also fill in Industry, Company type, Summary and Relevance.',
+    title: '+ Company analysis',
+    subtitle: 'Also fill in Industry, Company type, Summary, Additional information, Relevance and Suggested angle.',
   },
   {
     value: 'cv_cover_letter',
@@ -102,15 +102,12 @@ export function AddOpenApplicationOverlay({
   // Stage: fields
   const [identityJobId, setIdentityJobId] = useState<number | null>(null)
   const [fieldsLoading, setFieldsLoading] = useState(false)
-  const [targetName, setTargetName] = useState('')
+  const [companyName, setCompanyName] = useState('')
   const [targetType, setTargetType] = useState<OpenApplicationTargetType | ''>('')
   const [contactName, setContactName] = useState('')
-  const [contactTitle, setContactTitle] = useState('')
   const [contactEmail, setContactEmail] = useState('')
-  const [contactUrl, setContactUrl] = useState('')
-  const [angle, setAngle] = useState('')
-  const [whyThisCompany, setWhyThisCompany] = useState('')
-  const [otherNotes, setOtherNotes] = useState('')
+  const [companyWebsite, setCompanyWebsite] = useState('')
+  const [companyContactUrl, setCompanyContactUrl] = useState('')
 
   // Stage: done
   const [result, setResult] = useState<AddOpenApplicationResult | null>(null)
@@ -129,15 +126,12 @@ export function AddOpenApplicationOverlay({
     setReviewText('')
     setIdentityJobId(null)
     setFieldsLoading(false)
-    setTargetName('')
+    setCompanyName('')
     setTargetType('')
     setContactName('')
-    setContactTitle('')
     setContactEmail('')
-    setContactUrl('')
-    setAngle('')
-    setWhyThisCompany('')
-    setOtherNotes('')
+    setCompanyWebsite('')
+    setCompanyContactUrl('')
     setResult(null)
   }
 
@@ -220,13 +214,12 @@ export function AddOpenApplicationOverlay({
     fetchOpenApplicationIdentityResult(identityJobId)
       .then((answer: OpenApplicationIdentityAnswer) => {
         if (cancelled) return
-        setTargetName(answer.target_name ?? '')
+        setCompanyName(answer.company_name ?? '')
         setTargetType(answer.target_type ?? '')
         setContactName(answer.contact_name ?? '')
-        setContactTitle(answer.contact_title ?? '')
         setContactEmail(answer.contact_email ?? '')
-        setContactUrl(answer.contact_url ?? '')
-        setWhyThisCompany(answer.why_this_company ?? '')
+        setCompanyWebsite(answer.company_website ?? '')
+        setCompanyContactUrl(answer.company_contact_url ?? '')
       })
       .catch((failure: unknown) => {
         if (cancelled) return
@@ -255,15 +248,12 @@ export function AddOpenApplicationOverlay({
     setError(null)
     try {
       const created = await createOpenApplication({
-        target_name: targetName.trim() || null,
+        company_name: companyName.trim() || null,
         target_type: targetType || null,
         contact_name: contactName.trim() || null,
-        contact_title: contactTitle.trim() || null,
         contact_email: contactEmail.trim() || null,
-        contact_url: contactUrl.trim() || null,
-        angle: angle.trim() || null,
-        why_this_company: whyThisCompany.trim() || null,
-        other_notes: otherNotes.trim() || null,
+        company_website: companyWebsite.trim() || null,
+        company_contact_url: companyContactUrl.trim() || null,
         research_items: reviewText.trim()
           ? [{ source_type: 'text', content: reviewText.trim() }]
           : [],
@@ -440,15 +430,18 @@ export function AddOpenApplicationOverlay({
               )}
               {workflow !== 'sources' && (
                 <p className="text-xs text-muted-foreground">
-                  Industry, Company type, Summary and Relevance aren&apos;t shown here - your
-                  chosen workflow generates them automatically once you click Create, after the
-                  sources below are cleaned up.
+                  Industry, Company type, Summary, Additional information, Relevance and Suggested
+                  angle aren&apos;t shown here - your chosen workflow generates them automatically
+                  once you click Create, after the sources below are cleaned up.
                 </p>
               )}
+              {/* D-313: matches Company details' own 2-column layout (D-311) for the fields this
+                  wizard actually has - Company name/Target type, Company website/Contact name+
+                  email, Company contact URL. */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <Label>Target name</Label>
-                  <Input value={targetName} onChange={(event) => setTargetName(event.target.value)} />
+                  <Label>Company name</Label>
+                  <Input value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label>Target type</Label>
@@ -475,48 +468,27 @@ export function AddOpenApplicationOverlay({
                   </Select>
                 </div>
                 <div className="flex flex-col gap-1.5">
+                  <Label>Company website</Label>
+                  <Input
+                    value={companyWebsite}
+                    onChange={(event) => setCompanyWebsite(event.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
                   <Label>Contact name</Label>
                   <Input value={contactName} onChange={(event) => setContactName(event.target.value)} />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label>Contact title</Label>
-                  <Input value={contactTitle} onChange={(event) => setContactTitle(event.target.value)} />
+                  <Label>Company contact URL</Label>
+                  <Input
+                    value={companyContactUrl}
+                    onChange={(event) => setCompanyContactUrl(event.target.value)}
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label>Contact email</Label>
                   <Input value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} />
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label>Contact URL (e.g. LinkedIn)</Label>
-                  <Input value={contactUrl} onChange={(event) => setContactUrl(event.target.value)} />
-                </div>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Angle - your own connection, e.g. a referral or someone you know there</Label>
-                <Textarea
-                  rows={2}
-                  value={angle}
-                  onChange={(event) => setAngle(event.target.value)}
-                  className="resize-none"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Why this company</Label>
-                <Textarea
-                  rows={2}
-                  value={whyThisCompany}
-                  onChange={(event) => setWhyThisCompany(event.target.value)}
-                  className="resize-none"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Other</Label>
-                <Textarea
-                  rows={2}
-                  value={otherNotes}
-                  onChange={(event) => setOtherNotes(event.target.value)}
-                  className="resize-none"
-                />
               </div>
             </div>
           )}

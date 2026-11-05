@@ -50,14 +50,14 @@ def sanitize_path_part(value: str) -> str:
     return _UNSAFE_CHARS.sub("_", value).rstrip(" .")
 
 
-def managed_folder(files_root: Path, target_name: str | None, application_id: int) -> Path:
-    """`%LOCALAPPDATA%\\LlmJobTracker\\files\\Open Applications\\<target name> (<id>)`.
+def managed_folder(files_root: Path, company_name: str | None, application_id: int) -> Path:
+    """`%LOCALAPPDATA%\\LlmJobTracker\\files\\Open Applications\\<company name> (<id>)`.
 
     Keyed by id rather than name alone (unlike job_files.managed_folder's company/role_title
-    pair) — Target name may be inferred and later revised (D-251), and a stable folder means no
+    pair) — Company name may be inferred and later revised (D-251), and a stable folder means no
     rename-on-edit dance is needed the way update_job_application's role_title edit needs one.
     """
-    label = sanitize_path_part(target_name or "Untitled")
+    label = sanitize_path_part(company_name or "Untitled")
     return files_root / "Open Applications" / f"{label} ({application_id})"
 
 
@@ -192,7 +192,7 @@ def write_generated_open_application_file(
     conn: sqlite3.Connection,
     files_root: Path,
     application_id: int,
-    target_name: str | None,
+    company_name: str | None,
     kind: str,
     name: str,
     content: bytes,
@@ -203,7 +203,7 @@ def write_generated_open_application_file(
     """Mirrors job_files.write_generated_job_file: saves a Claude-generated result as the one
     file in its kind's slot, replacing whatever was there."""
     clear_open_application_files_of_kind(conn, files_root, application_id, kind)
-    folder = managed_folder(files_root, target_name, application_id)
+    folder = managed_folder(files_root, company_name, application_id)
     folder.mkdir(parents=True, exist_ok=True)
     target, final_name = _unique_target(folder, name, content)
     target.write_bytes(content)
@@ -234,7 +234,7 @@ def write_generated_open_application_source_files(
     conn: sqlite3.Connection,
     files_root: Path,
     application_id: int,
-    target_name: str | None,
+    company_name: str | None,
     items: list[tuple[str, str]],
 ) -> list[OpenApplicationFile]:
     """Replaces every `source`-kind file at once with `items` (D-295) - `(name, text)` pairs, one
@@ -244,7 +244,7 @@ def write_generated_open_application_source_files(
     multi-file kind), so a per-item clear would delete the previous item written in the same run.
     """
     clear_open_application_files_of_kind(conn, files_root, application_id, "source")
-    folder = managed_folder(files_root, target_name, application_id)
+    folder = managed_folder(files_root, company_name, application_id)
     folder.mkdir(parents=True, exist_ok=True)
     written: list[OpenApplicationFile] = []
     for name, text in items:
@@ -272,7 +272,7 @@ def store_open_application_file(
     conn: sqlite3.Connection,
     files_root: Path,
     application_id: int,
-    target_name: str | None,
+    company_name: str | None,
     original_name: str,
     content: bytes,
 ) -> OpenApplicationFile:
@@ -290,7 +290,7 @@ def store_open_application_file(
     if len(content) > MAX_UPLOAD_BYTES:
         raise OpenApplicationFileUploadError(413, "The file is larger than 25 MB.")
 
-    folder = managed_folder(files_root, target_name, application_id)
+    folder = managed_folder(files_root, company_name, application_id)
     folder.mkdir(parents=True, exist_ok=True)
     target, name = _unique_target(folder, name, content)
     target.write_bytes(content)

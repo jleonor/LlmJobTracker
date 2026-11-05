@@ -114,11 +114,11 @@ function QueueIndicator({ status }: { status: QueueStatus }) {
   return null
 }
 
-function targetNameCell(app: OpenApplication, status: QueueStatus) {
+function companyNameCell(app: OpenApplication, status: QueueStatus) {
   return (
     <div className="flex items-center gap-1.5">
       <QueueIndicator status={status} />
-      <div className="min-w-0 flex-1">{COLUMN_BY_ID.target_name.cell(app)}</div>
+      <div className="min-w-0 flex-1">{COLUMN_BY_ID.company_name.cell(app)}</div>
     </div>
   )
 }
@@ -131,8 +131,8 @@ function buildTanstackColumns(queueJobs: QueueState['jobs']): ColumnDef<OpenAppl
     size: column.defaultWidth,
     minSize: 60,
     cell: ({ row }) =>
-      column.id === 'target_name'
-        ? targetNameCell(row.original, openApplicationQueueStatusFor(queueJobs, row.original.id))
+      column.id === 'company_name'
+        ? companyNameCell(row.original, openApplicationQueueStatusFor(queueJobs, row.original.id))
         : column.cell(row.original),
   }))
 }
