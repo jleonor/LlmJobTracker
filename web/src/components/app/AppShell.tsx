@@ -47,7 +47,7 @@ export function AppShell({
   const titlebarGutter = useTitlebarOverlayGutter()
 
   return (
-    <div className="flex h-screen flex-col bg-background text-foreground">
+    <div className="flex h-full flex-col bg-background text-foreground">
       {/* The full-width top bar: title/logo left, LLM status + Trigger workflows right - no more
           boxed-in sidebar header cell (D-278). app-drag-region/app-no-drag (index.css) make this
           strip the Electron window's own draggable title bar, under the Windows titleBarOverlay
@@ -85,7 +85,7 @@ export function AppShell({
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         <aside className="w-64 shrink-0 overflow-y-auto border-r border-border bg-card">
           <nav className="flex flex-col gap-0.5 p-2" aria-label="Main">
             {NAV.map(({ label, icon: Icon, screen }) => {
@@ -110,7 +110,7 @@ export function AppShell({
             })}
           </nav>
         </aside>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>
   )

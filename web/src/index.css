@@ -103,6 +103,21 @@
   * {
     @apply border-border outline-ring/50;
     }
+  /* A percentage height chain down to #root, not 100vh on AppShell's own root div - Chromium's
+     100vh doesn't reliably reflow after a frameless/titleBarOverlay BrowserWindow (electron/
+     main.js) is resized or maximized, the same class of stale-layout bug D-291 already hit once
+     for the titlebar gutter's own width. A percentage chain stays tied to normal layout instead.
+     overflow: hidden on html/body is the real fix for the scroll-past-content bug (confirmed live,
+     reproducible in a plain browser too, not Electron-specific): a flex child deep in the tree
+     (e.g. a Job Application page's own content) can inflate the DOCUMENT's own scrollHeight even
+     while every visible box still measures exactly viewport-sized - a known flexbox/overflow
+     interaction, not fully tracked down to one specific element. AppShell's own header/aside/main
+     already each scroll internally where needed, so the outer html/body should never scroll at
+     all - this blocks that regardless of which inner element was leaking height upward. */
+  html, body, #root {
+    height: 100%;
+    overflow: hidden;
+    }
   body {
     @apply bg-background text-foreground antialiased;
     }
