@@ -14,6 +14,8 @@ Phase 16 (Staged workflows) closed out 2026-11-02: staging Add Job's workflow ch
 
 Phase 17 (Open Applications workflow and views, Open LLM app, scroll fix) closed out 2026-11-05: the scroll-past-content fix (confirmed live, in both the packaged Electron app and a plain browser - not Electron-only as first suspected - via `overflow: hidden` on `html`/`body`/`#root`), the live-folder "Open LLM app" behaviour with its new per-application button, all four Add Open Application workflow chains producing real Source files and Company details (Industry/Company type/Summary/Relevance), and the ported table customization and views were all confirmed, on the user's go in chat. Merged into local `main` with `git merge --ff-only` (D-61); the branch is kept, nothing pushed.
 
+Phase 18 (Dashboard wiring and charts) closed out 2026-11-05: the four combined stat tiles (Cold / Rejected per D-306), the heatmap following the Identified-date slider, the Applications-sent chart switcher's five views, the lane-label truncation (and its own live-found left-anchor fix, since right-anchoring could clip a long label's front), and the two-column per-lane layout were all confirmed live against real data, on the user's go in chat. Merged into local `main` with `git merge --ff-only` (D-61); the branch is kept, nothing pushed.
+
 This plan says what gets built, in what order, and how we know a phase is done. `CLAUDE.md` holds the rules. `DECISIONS.md` holds why things are the way they are.
 
 ## How we work
@@ -1429,12 +1431,12 @@ Step list (drafted 2026-11-05, awaiting approval)
 9. Checks: `python scripts/check.py`; personal-data scan; screenshots of the four combined stat tiles (including "Cold / Rejected"), the heatmap narrowed to match the slider, the lane-label hover tooltip (front no longer clipped), all five Applications-sent chart views, and the two-column lane layout at both widths.
 
 Done when
-- [ ] The four stat tiles (Identified → Applied, Applications sent, Active applications, Cold applications) combine Job and Open Applications against real data (screenshot).
-- [ ] The Applications-sent calendar's date range matches the Identified-date slider instead of a fixed trailing year (screenshot, slider narrowed).
-- [ ] Proportion by lane truncates long labels and shows the full lane name on hover (screenshot).
-- [ ] The Applications-sent panel's chart switcher shows all five views (Calendar, Count over time, Cumulative count over time, Active jobs over time, Average per day of week) against real data (screenshot).
-- [ ] The per-lane strengths/weaknesses panel renders as two columns at the `lg` breakpoint and stacks correctly below it (screenshot, both widths).
-- [ ] `python scripts/check.py` is green and a personal-data scan of the phase's commits is clean.
+- [x] The four stat tiles (Identified → Applied, Applications sent, Active applications, Cold / Rejected per D-306) combine Job and Open Applications against real data (screenshot).
+- [x] The Applications-sent calendar's date range matches the Identified-date slider instead of a fixed trailing year (screenshot, slider narrowed).
+- [x] Proportion by lane truncates long labels and shows the full lane name on hover, the front never clipped (screenshot).
+- [x] The Applications-sent panel's chart switcher shows all five views (Calendar, Count over time, Cumulative count over time, Active jobs over time, Average per day of week) against real data - the real `dashboardStats.ts` functions were also run directly against the live API data in the browser console to confirm the "Applications sent" stat tile, the heatmap sum and the cumulative chart's own last point all agree exactly (94 each) (screenshot).
+- [x] The per-lane strengths/weaknesses panel renders as two columns at the `lg` breakpoint and stacks correctly below it (screenshot, both widths).
+- [x] `python scripts/check.py` is green and a personal-data scan of the phase's commits is clean.
 
 ---
 
