@@ -134,6 +134,12 @@ function sortedByCountDescending(counts: Map<string, number>): CountEntry[] {
 // being folded can themselves already contain something named "Other" - the lanes catalog's own
 // fixed catch-all lane (D-219) - and a second, unrelated row with that same label reads as a
 // duplicate rather than two different things.
+// D-303: a plain string slice, since CSS truncation (text-overflow: ellipsis) doesn't apply to
+// text drawn inside an SVG chart.
+export function truncateLabel(value: string, limit: number): string {
+  return value.length > limit ? `${value.slice(0, limit)}…` : value
+}
+
 export function foldToOther(entries: CountEntry[], max: number, otherLabel: string): CountEntry[] {
   if (entries.length <= max) return entries
   const kept = entries.slice(0, max)
@@ -209,35 +215,87 @@ export function combinedTotals(
   }
 }
 
-// --- Active / Cold applications (Phase 14, D-274/D-275): Job-Application-only, matching their
-// own table views exactly, so the Dashboard cards and the tracker's saved views always agree ---
+// --- Active / Cold applications (Phase 14, D-274/D-275; combined with Open Applications since
+// D-301 - both entity types share status/last_updated/status_history, the only fields these need)
 
 const ACTIVE_STATUSES = new Set(['Applied', 'Screening', 'Interview', 'Offer'])
 const STALE_AFTER_DAYS = 30
 
-function daysSinceLastUpdated(application: JobApplication, now: Date): number {
+function daysSinceLastUpdated<T extends { last_updated: string }>(application: T, now: Date): number {
   return (now.getTime() - new Date(application.last_updated).getTime()) / (1000 * 60 * 60 * 24)
 }
 
 // Applied through Offer (not Identified, not a dead end state) and touched within the last 30
 // days. Not a strict complement of isColdApplication: Identified is neither Active nor Cold until
 // it goes stale.
-export function isActiveApplication(application: JobApplication, now: Date = new Date()): boolean {
+export function isActiveApplication<T extends { status: string; last_updated: string }>(
+  application: T,
+  now: Date = new Date(),
+): boolean {
   if (!ACTIVE_STATUSES.has(application.status)) return false
   return daysSinceLastUpdated(application, now) <= STALE_AFTER_DAYS
 }
 
 // Any non-dead status (Identified included) untouched for more than 30 days.
-export function isColdApplication(application: JobApplication, now: Date = new Date()): boolean {
+export function isColdApplication<T extends { status: string; last_updated: string }>(
+  application: T,
+  now: Date = new Date(),
+): boolean {
   if (END_STATUSES.has(application.status)) return false
   return daysSinceLastUpdated(application, now) > STALE_AFTER_DAYS
 }
 
-// The "Applications sent" count card (D-273/D-274): has an Applied-status entry at all, as of
-// whatever snapshot it's given (so moving the date slider changes this the same way it changes
-// everything else, via snapshotAsOf's status_history truncation).
-export function hasBeenApplied(application: JobApplication): boolean {
+// The "Applications sent" count card (D-273/D-274): has an Applied-status entry at all.
+export function hasBeenApplied<T extends { status_history: StatusHistoryEntry[] }>(
+  application: T,
+): boolean {
   return application.status_history.some((entry) => entry.status === 'Applied')
+}
+
+// D-301: the Applications sent / Active / Cold stat tiles, combining Job and Open Applications -
+// Open Applications gained their own Active/Cold table views in Phase 17, removing the original
+// reason (D-274) these stayed Job-only.
+export function combinedApplicationsSentCount(
+  jobApplications: JobApplication[],
+  openApplications: OpenApplication[],
+): number {
+  return (
+    jobApplications.filter(hasBeenApplied).length + openApplications.filter(hasBeenApplied).length
+  )
+}
+
+export function combinedActiveCount(
+  jobApplications: JobApplication[],
+  openApplications: OpenApplication[],
+  now: Date = new Date(),
+): number {
+  return (
+    jobApplications.filter((application) => isActiveApplication(application, now)).length +
+    openApplications.filter((application) => isActiveApplication(application, now)).length
+  )
+}
+
+export function combinedColdCount(
+  jobApplications: JobApplication[],
+  openApplications: OpenApplication[],
+  now: Date = new Date(),
+): number {
+  return (
+    jobApplications.filter((application) => isColdApplication(application, now)).length +
+    openApplications.filter((application) => isColdApplication(application, now)).length
+  )
+}
+
+// D-306: the "Cold / Rejected" stat tile's second half - Rejected specifically, not the wider
+// Dead set (Rejected/Withdrawn/Expired) combinedTotals already reports.
+export function combinedRejectedCount(
+  jobApplications: JobApplication[],
+  openApplications: OpenApplication[],
+): number {
+  return (
+    jobApplications.filter((application) => application.status === 'Rejected').length +
+    openApplications.filter((application) => application.status === 'Rejected').length
+  )
 }
 
 export function proportionByMatchScoreBucket(applications: JobApplication[]): CountEntry[] {
@@ -301,7 +359,10 @@ export function filterByIdentifiedRange<T extends { status_history: StatusHistor
 
 // --- Identified -> Applied lead time -------------------------------------------------------
 
-function earliestDateFor(application: JobApplication, status: string): string | null {
+function earliestDateFor<T extends { status_history: StatusHistoryEntry[] }>(
+  application: T,
+  status: string,
+): string | null {
   let earliest: string | null = null
   for (const entry of application.status_history) {
     if (entry.status !== status) continue
@@ -317,7 +378,9 @@ function daysBetween(fromIso: string, toIso: string): number {
 }
 
 // null when no application in the (sliced) list has both an Identified and a later Applied date.
-export function averageDaysIdentifiedToApplied(applications: JobApplication[]): number | null {
+export function averageDaysIdentifiedToApplied<T extends { status_history: StatusHistoryEntry[] }>(
+  applications: T[],
+): number | null {
   const leadTimes: number[] = []
   for (const application of applications) {
     const identified = earliestDateFor(application, 'Identified')
@@ -328,6 +391,14 @@ export function averageDaysIdentifiedToApplied(applications: JobApplication[]): 
   }
   if (leadTimes.length === 0) return null
   return leadTimes.reduce((total, days) => total + days, 0) / leadTimes.length
+}
+
+// D-301: combines Job and Open Applications' lead times into one average.
+export function combinedAverageDaysIdentifiedToApplied(
+  jobApplications: JobApplication[],
+  openApplications: OpenApplication[],
+): number | null {
+  return averageDaysIdentifiedToApplied([...jobApplications, ...openApplications])
 }
 
 // --- Whole-history identified/applied rates (D-241: always unfiltered by the slicers) ----------
@@ -384,7 +455,8 @@ function ratesFromEntries(allEntries: StatusHistoryEntry[], now: Date): WholeHis
   }
 }
 
-// --- Applications-sent calendar heatmap (D-239: trailing 12 months, every calendar day) --------
+// --- Applications-sent calendar heatmap (D-302: spans the Identified-date range slider, not a
+// fixed trailing year) -------------------------------------------------------------------------
 
 export type HeatmapDay = { date: string; count: number }
 
@@ -408,34 +480,39 @@ export function daysBetweenDateKeys(fromKey: string, toKey: string): number {
 
 export function applicationsSentHeatmap(
   applications: JobApplication[],
-  today: Date = new Date(),
+  startDate: string,
+  endDate: string,
 ): HeatmapDay[] {
   return heatmapFromEntries(
     applications.flatMap((application) => application.status_history),
-    today,
+    startDate,
+    endDate,
   )
 }
 
-// D-254: the same heatmap, combining Job and Open Applications' Applied-date events.
+// D-254/D-302: the same heatmap, combining Job and Open Applications' Applied-date events, spanning
+// the Identified-date range slider's own window.
 export function combinedApplicationsSentHeatmap(
   jobApplications: JobApplication[],
   openApplications: OpenApplication[],
-  today: Date = new Date(),
+  startDate: string,
+  endDate: string,
 ): HeatmapDay[] {
   return heatmapFromEntries(
     [
       ...jobApplications.flatMap((application) => application.status_history),
       ...openApplications.flatMap((application) => application.status_history),
     ],
-    today,
+    startDate,
+    endDate,
   )
 }
 
-function heatmapFromEntries(allEntries: StatusHistoryEntry[], today: Date): HeatmapDay[] {
-  const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))
-  const start = new Date(end)
-  start.setUTCDate(start.getUTCDate() - 364) // a trailing 12-month window, GitHub-heatmap style
-
+function heatmapFromEntries(
+  allEntries: StatusHistoryEntry[],
+  startDate: string,
+  endDate: string,
+): HeatmapDay[] {
   const countsByDay = new Map<string, number>()
   for (const entry of allEntries) {
     if (entry.status !== 'Applied') continue
@@ -444,10 +521,90 @@ function heatmapFromEntries(allEntries: StatusHistoryEntry[], today: Date): Heat
   }
 
   const days: HeatmapDay[] = []
-  const cursor = new Date(start)
+  const cursor = new Date(`${startDate}T00:00:00Z`)
+  const end = new Date(`${endDate}T00:00:00Z`)
   while (cursor <= end) {
     const key = toDateKey(cursor)
     days.push({ date: key, count: countsByDay.get(key) ?? 0 })
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  return days
+}
+
+// --- Applications-sent chart switcher (D-304): three more views over the same per-day Applied
+// counts the heatmap already produces, plus a true historical "active jobs" reconstruction -------
+
+// "Count over time" is just `HeatmapDay[]` itself, rendered as a line instead of a calendar grid -
+// no separate function needed.
+
+// "Cumulative count over time": a running total over the same per-day counts.
+export function cumulativeCounts(days: HeatmapDay[]): HeatmapDay[] {
+  let total = 0
+  return days.map((day) => {
+    total += day.count
+    return { date: day.date, count: total }
+  })
+}
+
+export type WeekdayAverage = { weekday: string; average: number }
+
+const WEEKDAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+// "Average per day of week": buckets the same per-day counts by weekday (Monday-first) and
+// averages across however many of that weekday fall in the given range.
+export function averageCountByWeekday(days: HeatmapDay[]): WeekdayAverage[] {
+  const totals = new Array(7).fill(0)
+  const occurrences = new Array(7).fill(0)
+  for (const day of days) {
+    const sundayFirst = new Date(`${day.date}T00:00:00Z`).getUTCDay() // 0 = Sunday .. 6 = Saturday
+    const mondayFirst = (sundayFirst + 6) % 7 // 0 = Monday .. 6 = Sunday
+    totals[mondayFirst] += day.count
+    occurrences[mondayFirst] += 1
+  }
+  return WEEKDAY_LABELS.map((weekday, index) => ({
+    weekday,
+    average: occurrences[index] === 0 ? 0 : totals[index] / occurrences[index],
+  }))
+}
+
+export type ActiveCountDay = { date: string; count: number }
+
+// "Active jobs over time" (D-304): a full historical reconstruction, not isActiveApplication's
+// current-moment-only check - each application's status as of a given day is whatever its own
+// status_history says was current at or before that day, and its staleness is relative to that
+// day too (the entry's own changed_at - the only historical "last updated" signal status_history
+// carries, status_history being the sole record of the past this app keeps).
+export function activeApplicationsOverTime(
+  jobApplications: JobApplication[],
+  openApplications: OpenApplication[],
+  startDate: string,
+  endDate: string,
+): ActiveCountDay[] {
+  const histories = [...jobApplications, ...openApplications].map((application) =>
+    [...application.status_history].sort((a, b) => (a.changed_at < b.changed_at ? -1 : 1)),
+  )
+  // One pointer per application, advanced forward as the day cursor moves forward - valid because
+  // both the day cursor and each application's own history are walked in increasing date order.
+  const pointers = histories.map(() => -1)
+
+  const days: ActiveCountDay[] = []
+  const cursor = new Date(`${startDate}T00:00:00Z`)
+  const end = new Date(`${endDate}T00:00:00Z`)
+  while (cursor <= end) {
+    const dayKey = toDateKey(cursor)
+    const dayEnd = `${dayKey}T23:59:59.999Z`
+    let count = 0
+    for (let i = 0; i < histories.length; i++) {
+      const history = histories[i]
+      while (pointers[i] + 1 < history.length && history[pointers[i] + 1].changed_at <= dayEnd) {
+        pointers[i] += 1
+      }
+      if (pointers[i] < 0) continue // not Identified yet as of this day
+      const current = history[pointers[i]]
+      if (!ACTIVE_STATUSES.has(current.status)) continue
+      if (daysBetween(current.changed_at, dayEnd) <= STALE_AFTER_DAYS) count += 1
+    }
+    days.push({ date: dayKey, count })
     cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
   return days

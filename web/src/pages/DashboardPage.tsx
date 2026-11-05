@@ -1,6 +1,6 @@
 import { ChevronRight } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, XAxis, YAxis } from 'recharts'
 
 import { MarkdownDocument } from '@/components/app/MarkdownDocument'
 import { RunTrace } from '@/components/app/RunTrace'
@@ -25,15 +25,22 @@ import {
   NOT_SCORED_COLOR,
 } from '@/lib/chartPalette'
 import {
+  activeApplicationsOverTime,
   addDaysToDateKey,
   applyStageSlicer,
   applySlicers,
-  averageDaysIdentifiedToApplied,
+  averageCountByWeekday,
   averageMatchScoreForLane,
+  combinedActiveCount,
+  combinedApplicationsSentCount,
   combinedApplicationsSentHeatmap,
+  combinedAverageDaysIdentifiedToApplied,
+  combinedColdCount,
   combinedProportionByStage,
+  combinedRejectedCount,
   combinedTotals,
   combinedWholeHistoryRates,
+  cumulativeCounts,
   daysBetweenDateKeys,
   distinctLanes,
   distinctLocations,
@@ -41,16 +48,16 @@ import {
   EMPTY_SLICERS,
   filterByIdentifiedRange,
   foldToOther,
-  hasBeenApplied,
-  isActiveApplication,
-  isColdApplication,
   MATCH_SCORE_BUCKETS,
   NOT_SCORED_BUCKET,
   proportionByLane,
   proportionByMatchScoreBucket,
   toDateKey,
+  truncateLabel,
   type CountEntry,
   type DashboardSlicers,
+  type HeatmapDay,
+  type WeekdayAverage,
 } from '@/lib/dashboardStats'
 import {
   analyzeLaneOverview,
@@ -87,6 +94,20 @@ type State =
 // A bar chart's own series cap (the dataviz skill's series-count ladder): past this many bars,
 // fold the tail into "Other" rather than keep adding distinct hues.
 const MAX_LANE_BARS = 7
+
+// D-303: lane names can run long, so Proportion by lane's own Y-axis labels truncate past this
+// many characters, with the full name still available on hover.
+const LANE_LABEL_CHAR_LIMIT = 18
+
+// D-304: the Applications-sent panel's chart switcher, Calendar first and selected by default.
+type SentChartView = 'calendar' | 'count' | 'cumulative' | 'active' | 'weekday'
+const SENT_CHART_VIEWS: { id: SentChartView; label: string }[] = [
+  { id: 'calendar', label: 'Calendar' },
+  { id: 'count', label: 'Count over time' },
+  { id: 'cumulative', label: 'Cumulative' },
+  { id: 'active', label: 'Active jobs' },
+  { id: 'weekday', label: 'Avg by weekday' },
+]
 
 export function DashboardPage({ settings, queue }: { settings: Settings; queue: QueueState }) {
   const [state, setState] = useState<State>({ kind: 'loading' })
@@ -229,33 +250,54 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
     [sliced, slicedOpen],
   )
   const matchScoreEntries = useMemo(() => proportionByMatchScoreBucket(sliced), [sliced])
-  const leadTimeDays = useMemo(() => averageDaysIdentifiedToApplied(sliced), [sliced])
+  // D-301: combines Job and Open Applications - Open Applications gained their own Active/Cold
+  // views in Phase 17, removing D-274's original reason these stayed Job-only.
+  const leadTimeDays = useMemo(
+    () => combinedAverageDaysIdentifiedToApplied(sliced, slicedOpen),
+    [sliced, slicedOpen],
+  )
   const rates = useMemo(
     () => combinedWholeHistoryRates(rangeApplications, rangeOpenApplications),
     [rangeApplications, rangeOpenApplications],
   )
+  // D-302: spans the slider's own range instead of a fixed trailing year.
   const heatmap = useMemo(
-    () => combinedApplicationsSentHeatmap(sliced, slicedOpen),
-    [sliced, slicedOpen],
+    () => combinedApplicationsSentHeatmap(sliced, slicedOpen, startDate, endDate),
+    [sliced, slicedOpen, startDate, endDate],
+  )
+  // D-304: the Applications-sent panel's other chart views, all derived from the same per-day
+  // counts the heatmap already has, except Active jobs which needs its own reconstruction.
+  const [sentChartView, setSentChartView] = useState<SentChartView>('calendar')
+  const cumulativeHeatmap = useMemo(() => cumulativeCounts(heatmap), [heatmap])
+  const weekdayAverages = useMemo(() => averageCountByWeekday(heatmap), [heatmap])
+  const activeOverTime = useMemo(
+    () => activeApplicationsOverTime(sliced, slicedOpen, startDate, endDate),
+    [sliced, slicedOpen, startDate, endDate],
   )
   const totals = useMemo(
     () => combinedTotals(rangeApplications, rangeOpenApplications),
     [rangeApplications, rangeOpenApplications],
   )
-  // D-274: Job-Application-only, matching their own table views (D-275) - and, like Alive/Dead/
-  // Total above, read from `rangeApplications` directly rather than `sliced`, ignoring the
-  // category slicers.
+  // D-301 (reopens D-274): combines Job and Open Applications - and, like Alive/Dead/Total above,
+  // reads from `rangeApplications`/`rangeOpenApplications` directly rather than `sliced`/
+  // `slicedOpen`, ignoring the category slicers (Lane/Match score/Location don't apply to Open
+  // Applications either way, D-249).
   const applicationsSentCount = useMemo(
-    () => rangeApplications.filter(hasBeenApplied).length,
-    [rangeApplications],
+    () => combinedApplicationsSentCount(rangeApplications, rangeOpenApplications),
+    [rangeApplications, rangeOpenApplications],
   )
   const activeCount = useMemo(
-    () => rangeApplications.filter((application) => isActiveApplication(application)).length,
-    [rangeApplications],
+    () => combinedActiveCount(rangeApplications, rangeOpenApplications),
+    [rangeApplications, rangeOpenApplications],
   )
   const coldCount = useMemo(
-    () => rangeApplications.filter((application) => isColdApplication(application)).length,
-    [rangeApplications],
+    () => combinedColdCount(rangeApplications, rangeOpenApplications),
+    [rangeApplications, rangeOpenApplications],
+  )
+  // D-306: the tile's second half - Rejected specifically, not the wider Dead set.
+  const rejectedCount = useMemo(
+    () => combinedRejectedCount(rangeApplications, rangeOpenApplications),
+    [rangeApplications, rangeOpenApplications],
   )
 
   if (state.kind === 'loading') {
@@ -303,8 +345,8 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
       </div>
 
       {/* Phase 14: the job+open/alive+dead totals (D-254, always the full, unsliced counts), and
-          the Active/Cold tiles (D-274, Job-Application-only, each matching its own table view
-          below exactly, D-275) - no secondary description lines, by request. */}
+          the Active/Cold tiles (D-301 combines these with Open Applications, reopening D-274) -
+          no secondary description lines, by request. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <StatTile label="Total applications" value={String(totals.total)} />
         <StatTile
@@ -314,7 +356,7 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
         <StatTile label="Alive / Dead" value={`${totals.alive} / ${totals.dead}`} />
         <StatTile label="Applications sent" value={String(applicationsSentCount)} />
         <StatTile label="Active applications" value={String(activeCount)} />
-        <StatTile label="Cold applications" value={String(coldCount)} />
+        <StatTile label="Cold / Rejected" value={`${coldCount} / ${rejectedCount}`} />
       </div>
 
       {/* 3 columns x 2 rows: lane spans both rows in column 1; stage and match score fill row 1's
@@ -327,6 +369,7 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
           title="Proportion by lane"
           entries={laneEntries}
           colorFor={(_label, index) => CATEGORICAL_CHART_COLORS[index % CATEGORICAL_CHART_COLORS.length]}
+          truncateLabelsAt={LANE_LABEL_CHAR_LIMIT}
         />
         <ProportionCard
           title="Proportion by stage"
@@ -347,11 +390,34 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
           }}
         />
         <Card className="lg:col-span-2">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-4">
             <CardTitle>Applications sent</CardTitle>
+            <div className="flex flex-wrap items-center gap-1">
+              {SENT_CHART_VIEWS.map((view) => (
+                <Button
+                  key={view.id}
+                  type="button"
+                  size="sm"
+                  variant={sentChartView === view.id ? 'secondary' : 'outline'}
+                  onClick={() => setSentChartView(view.id)}
+                >
+                  {view.label}
+                </Button>
+              ))}
+            </div>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col">
-            <ApplicationsSentHeatmap days={heatmap} />
+            {sentChartView === 'calendar' && <ApplicationsSentHeatmap days={heatmap} />}
+            {sentChartView === 'count' && (
+              <ApplicationsSentLineChart data={heatmap} label="Applications sent" />
+            )}
+            {sentChartView === 'cumulative' && (
+              <ApplicationsSentLineChart data={cumulativeHeatmap} label="Cumulative applications sent" />
+            )}
+            {sentChartView === 'active' && (
+              <ApplicationsSentLineChart data={activeOverTime} label="Active jobs" />
+            )}
+            {sentChartView === 'weekday' && <ApplicationsSentWeekdayChart data={weekdayAverages} />}
           </CardContent>
         </Card>
       </div>
@@ -559,11 +625,15 @@ function ProportionCard({
   entries,
   colorFor,
   className,
+  truncateLabelsAt,
 }: {
   title: string
   entries: CountEntry[]
   colorFor: (label: string, index: number) => string
   className?: string
+  // D-303: Y-axis labels longer than this truncate, with the full label on hover - only Proportion
+  // by lane sets this, since lane names are the only ones here that can run long.
+  truncateLabelsAt?: number
 }) {
   const data = useMemo(
     () => entries.map((entry, index) => ({ ...entry, fill: colorFor(entry.label, index) })),
@@ -600,7 +670,13 @@ function ProportionCard({
                 width={110}
                 tickLine={false}
                 axisLine={false}
-                tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
+                tick={
+                  truncateLabelsAt !== undefined ? (
+                    <TruncatedAxisTick limit={truncateLabelsAt} />
+                  ) : (
+                    { fill: 'var(--muted-foreground)', fontSize: 12 }
+                  )
+                }
               />
               <ChartTooltip content={<ChartTooltipContent hideLabel />} />
               <Bar dataKey="count" radius={4} barSize={20}>
@@ -613,6 +689,25 @@ function ProportionCard({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+// D-303: a custom Y-axis tick - CSS truncation doesn't apply inside an SVG chart, so this slices
+// the label itself and carries the full value in a native SVG <title>, shown by the browser on
+// hover like a plain HTML title attribute. Left-anchored at a small fixed x (ignoring the x
+// recharts computes for its own, right-anchored default tick) so the text always grows rightward
+// from inside the chart's own bounds - right-anchoring a long truncated label at recharts' x can
+// push its start past the SVG's own left edge, which clips it there, cutting off the label's
+// first few characters rather than the ellipsis end this is meant to show.
+function TruncatedAxisTick(props: { y?: number; payload?: { value: string }; limit: number }) {
+  const { y = 0, payload, limit } = props
+  const value = payload?.value ?? ''
+  const truncated = truncateLabel(value, limit)
+  return (
+    <text x={4} y={y} dy={4} textAnchor="start" fontSize={12} fill="var(--muted-foreground)">
+      {truncated}
+      {truncated !== value && <title>{value}</title>}
+    </text>
   )
 }
 
@@ -684,6 +779,58 @@ function ApplicationsSentHeatmap({ days }: { days: { date: string; count: number
   )
 }
 
+// D-304: Count/Cumulative/Active jobs all share the same {date, count} shape - one line chart.
+function ApplicationsSentLineChart({ data, label }: { data: HeatmapDay[]; label: string }) {
+  const config = useMemo<ChartConfig>(
+    () => ({ count: { label, color: CATEGORICAL_CHART_COLORS[0] } }),
+    [label],
+  )
+  if (data.length === 0) {
+    return <p className="text-sm text-muted-foreground">No applications match the current filters.</p>
+  }
+  return (
+    <ChartContainer config={config} className="aspect-auto h-full min-h-[220px]">
+      <LineChart data={data} margin={{ left: 8, right: 16, top: 8 }}>
+        <CartesianGrid vertical={false} stroke="var(--border)" />
+        <XAxis
+          dataKey="date"
+          tickLine={false}
+          axisLine={false}
+          minTickGap={24}
+          tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
+        />
+        <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
+        <ChartTooltip content={<ChartTooltipContent />} />
+        <Line type="monotone" dataKey="count" stroke={CATEGORICAL_CHART_COLORS[0]} strokeWidth={2} dot={false} />
+      </LineChart>
+    </ChartContainer>
+  )
+}
+
+// D-304: "Average per day of week" - a line chart over the 7 Monday-first weekday buckets.
+function ApplicationsSentWeekdayChart({ data }: { data: WeekdayAverage[] }) {
+  const config = useMemo<ChartConfig>(
+    () => ({ average: { label: 'Average applications sent', color: CATEGORICAL_CHART_COLORS[0] } }),
+    [],
+  )
+  return (
+    <ChartContainer config={config} className="aspect-auto h-full min-h-[220px]">
+      <LineChart data={data} margin={{ left: 8, right: 16, top: 8 }}>
+        <CartesianGrid vertical={false} stroke="var(--border)" />
+        <XAxis
+          dataKey="weekday"
+          tickLine={false}
+          axisLine={false}
+          tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
+        />
+        <YAxis tickLine={false} axisLine={false} tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
+        <ChartTooltip content={<ChartTooltipContent />} />
+        <Line type="monotone" dataKey="average" stroke={CATEGORICAL_CHART_COLORS[0]} strokeWidth={2} />
+      </LineChart>
+    </ChartContainer>
+  )
+}
+
 // --- Per-lane strengths/weaknesses (D-238) ------------------------------------------------------
 
 function LaneSummarySection({
@@ -711,34 +858,42 @@ function LaneSummarySection({
           <AnalyzeLanesButton onAnalyzed={onAnalyzed} />
         </div>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      {/* D-305: two columns at `lg` - the overview fixed on the left, lanes scrolling on the
+          right - stacking back to one column below it. */}
+      <CardContent className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:items-start">
         <LaneOverviewReport overview={overview} />
         {lanes.length === 0 ? (
           <p className="text-sm text-muted-foreground">No lanes yet.</p>
         ) : (
-          lanes.map((lane) => (
-            <LaneSummaryRow
-              key={lane.id}
-              lane={lane}
-              averageMatchScore={averageMatchScoreForLane(applications, lane.name)}
-            />
-          ))
+          <div className="flex flex-col gap-4 lg:max-h-[480px] lg:overflow-y-auto">
+            {lanes.map((lane) => (
+              <LaneSummaryRow
+                key={lane.id}
+                lane={lane}
+                averageMatchScore={averageMatchScoreForLane(applications, lane.name)}
+              />
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>
   )
 }
 
+// D-305: a bottom divider while stacked (narrower than `lg`, sitting above the lanes list), a
+// right divider once it becomes the left column of a two-column layout at `lg`.
+const OVERVIEW_DIVIDER_CLASSES = 'border-b border-border pb-4 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4'
+
 function LaneOverviewReport({ overview }: { overview: LaneOverview }) {
   if (overview.summary === null) {
     return (
-      <p className="text-sm text-muted-foreground border-b border-border pb-4">
+      <p className={cn('text-sm text-muted-foreground', OVERVIEW_DIVIDER_CLASSES)}>
         No overview yet - run "Summarize lanes" once at least one lane has been analyzed.
       </p>
     )
   }
   return (
-    <div className="flex flex-col gap-2 border-b border-border pb-4">
+    <div className={cn('flex flex-col gap-2', OVERVIEW_DIVIDER_CLASSES)}>
       <MarkdownDocument text={overview.summary} />
       <OverviewDetailSection title="Overall fit" text={overview.overall_fit} />
       <OverviewDetailSection title="Overall gaps" text={overview.overall_gaps} />

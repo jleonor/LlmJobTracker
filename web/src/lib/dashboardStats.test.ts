@@ -2,15 +2,23 @@ import { describe, expect, it } from 'vitest'
 
 import type { JobApplication, OpenApplication } from '@/lib/types'
 import {
+  activeApplicationsOverTime,
   applicationsSentHeatmap,
   applySlicers,
   applyStageSlicer,
+  averageCountByWeekday,
   averageDaysIdentifiedToApplied,
   averageMatchScoreForLane,
+  combinedActiveCount,
+  combinedApplicationsSentCount,
   combinedApplicationsSentHeatmap,
+  combinedAverageDaysIdentifiedToApplied,
+  combinedColdCount,
   combinedProportionByStage,
+  combinedRejectedCount,
   combinedTotals,
   combinedWholeHistoryRates,
+  cumulativeCounts,
   distinctLanes,
   distinctLocations,
   earliestIdentifiedDate,
@@ -23,6 +31,7 @@ import {
   proportionByLane,
   proportionByMatchScoreBucket,
   proportionByStage,
+  truncateLabel,
   wholeHistoryRates,
 } from './dashboardStats'
 
@@ -297,8 +306,7 @@ describe('wholeHistoryRates', () => {
 })
 
 describe('applicationsSentHeatmap', () => {
-  it('spans exactly 365 trailing days and counts Applied entries on their own day', () => {
-    const today = new Date('2026-10-18T00:00:00Z')
+  it('spans exactly the given range and counts Applied entries on their own day', () => {
     const applications = [
       application({
         status_history: [
@@ -308,10 +316,123 @@ describe('applicationsSentHeatmap', () => {
         ],
       }),
     ]
-    const heatmap = applicationsSentHeatmap(applications, today)
-    expect(heatmap).toHaveLength(365)
+    const heatmap = applicationsSentHeatmap(applications, '2026-10-01', '2026-10-18')
+    expect(heatmap).toHaveLength(18)
     expect(heatmap[heatmap.length - 1]).toEqual({ date: '2026-10-18', count: 2 })
     expect(heatmap[heatmap.length - 2]).toEqual({ date: '2026-10-17', count: 0 }) // Identified, not Applied
+  })
+
+  it('narrows to exactly the given range, dropping Applied events outside it (D-302)', () => {
+    const applications = [
+      application({
+        status_history: [{ status: 'Applied', changed_at: '2026-01-01T09:00:00Z' }],
+      }),
+    ]
+    const heatmap = applicationsSentHeatmap(applications, '2026-10-01', '2026-10-03')
+    expect(heatmap).toEqual([
+      { date: '2026-10-01', count: 0 },
+      { date: '2026-10-02', count: 0 },
+      { date: '2026-10-03', count: 0 },
+    ])
+  })
+})
+
+describe('truncateLabel (D-303)', () => {
+  it('leaves a label at or under the limit unchanged', () => {
+    expect(truncateLabel('Short lane', 18)).toBe('Short lane')
+    expect(truncateLabel('Exactly 18 chars!!', 18)).toBe('Exactly 18 chars!!')
+  })
+
+  it('slices and appends an ellipsis once over the limit', () => {
+    expect(truncateLabel('This lane name is much too long to show', 18)).toBe(
+      'This lane name is …',
+    )
+  })
+})
+
+describe('cumulativeCounts (D-304)', () => {
+  it('runs a total over the given per-day counts', () => {
+    const days = [
+      { date: '2026-10-01', count: 2 },
+      { date: '2026-10-02', count: 0 },
+      { date: '2026-10-03', count: 3 },
+    ]
+    expect(cumulativeCounts(days)).toEqual([
+      { date: '2026-10-01', count: 2 },
+      { date: '2026-10-02', count: 2 },
+      { date: '2026-10-03', count: 5 },
+    ])
+  })
+})
+
+describe('averageCountByWeekday (D-304)', () => {
+  it('buckets by Monday-first weekday and averages across occurrences', () => {
+    // 2026-10-05 is a Monday, 2026-10-12 is the next Monday.
+    const days = [
+      { date: '2026-10-05', count: 2 }, // Monday
+      { date: '2026-10-06', count: 0 }, // Tuesday
+      { date: '2026-10-12', count: 4 }, // Monday
+    ]
+    const result = averageCountByWeekday(days)
+    expect(result.find((entry) => entry.weekday === 'Monday')?.average).toBe(3)
+    expect(result.find((entry) => entry.weekday === 'Tuesday')?.average).toBe(0)
+    expect(result.find((entry) => entry.weekday === 'Sunday')?.average).toBe(0)
+    expect(result.map((entry) => entry.weekday)).toEqual([
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ])
+  })
+})
+
+describe('activeApplicationsOverTime (D-304)', () => {
+  it('reconstructs status as of each day, not the current moment', () => {
+    const jobApplications = [
+      application({
+        status_history: [
+          { status: 'Identified', changed_at: '2026-09-01T00:00:00Z' },
+          { status: 'Applied', changed_at: '2026-09-10T00:00:00Z' },
+        ],
+      }),
+    ]
+    const result = activeApplicationsOverTime(jobApplications, [], '2026-09-08', '2026-09-12')
+    expect(result.map((day) => day.count)).toEqual([0, 0, 1, 1, 1]) // Identified until the 10th
+  })
+
+  it('stays active for a full 30 calendar days after its last status change, then goes stale', () => {
+    const jobApplications = [
+      application({
+        status_history: [{ status: 'Applied', changed_at: '2026-09-01T00:00:00Z' }],
+      }),
+    ]
+    const result = activeApplicationsOverTime(jobApplications, [], '2026-09-30', '2026-10-02')
+    // Sep 1 is day 0 since the change; Sep 30 is day 29 (still within the 30-day window,
+    // evaluated as of that day's own end, so it also counts every event from that same day).
+    // Oct 1 (day 30) and Oct 2 (day 31) are both past it.
+    expect(result).toEqual([
+      { date: '2026-09-30', count: 1 },
+      { date: '2026-10-01', count: 0 },
+      { date: '2026-10-02', count: 0 },
+    ])
+  })
+
+  it('is zero before an application has been Identified yet, and combines both entity types', () => {
+    const jobApplications = [
+      application({
+        status_history: [{ status: 'Applied', changed_at: '2026-10-05T00:00:00Z' }],
+      }),
+    ]
+    const openApplications = [
+      openApplication({
+        status_history: [{ status: 'Applied', changed_at: '2026-10-01T00:00:00Z' }],
+      }),
+    ]
+    const result = activeApplicationsOverTime(jobApplications, openApplications, '2026-10-01', '2026-10-05')
+    expect(result.map((day) => day.count)).toEqual([1, 1, 1, 1, 2])
   })
 })
 
@@ -379,14 +500,18 @@ describe('combinedWholeHistoryRates', () => {
 
 describe('combinedApplicationsSentHeatmap', () => {
   it('counts Applied entries from both entity types on the same day', () => {
-    const today = new Date('2026-10-18T00:00:00Z')
     const jobApplications = [
       application({ status_history: [{ status: 'Applied', changed_at: '2026-10-18T09:00:00Z' }] }),
     ]
     const openApplications = [
       openApplication({ status_history: [{ status: 'Applied', changed_at: '2026-10-18T14:00:00Z' }] }),
     ]
-    const heatmap = combinedApplicationsSentHeatmap(jobApplications, openApplications, today)
+    const heatmap = combinedApplicationsSentHeatmap(
+      jobApplications,
+      openApplications,
+      '2026-10-01',
+      '2026-10-18',
+    )
     expect(heatmap[heatmap.length - 1]).toEqual({ date: '2026-10-18', count: 2 })
   })
 })
@@ -542,5 +667,78 @@ describe('hasBeenApplied', () => {
         application({ status_history: [{ status: 'Identified', changed_at: '2026-10-05T00:00:00Z' }] }),
       ),
     ).toBe(false)
+  })
+})
+
+describe('combinedApplicationsSentCount (D-301)', () => {
+  it('counts Applied entries from both entity types', () => {
+    const jobApplications = [
+      application({ status_history: [{ status: 'Applied', changed_at: '2026-10-05T00:00:00Z' }] }),
+      application({ status_history: [{ status: 'Identified', changed_at: '2026-10-05T00:00:00Z' }] }),
+    ]
+    const openApplications = [
+      openApplication({ status_history: [{ status: 'Applied', changed_at: '2026-10-06T00:00:00Z' }] }),
+    ]
+    expect(combinedApplicationsSentCount(jobApplications, openApplications)).toBe(2)
+  })
+})
+
+describe('combinedActiveCount (D-301)', () => {
+  it('counts active applications from both entity types', () => {
+    const now = new Date('2026-10-26T00:00:00Z')
+    const jobApplications = [application({ status: 'Applied', last_updated: '2026-10-10T00:00:00Z' })]
+    const openApplications = [
+      openApplication({ status: 'Applied', last_updated: '2026-10-20T00:00:00Z' }),
+      openApplication({ status: 'Identified', last_updated: '2026-10-20T00:00:00Z' }),
+    ]
+    expect(combinedActiveCount(jobApplications, openApplications, now)).toBe(2)
+  })
+})
+
+describe('combinedColdCount (D-301)', () => {
+  it('counts cold applications from both entity types', () => {
+    const now = new Date('2026-10-26T00:00:00Z')
+    const jobApplications = [application({ status: 'Applied', last_updated: '2026-09-01T00:00:00Z' })]
+    const openApplications = [
+      openApplication({ status: 'Identified', last_updated: '2026-09-01T00:00:00Z' }),
+      openApplication({ status: 'Expired', last_updated: '2026-01-01T00:00:00Z' }),
+    ]
+    expect(combinedColdCount(jobApplications, openApplications, now)).toBe(2)
+  })
+})
+
+describe('combinedRejectedCount (D-306)', () => {
+  it('counts Rejected specifically, not Withdrawn or Expired', () => {
+    const jobApplications = [
+      application({ status: 'Rejected' }),
+      application({ status: 'Withdrawn' }),
+    ]
+    const openApplications = [
+      openApplication({ status: 'Rejected' }),
+      openApplication({ status: 'Expired' }),
+    ]
+    expect(combinedRejectedCount(jobApplications, openApplications)).toBe(2)
+  })
+})
+
+describe('combinedAverageDaysIdentifiedToApplied (D-301)', () => {
+  it('averages lead times across both entity types', () => {
+    const jobApplications = [
+      application({
+        status_history: [
+          { status: 'Identified', changed_at: '2026-09-01T00:00:00Z' },
+          { status: 'Applied', changed_at: '2026-09-05T00:00:00Z' },
+        ],
+      }),
+    ]
+    const openApplications = [
+      openApplication({
+        status_history: [
+          { status: 'Identified', changed_at: '2026-09-01T00:00:00Z' },
+          { status: 'Applied', changed_at: '2026-09-03T00:00:00Z' },
+        ],
+      }),
+    ]
+    expect(combinedAverageDaysIdentifiedToApplied(jobApplications, openApplications)).toBe(3)
   })
 })
