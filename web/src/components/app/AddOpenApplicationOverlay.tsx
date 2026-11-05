@@ -438,6 +438,13 @@ export function AddOpenApplicationOverlay({
               {fieldsLoading && (
                 <p className="text-sm text-muted-foreground">Reading the text...</p>
               )}
+              {workflow !== 'sources' && (
+                <p className="text-xs text-muted-foreground">
+                  Industry, Company type, Summary and Relevance aren&apos;t shown here - your
+                  chosen workflow generates them automatically once you click Create, after the
+                  sources below are cleaned up.
+                </p>
+              )}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label>Target name</Label>
