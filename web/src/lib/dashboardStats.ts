@@ -377,16 +377,41 @@ function daysBetween(fromIso: string, toIso: string): number {
   return (new Date(toIso).getTime() - new Date(fromIso).getTime()) / (1000 * 60 * 60 * 24)
 }
 
+// D-308: Saturday/Sunday, by the UTC calendar day - matching this module's other date-key helpers
+// (toDateKey/addDaysToDateKey), which are all UTC throughout.
+export function isWeekend(dateKey: string): boolean {
+  const day = new Date(`${dateKey}T00:00:00Z`).getUTCDay()
+  return day === 0 || day === 6
+}
+
+// Whole calendar days from `fromIso` to `toIso`, skipping Saturdays/Sundays - the "Exclude
+// weekends" business-day count (D-308), counting one day for every weekday strictly after
+// `fromIso`'s calendar day, up to and including `toIso`'s.
+function businessDaysBetween(fromIso: string, toIso: string): number {
+  const cursor = new Date(`${fromIso.slice(0, 10)}T00:00:00Z`)
+  const end = new Date(`${toIso.slice(0, 10)}T00:00:00Z`)
+  let days = 0
+  while (cursor < end) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+    if (!isWeekend(toDateKey(cursor))) days += 1
+  }
+  return days
+}
+
 // null when no application in the (sliced) list has both an Identified and a later Applied date.
+// D-308: excludeWeekends switches the lead time from calendar days to business days.
 export function averageDaysIdentifiedToApplied<T extends { status_history: StatusHistoryEntry[] }>(
   applications: T[],
+  excludeWeekends = false,
 ): number | null {
   const leadTimes: number[] = []
   for (const application of applications) {
     const identified = earliestDateFor(application, 'Identified')
     const applied = earliestDateFor(application, 'Applied')
     if (identified === null || applied === null) continue
-    const days = daysBetween(identified, applied)
+    const days = excludeWeekends
+      ? businessDaysBetween(identified, applied)
+      : daysBetween(identified, applied)
     if (days >= 0) leadTimes.push(days)
   }
   if (leadTimes.length === 0) return null
@@ -397,8 +422,9 @@ export function averageDaysIdentifiedToApplied<T extends { status_history: Statu
 export function combinedAverageDaysIdentifiedToApplied(
   jobApplications: JobApplication[],
   openApplications: OpenApplication[],
+  excludeWeekends = false,
 ): number | null {
-  return averageDaysIdentifiedToApplied([...jobApplications, ...openApplications])
+  return averageDaysIdentifiedToApplied([...jobApplications, ...openApplications], excludeWeekends)
 }
 
 // --- Whole-history identified/applied rates (D-241: always unfiltered by the slicers) ----------
@@ -482,21 +508,26 @@ export function applicationsSentHeatmap(
   applications: JobApplication[],
   startDate: string,
   endDate: string,
+  excludeWeekends = false,
 ): HeatmapDay[] {
   return heatmapFromEntries(
     applications.flatMap((application) => application.status_history),
     startDate,
     endDate,
+    excludeWeekends,
   )
 }
 
 // D-254/D-302: the same heatmap, combining Job and Open Applications' Applied-date events, spanning
-// the Identified-date range slider's own window.
+// the Identified-date range slider's own window. D-308: excludeWeekends drops Saturday/Sunday days
+// from the result entirely, as if they weren't on the calendar - every chart built from this
+// (cumulative, the weekday-average chart) inherits the exclusion for free.
 export function combinedApplicationsSentHeatmap(
   jobApplications: JobApplication[],
   openApplications: OpenApplication[],
   startDate: string,
   endDate: string,
+  excludeWeekends = false,
 ): HeatmapDay[] {
   return heatmapFromEntries(
     [
@@ -505,6 +536,7 @@ export function combinedApplicationsSentHeatmap(
     ],
     startDate,
     endDate,
+    excludeWeekends,
   )
 }
 
@@ -512,6 +544,7 @@ function heatmapFromEntries(
   allEntries: StatusHistoryEntry[],
   startDate: string,
   endDate: string,
+  excludeWeekends = false,
 ): HeatmapDay[] {
   const countsByDay = new Map<string, number>()
   for (const entry of allEntries) {
@@ -525,7 +558,9 @@ function heatmapFromEntries(
   const end = new Date(`${endDate}T00:00:00Z`)
   while (cursor <= end) {
     const key = toDateKey(cursor)
-    days.push({ date: key, count: countsByDay.get(key) ?? 0 })
+    if (!excludeWeekends || !isWeekend(key)) {
+      days.push({ date: key, count: countsByDay.get(key) ?? 0 })
+    }
     cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
   return days
@@ -579,12 +614,16 @@ export function activeApplicationsOverTime(
   openApplications: OpenApplication[],
   startDate: string,
   endDate: string,
+  excludeWeekends = false,
 ): ActiveCountDay[] {
   const histories = [...jobApplications, ...openApplications].map((application) =>
     [...application.status_history].sort((a, b) => (a.changed_at < b.changed_at ? -1 : 1)),
   )
   // One pointer per application, advanced forward as the day cursor moves forward - valid because
   // both the day cursor and each application's own history are walked in increasing date order.
+  // Advanced every calendar day regardless of excludeWeekends (D-308), so a weekend's own status
+  // changes are never missed by the following business day - only which days get pushed to the
+  // output below is affected.
   const pointers = histories.map(() => -1)
 
   const days: ActiveCountDay[] = []
@@ -604,7 +643,9 @@ export function activeApplicationsOverTime(
       if (!ACTIVE_STATUSES.has(current.status)) continue
       if (daysBetween(current.changed_at, dayEnd) <= STALE_AFTER_DAYS) count += 1
     }
-    days.push({ date: dayKey, count })
+    if (!excludeWeekends || !isWeekend(dayKey)) {
+      days.push({ date: dayKey, count })
+    }
     cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
   return days

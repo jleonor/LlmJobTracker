@@ -27,6 +27,7 @@ import {
   hasBeenApplied,
   isActiveApplication,
   isColdApplication,
+  isWeekend,
   matchScoreBucket,
   proportionByLane,
   proportionByMatchScoreBucket,
@@ -277,6 +278,30 @@ describe('averageDaysIdentifiedToApplied', () => {
     ]
     expect(averageDaysIdentifiedToApplied(applications)).toBeNull()
   })
+
+  it('counts business days, skipping the weekend in the span, when excludeWeekends is set (D-308)', () => {
+    const applications = [
+      application({
+        status_history: [
+          // Tuesday to the following Monday: 6 calendar days, but only 4 of the 6 days in
+          // between (Wed/Thu/Fri/Mon) aren't a Saturday or Sunday.
+          { status: 'Identified', changed_at: '2026-09-01T00:00:00Z' },
+          { status: 'Applied', changed_at: '2026-09-07T00:00:00Z' },
+        ],
+      }),
+    ]
+    expect(averageDaysIdentifiedToApplied(applications)).toBe(6)
+    expect(averageDaysIdentifiedToApplied(applications, true)).toBe(4)
+  })
+})
+
+describe('isWeekend (D-308)', () => {
+  it('is true for Saturday and Sunday, false for weekdays', () => {
+    expect(isWeekend('2026-09-01')).toBe(false) // Tuesday
+    expect(isWeekend('2026-09-05')).toBe(true) // Saturday
+    expect(isWeekend('2026-09-06')).toBe(true) // Sunday
+    expect(isWeekend('2026-09-07')).toBe(false) // Monday
+  })
 })
 
 describe('wholeHistoryRates', () => {
@@ -334,6 +359,13 @@ describe('applicationsSentHeatmap', () => {
       { date: '2026-10-02', count: 0 },
       { date: '2026-10-03', count: 0 },
     ])
+  })
+
+  it('drops Saturday/Sunday days entirely when excludeWeekends is set (D-308)', () => {
+    const applications = [application({ status_history: [] })]
+    // 2026-10-16 is a Friday, 2026-10-17/18 are the weekend, 2026-10-19 is a Monday.
+    const heatmap = applicationsSentHeatmap(applications, '2026-10-16', '2026-10-19', true)
+    expect(heatmap.map((day) => day.date)).toEqual(['2026-10-16', '2026-10-19'])
   })
 })
 
@@ -433,6 +465,21 @@ describe('activeApplicationsOverTime (D-304)', () => {
     ]
     const result = activeApplicationsOverTime(jobApplications, openApplications, '2026-10-01', '2026-10-05')
     expect(result.map((day) => day.count)).toEqual([1, 1, 1, 1, 2])
+  })
+
+  it('drops Saturday/Sunday days entirely when excludeWeekends is set, without losing track of status changes on them (D-308)', () => {
+    const jobApplications = [
+      application({
+        // Applied on the Saturday - still reflected in the following Monday's count, even
+        // though the Saturday/Sunday days themselves are dropped from the output.
+        status_history: [{ status: 'Applied', changed_at: '2026-10-17T00:00:00Z' }],
+      }),
+    ]
+    const result = activeApplicationsOverTime(jobApplications, [], '2026-10-16', '2026-10-19', true)
+    expect(result).toEqual([
+      { date: '2026-10-16', count: 0 },
+      { date: '2026-10-19', count: 1 },
+    ])
   })
 })
 

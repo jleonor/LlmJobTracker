@@ -6,6 +6,7 @@ import { MarkdownDocument } from '@/components/app/MarkdownDocument'
 import { RunTrace } from '@/components/app/RunTrace'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   ChartContainer,
   ChartTooltip,
@@ -117,6 +118,9 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   // primary thing this page is for.
   const [openApplications, setOpenApplications] = useState<OpenApplication[]>([])
   const [slicers, setSlicers] = useState<DashboardSlicers>(EMPTY_SLICERS)
+  // D-308: business-day date math, not a slicer that drops whole applications - threaded into
+  // the lead-time average and every Applications-sent chart view below.
+  const [excludeWeekends, setExcludeWeekends] = useState(false)
   // The Identified-date range slider (Phase 14, D-277): null until the user actually drags a
   // handle, so it reads as "everything" (the full earliest-identified-to-today bound below)
   // without needing to re-sync once the applications finish loading.
@@ -253,8 +257,8 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   // D-301: combines Job and Open Applications - Open Applications gained their own Active/Cold
   // views in Phase 17, removing D-274's original reason these stayed Job-only.
   const leadTimeDays = useMemo(
-    () => combinedAverageDaysIdentifiedToApplied(sliced, slicedOpen),
-    [sliced, slicedOpen],
+    () => combinedAverageDaysIdentifiedToApplied(sliced, slicedOpen, excludeWeekends),
+    [sliced, slicedOpen, excludeWeekends],
   )
   const rates = useMemo(
     () => combinedWholeHistoryRates(rangeApplications, rangeOpenApplications),
@@ -262,8 +266,8 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   )
   // D-302: spans the slider's own range instead of a fixed trailing year.
   const heatmap = useMemo(
-    () => combinedApplicationsSentHeatmap(sliced, slicedOpen, startDate, endDate),
-    [sliced, slicedOpen, startDate, endDate],
+    () => combinedApplicationsSentHeatmap(sliced, slicedOpen, startDate, endDate, excludeWeekends),
+    [sliced, slicedOpen, startDate, endDate, excludeWeekends],
   )
   // D-304: the Applications-sent panel's other chart views, all derived from the same per-day
   // counts the heatmap already has, except Active jobs which needs its own reconstruction.
@@ -271,8 +275,8 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   const cumulativeHeatmap = useMemo(() => cumulativeCounts(heatmap), [heatmap])
   const weekdayAverages = useMemo(() => averageCountByWeekday(heatmap), [heatmap])
   const activeOverTime = useMemo(
-    () => activeApplicationsOverTime(sliced, slicedOpen, startDate, endDate),
-    [sliced, slicedOpen, startDate, endDate],
+    () => activeApplicationsOverTime(sliced, slicedOpen, startDate, endDate, excludeWeekends),
+    [sliced, slicedOpen, startDate, endDate, excludeWeekends],
   )
   const totals = useMemo(
     () => combinedTotals(rangeApplications, rangeOpenApplications),
@@ -327,6 +331,8 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
         onChange={setSlicers}
         laneOptions={laneOptions}
         locationOptions={locationOptions}
+        excludeWeekends={excludeWeekends}
+        onExcludeWeekendsChange={setExcludeWeekends}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -350,7 +356,7 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <StatTile label="Total applications" value={String(totals.total)} />
         <StatTile
-          label="Job / Open"
+          label="Targeted / Open"
           value={`${totals.totalJobApplications} / ${totals.totalOpenApplications}`}
         />
         <StatTile label="Alive / Dead" value={`${totals.alive} / ${totals.dead}`} />
@@ -407,7 +413,9 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
             </div>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col">
-            {sentChartView === 'calendar' && <ApplicationsSentHeatmap days={heatmap} />}
+            {sentChartView === 'calendar' && (
+              <ApplicationsSentHeatmap days={heatmap} excludeWeekends={excludeWeekends} />
+            )}
             {sentChartView === 'count' && (
               <ApplicationsSentLineChart data={heatmap} label="Applications sent" />
             )}
@@ -521,11 +529,15 @@ function SlicerBar({
   onChange,
   laneOptions,
   locationOptions,
+  excludeWeekends,
+  onExcludeWeekendsChange,
 }: {
   slicers: DashboardSlicers
   onChange: (next: DashboardSlicers) => void
   laneOptions: string[]
   locationOptions: string[]
+  excludeWeekends: boolean
+  onExcludeWeekendsChange: (next: boolean) => void
 }) {
   return (
     <div className="flex flex-wrap items-end gap-4">
@@ -553,6 +565,13 @@ function SlicerBar({
         options={locationOptions}
         onChange={(location) => onChange({ ...slicers, location })}
       />
+      {/* D-308: business-day date math, not a category slicer - it doesn't drop applications,
+          it skips Saturdays/Sundays in the lead-time average and every Applications-sent chart
+          view below. */}
+      <label className="flex items-center gap-2 pb-1.5 text-sm">
+        <Checkbox checked={excludeWeekends} onCheckedChange={(checked) => onExcludeWeekendsChange(checked === true)} />
+        Exclude weekends
+      </label>
     </div>
   )
 }
@@ -718,14 +737,29 @@ function heatmapColor(count: number, max: number): string {
   return heatmapIntensityColor(count / max)
 }
 
-function ApplicationsSentHeatmap({ days }: { days: { date: string; count: number }[] }) {
+function ApplicationsSentHeatmap({
+  days,
+  excludeWeekends = false,
+}: {
+  days: { date: string; count: number }[]
+  excludeWeekends?: boolean
+}) {
   const max = useMemo(() => days.reduce((m, day) => Math.max(m, day.count), 0), [days])
-  // Pad the front so the grid starts on a Sunday column, GitHub-style.
-  const firstDay = days.length > 0 ? new Date(`${days[0].date}T00:00:00Z`).getUTCDay() : 0
-  const padded = [...Array(firstDay).fill(null), ...days]
+  // D-308: when weekends are excluded, `days` only ever holds Monday-Friday entries, so the grid
+  // becomes a 5-row business week (Monday first) instead of the usual 7-row Sunday-first one -
+  // otherwise grouping by a fixed 7 would misalign every week after the first.
+  const rowsPerWeek = excludeWeekends ? 5 : 7
+  const firstDayOffset =
+    days.length === 0
+      ? 0
+      : (() => {
+          const sundayFirst = new Date(`${days[0].date}T00:00:00Z`).getUTCDay()
+          return excludeWeekends ? (sundayFirst + 6) % 7 : sundayFirst
+        })()
+  const padded = [...Array(firstDayOffset).fill(null), ...days]
   const weeks: ({ date: string; count: number } | null)[][] = []
-  for (let i = 0; i < padded.length; i += 7) {
-    weeks.push(padded.slice(i, i + 7))
+  for (let i = 0; i < padded.length; i += rowsPerWeek) {
+    weeks.push(padded.slice(i, i + rowsPerWeek))
   }
 
   if (days.length === 0) {
@@ -741,7 +775,7 @@ function ApplicationsSentHeatmap({ days }: { days: { date: string; count: number
         className="grid flex-1 gap-1"
         style={{
           gridTemplateColumns: `repeat(${weeks.length}, 1fr)`,
-          gridTemplateRows: 'repeat(7, 1fr)',
+          gridTemplateRows: `repeat(${rowsPerWeek}, 1fr)`,
           gridAutoFlow: 'column',
           // A floor for when nothing stretches this card taller (e.g. below the `lg` breakpoint,
           // where it isn't sharing a row with the taller lane chart) - without it, 1fr rows have
@@ -881,8 +915,11 @@ function LaneSummarySection({
 }
 
 // D-305: a bottom divider while stacked (narrower than `lg`, sitting above the lanes list), a
-// right divider once it becomes the left column of a two-column layout at `lg`.
-const OVERVIEW_DIVIDER_CLASSES = 'border-b border-border pb-4 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4'
+// right divider once it becomes the left column of a two-column layout at `lg`. D-309: the same
+// fixed max-height/scroll box the lanes column already has, so expanding "Overall fit"/"Overall
+// gaps" scrolls in place instead of growing the whole card.
+const OVERVIEW_DIVIDER_CLASSES =
+  'border-b border-border pb-4 lg:max-h-[480px] lg:overflow-y-auto lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4'
 
 function LaneOverviewReport({ overview }: { overview: LaneOverview }) {
   if (overview.summary === null) {
