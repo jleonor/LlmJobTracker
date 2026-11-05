@@ -12,10 +12,13 @@ One row for a talent pool submission, an unsolicited CV drop, or cold outreach �
 specific listing (D-249). Table `open_applications`.
 
 - `company_name` (renamed from `target_name`, D-311), `target_type`: who/what this goes to, and
-  what kind of outreach it is (`talent_pool`, `unsolicited`, `cold_outreach`). Both are wizard-
-  owned — extracted pre-creation by `extract_open_application_identity` from the research intake
-  — and always user-editable afterward (D-251) — unlike Job Application's `company`/`role_title`,
-  neither is required at creation time.
+  what kind of outreach it is (D-314) — `talent_pool` (the company/agency runs a general
+  interest-registration page, not tied to a specific posting), `unsolicited` (the company's own
+  site has a dedicated page for dropping a CV/resume outside any specific posting), or
+  `cold_outreach` (applying by sending an email directly, no web form involved). Both are
+  wizard-owned — extracted pre-creation by `extract_open_application_identity` from the research
+  intake — and always user-editable afterward (D-251) — unlike Job Application's
+  `company`/`role_title`, neither is required at creation time.
 - `contact_name`, `contact_email`: optional, wizard-owned (D-311). `contact_name` may be a named
   person, or a short label for a generic mailbox (e.g. "Info email", "Support email") when no
   named person is given — always paired with `contact_email` when set.

@@ -534,7 +534,13 @@ Answer with:
 === END COMPANY NAME ===
 
 === TARGET TYPE ===
-talent_pool, unsolicited, or cold_outreach - or leave empty if genuinely unclear
+One of:
+- talent_pool: the company or agency runs a talent pool - a general interest-registration page,
+  not tied to a specific posting.
+- unsolicited: the company's own site has a dedicated page for dropping a CV/resume outside any
+  specific posting.
+- cold_outreach: this goes by sending an email directly to apply, with no web form involved.
+Leave empty if genuinely unclear.
 === END TARGET TYPE ===
 
 === CONTACT NAME ===
