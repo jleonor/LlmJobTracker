@@ -51,7 +51,7 @@ export type FilterSpec =
   | { kind: 'date'; value: (app: JobApplication) => string | null }
   | { kind: 'score' }
 
-export type JobColumn = {
+export type JobApplicationColumn = {
   id: ColumnId
   label: string
   defaultWidth: number
@@ -93,7 +93,7 @@ function textColumn(
   label: string,
   defaultWidth: number,
   value: (app: JobApplication) => string | null
-): JobColumn {
+): JobApplicationColumn {
   return {
     id,
     label,
@@ -109,7 +109,7 @@ function dateColumn(
   label: string,
   defaultWidth: number,
   value: (app: JobApplication) => string | null
-): JobColumn {
+): JobApplicationColumn {
   return {
     id,
     label,
@@ -120,7 +120,7 @@ function dateColumn(
   }
 }
 
-function statusDateColumn(id: ColumnId, label: string, status: string): JobColumn {
+function statusDateColumn(id: ColumnId, label: string, status: string): JobApplicationColumn {
   return dateColumn(id, label, 120, (app) => dateForStatus(app, status))
 }
 
@@ -174,7 +174,7 @@ function statusFlagColumn(
   id: ColumnId,
   label: string,
   value: (app: JobApplication) => boolean
-): JobColumn {
+): JobApplicationColumn {
   const toLabel = (app: JobApplication) => (value(app) ? 'Done' : 'Not done')
   return {
     id,
@@ -191,7 +191,7 @@ function statusFlagColumn(
   }
 }
 
-export const JOB_COLUMNS: readonly JobColumn[] = [
+export const JOB_APPLICATION_COLUMNS: readonly JobApplicationColumn[] = [
   textColumn('company', 'Company', 160, (app) => app.company),
   textColumn('role_title', 'Title', 200, (app) => app.role_title),
   { ...textColumn('lane', 'Lane', 140, (app) => app.lane), cell: laneCell },
@@ -239,9 +239,9 @@ export const JOB_COLUMNS: readonly JobColumn[] = [
   textColumn('notes', 'Notes', 220, (app) => app.notes),
 ]
 
-export const COLUMN_BY_ID: Readonly<Record<ColumnId, JobColumn>> = Object.fromEntries(
-  JOB_COLUMNS.map((column) => [column.id, column])
-) as Record<ColumnId, JobColumn>
+export const COLUMN_BY_ID: Readonly<Record<ColumnId, JobApplicationColumn>> = Object.fromEntries(
+  JOB_APPLICATION_COLUMNS.map((column) => [column.id, column])
+) as Record<ColumnId, JobApplicationColumn>
 
 export const DEFAULT_COLUMN_IDS: readonly ColumnId[] = [
   'company',

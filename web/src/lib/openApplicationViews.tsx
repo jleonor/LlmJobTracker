@@ -46,7 +46,7 @@ const HAS_NEXT_ACTION_DATE: Filters = {
   next_action_date: { kind: 'date', from: '1970-01-01', to: null },
 }
 
-// Matches jobViews.tsx's own 30-day cutoff (D-275), applied here for Active/Cold's own split.
+// Matches jobApplicationViews.tsx's own 30-day cutoff (D-275), applied here for Active/Cold's own split.
 const STALE_AFTER_DAYS = 30
 
 function daysAgoDateKey(now: Date, days: number): string {

@@ -4,12 +4,14 @@ import type { ReactNode } from 'react'
 import { useTitlebarOverlayGutter } from '@/lib/useTitlebarOverlayGutter'
 import { cn } from '@/lib/utils'
 
-export type Screen = 'jobs' | 'dashboard' | 'profile' | 'queue' | 'settings'
+export type Screen = 'applications' | 'dashboard' | 'profile' | 'queue' | 'settings'
 
-// Jobs, Dashboard, Profile, LLM history and Settings have screens (Phase 7, D-195; Phase 10
-// adds Dashboard).
+// Applications, Dashboard, Profile, LLM history and Settings have screens (Phase 7, D-195; Phase
+// 10 adds Dashboard). The "applications" screen is the umbrella page covering both Targeted
+// applications (the Job Application entity) and Open applications (D-307) - its nav label stays
+// "Job Applications" (the user confirmed that's fine), only the internal screen id changed.
 const NAV: { label: string; icon: typeof UserRound; screen: Screen }[] = [
-  { label: 'Job Applications', icon: BriefcaseBusiness, screen: 'jobs' },
+  { label: 'Job Applications', icon: BriefcaseBusiness, screen: 'applications' },
   { label: 'Dashboard', icon: LayoutDashboard, screen: 'dashboard' },
   { label: 'Profile', icon: UserRound, screen: 'profile' },
   { label: 'LLM history', icon: ListOrdered, screen: 'queue' },

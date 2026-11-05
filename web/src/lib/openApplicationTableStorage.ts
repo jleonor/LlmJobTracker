@@ -4,7 +4,7 @@ import type { Filters, SortState } from '@/components/app/OpenApplicationsTableF
 import { OPEN_APPLICATION_COLUMNS, type ColumnId } from '@/lib/openApplicationColumns'
 import type { ViewId } from '@/lib/openApplicationViews'
 
-// Mirrors jobTableStorage.ts (D-229), under its own key so it doesn't collide with the Job
+// Mirrors jobApplicationTableStorage.ts (D-229), under its own key so it doesn't collide with the Job
 // Applications table's own persisted state.
 const STORAGE_KEY = 'ljt.openApplicationsView'
 

@@ -11,7 +11,7 @@ import type { LlmAppStatus, OpenLlmAppTarget } from '@/lib/types'
 // Open Application detail pages - Settings' own OpenLlmAppSection install-check/confirm-dialog
 // pattern, trimmed to one application: no export-path field, no appCount fetch (the dialog
 // names this one application instead). Self-contained (own useSettings/status fetch) rather than
-// threading settings down through JobApplicationsPage/OpenApplicationsPage, which don't carry it
+// threading settings down through ApplicationsPage/OpenApplicationsPage, which don't carry it
 // today.
 export function OpenLlmAppButton({ target, label }: { target: OpenLlmAppTarget; label: string }) {
   const { settings } = useSettings()

@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Slider } from '@/components/ui/slider'
-import { COLUMN_BY_ID, UNSET, type ColumnId } from '@/lib/jobColumns'
+import { COLUMN_BY_ID, UNSET, type ColumnId } from '@/lib/jobApplicationColumns'
 import { cn } from '@/lib/utils'
 import type { JobApplication } from '@/lib/types'
 

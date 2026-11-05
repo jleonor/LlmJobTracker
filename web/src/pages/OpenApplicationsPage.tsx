@@ -59,7 +59,7 @@ type DetailState =
 
 const HEAD = 'font-mono text-[10px] uppercase tracking-wider'
 
-// D-298 (Phase 17): mirrors JobApplicationsPage.tsx's own QueueIndicator, including the 'staged'
+// D-298 (Phase 17): mirrors ApplicationsPage.tsx's own QueueIndicator, including the 'staged'
 // state the original, pre-registry version of this table never handled (D-296 gives Open
 // Applications their own staged workflow chains now, the same way Add Job already had one).
 function QueueIndicator({ status }: { status: QueueStatus }) {

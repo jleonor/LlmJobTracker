@@ -9,7 +9,7 @@ import { COLUMN_BY_ID, UNSET, type ColumnId } from '@/lib/openApplicationColumns
 import { cn } from '@/lib/utils'
 import type { OpenApplication } from '@/lib/types'
 
-// D-298 (Phase 17): mirrors JobsTableFilters.tsx, trimmed to the two filter kinds Open
+// D-298 (Phase 17): mirrors JobApplicationsTableFilters.tsx, trimmed to the two filter kinds Open
 // Applications actually need (text, date) - there is no match score here (D-249), so the Slider-
 // based score popover and filter kind are left out entirely rather than built unused.
 export type SortState = { column: ColumnId; direction: 'asc' | 'desc' } | null

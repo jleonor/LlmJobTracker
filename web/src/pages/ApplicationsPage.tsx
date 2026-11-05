@@ -20,7 +20,7 @@ import {
   filtersAreActive,
   type Filters,
   type SortState,
-} from '@/components/app/JobsTableFilters'
+} from '@/components/app/JobApplicationsTableFilters'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -29,14 +29,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ApiError, fetchJobApplicationDetail, fetchJobApplications } from '@/lib/api'
-import { COLUMN_BY_ID, DEFAULT_COLUMN_IDS, JOB_COLUMNS, type ColumnId } from '@/lib/jobColumns'
-import { JOB_VIEWS, type JobView, type ViewId } from '@/lib/jobViews'
+import { COLUMN_BY_ID, DEFAULT_COLUMN_IDS, JOB_APPLICATION_COLUMNS, type ColumnId } from '@/lib/jobApplicationColumns'
+import { JOB_APPLICATION_VIEWS, type JobApplicationView, type ViewId } from '@/lib/jobApplicationViews'
 import {
   deserializeFilters,
   loadPersistedTableState,
   savePersistedTableState,
   serializeFilters,
-} from '@/lib/jobTableStorage'
+} from '@/lib/jobApplicationTableStorage'
 import { QUEUE_STATUS_TEXT } from '@/lib/tone'
 import type { JobApplication, JobApplicationDetailData, QueueStatus } from '@/lib/types'
 import { queueStatusFor, type QueueState } from '@/lib/useClaudeJobs'
@@ -124,7 +124,7 @@ function companyCell(app: JobApplication, status: QueueStatus) {
 }
 
 function buildTanstackColumns(queueJobs: QueueState['jobs']): ColumnDef<JobApplication>[] {
-  return JOB_COLUMNS.map((column) => ({
+  return JOB_APPLICATION_COLUMNS.map((column) => ({
     id: column.id,
     accessorFn: () => null,
     header: column.label,
@@ -139,7 +139,7 @@ function buildTanstackColumns(queueJobs: QueueState['jobs']): ColumnDef<JobAppli
 
 function visibilityFor(visible: readonly ColumnId[]): VisibilityState {
   const state: VisibilityState = {}
-  for (const column of JOB_COLUMNS) state[column.id] = visible.includes(column.id)
+  for (const column of JOB_APPLICATION_COLUMNS) state[column.id] = visible.includes(column.id)
   return state
 }
 
@@ -147,7 +147,7 @@ function visibilityFor(visible: readonly ColumnId[]): VisibilityState {
 // a view's own columns come first, in the order it names them, with the rest appended afterward
 // in their registry order so nothing is ever missing from columnOrder.
 function orderForView(columns: readonly ColumnId[]): ColumnId[] {
-  const rest = JOB_COLUMNS.map((column) => column.id).filter((id) => !columns.includes(id))
+  const rest = JOB_APPLICATION_COLUMNS.map((column) => column.id).filter((id) => !columns.includes(id))
   return [...columns, ...rest]
 }
 
@@ -162,7 +162,7 @@ function SelectColumnsPopover({
 }) {
   const [search, setSearch] = useState('')
   const query = search.trim().toLowerCase()
-  const visibleOptions = JOB_COLUMNS.filter(
+  const visibleOptions = JOB_APPLICATION_COLUMNS.filter(
     (column) => query === '' || column.label.toLowerCase().includes(query)
   )
 
@@ -201,7 +201,7 @@ function SelectColumnsPopover({
   )
 }
 
-export function JobApplicationsPage({
+export function ApplicationsPage({
   queue,
   resetSignal = 0,
 }: {
@@ -233,7 +233,7 @@ export function JobApplicationsPage({
     () => persisted?.activeViewId ?? 'default'
   )
   const [columnOrder, setColumnOrder] = useState<ColumnId[]>(
-    () => persisted?.columnOrder ?? JOB_COLUMNS.map((column) => column.id)
+    () => persisted?.columnOrder ?? JOB_APPLICATION_COLUMNS.map((column) => column.id)
   )
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
     () => persisted?.columnVisibility ?? visibilityFor(DEFAULT_COLUMN_IDS)
@@ -311,7 +311,7 @@ export function JobApplicationsPage({
 
   // D-227/D-230: switching views replaces columns/order/sizing/sort/filter atomically, using the
   // raw setters directly (never toggleColumn/moveColumn) so this never itself forks into Custom.
-  function switchView(view: JobView) {
+  function switchView(view: JobApplicationView) {
     setActiveViewId(view.id)
     setColumnOrder(orderForView(view.columns))
     setColumnVisibility(visibilityFor(view.columns))
@@ -502,7 +502,7 @@ export function JobApplicationsPage({
       {state.kind === 'ready' && applications.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            {JOB_VIEWS.map((view) => {
+            {JOB_APPLICATION_VIEWS.map((view) => {
               const Icon = view.icon
               return (
                 <button

@@ -1,8 +1,8 @@
 import type { ColumnSizingState, VisibilityState } from '@tanstack/react-table'
 
-import type { Filters, SortState } from '@/components/app/JobsTableFilters'
-import { JOB_COLUMNS, type ColumnId } from '@/lib/jobColumns'
-import type { ViewId } from '@/lib/jobViews'
+import type { Filters, SortState } from '@/components/app/JobApplicationsTableFilters'
+import { JOB_APPLICATION_COLUMNS, type ColumnId } from '@/lib/jobApplicationColumns'
+import type { ViewId } from '@/lib/jobApplicationViews'
 
 // D-229: the active view and any Custom customization persist in sessionStorage - read on
 // mount, written on change, with no migration back to Default except a fresh app launch (a new
@@ -54,7 +54,7 @@ function isValidPersistedState(value: unknown): value is PersistedTableState {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Record<string, unknown>
   if (!Array.isArray(candidate.columnOrder)) return false
-  const knownIds = new Set(JOB_COLUMNS.map((column) => column.id))
+  const knownIds = new Set(JOB_APPLICATION_COLUMNS.map((column) => column.id))
   if (candidate.columnOrder.length !== knownIds.size) return false
   return candidate.columnOrder.every((id) => knownIds.has(id as ColumnId))
 }

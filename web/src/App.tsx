@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { AppShell, type Screen } from '@/components/app/AppShell'
 import { DashboardPage } from '@/pages/DashboardPage'
-import { JobApplicationsPage } from '@/pages/JobApplicationsPage'
+import { ApplicationsPage } from '@/pages/ApplicationsPage'
 import { LlmHistoryPage } from '@/pages/LlmHistoryPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -13,18 +13,18 @@ import { useSettings } from '@/lib/useSettings'
 
 function App() {
   useScrollbarAutoHide()
-  const [screen, setScreen] = useState<Screen>('jobs')
+  const [screen, setScreen] = useState<Screen>('applications')
   // Clicking "Job Applications" while it's already the current screen doesn't change `screen`
-  // (same value, no re-render for that reason) - this signal gives JobApplicationsPage something
+  // (same value, no re-render for that reason) - this signal gives ApplicationsPage something
   // that always changes on a click, so it can drop back to the table from a job's detail view the
   // same way its own Back button does, even when the screen itself was never "away."
-  const [jobsResetSignal, setJobsResetSignal] = useState(0)
+  const [applicationsResetSignal, setApplicationsResetSignal] = useState(0)
   const queue = useClaudeJobs()
   const { settings, reload: reloadSettings } = useSettings()
   const [triggeringStaged, setTriggeringStaged] = useState(false)
 
   function navigate(next: Screen) {
-    if (next === 'jobs') setJobsResetSignal((count) => count + 1)
+    if (next === 'applications') setApplicationsResetSignal((count) => count + 1)
     setScreen(next)
   }
 
@@ -52,7 +52,7 @@ function App() {
       onTriggerStaged={() => void triggerStaged()}
       triggeringStaged={triggeringStaged}
     >
-      {screen === 'jobs' && <JobApplicationsPage queue={queue} resetSignal={jobsResetSignal} />}
+      {screen === 'applications' && <ApplicationsPage queue={queue} resetSignal={applicationsResetSignal} />}
       {screen === 'dashboard' && <DashboardPage settings={settings} queue={queue} />}
       {screen === 'profile' && (
         <ProfilePage userName={settings.user_name} onNameChanged={reloadSettings} />

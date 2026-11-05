@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { applicationMatchesFilters } from '@/components/app/JobsTableFilters'
-import { JOB_VIEWS } from '@/lib/jobViews'
+import { applicationMatchesFilters } from '@/components/app/JobApplicationsTableFilters'
+import { JOB_APPLICATION_VIEWS } from '@/lib/jobApplicationViews'
 import type { JobApplication } from '@/lib/types'
 
 function application(overrides: Partial<JobApplication> = {}): JobApplication {
@@ -35,7 +35,7 @@ function application(overrides: Partial<JobApplication> = {}): JobApplication {
 const now = new Date('2026-10-31T00:00:00Z')
 
 function viewFilters(id: string) {
-  const view = JOB_VIEWS.find((candidate) => candidate.id === id)
+  const view = JOB_APPLICATION_VIEWS.find((candidate) => candidate.id === id)
   if (!view) throw new Error(`No such view: ${id}`)
   return typeof view.filters === 'function' ? view.filters(now) : view.filters
 }

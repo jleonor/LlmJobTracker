@@ -150,7 +150,7 @@ export type JobApplicationEdit = Partial<{
 }>
 
 // The Job Application page's full shape (D-56, D-98, planning/product-model.md). Extends the API
-// response with the one thing nothing computes yet: the queue badge. JobApplicationsPage.tsx
+// response with the one thing nothing computes yet: the queue badge. ApplicationsPage.tsx
 // fills it in with a "not run" default.
 export type JobApplicationDetail = JobApplicationDetailData & {
   queue_status: QueueStatus

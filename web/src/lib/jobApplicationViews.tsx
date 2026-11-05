@@ -1,11 +1,11 @@
 import { Activity, Archive, CalendarClock, History, Home, ListChecks, Send, Snowflake, type LucideIcon } from 'lucide-react'
 
-import type { Filters, SortState } from '@/components/app/JobsTableFilters'
-import { DEFAULT_COLUMN_IDS, type ColumnId } from '@/lib/jobColumns'
+import type { Filters, SortState } from '@/components/app/JobApplicationsTableFilters'
+import { DEFAULT_COLUMN_IDS, type ColumnId } from '@/lib/jobApplicationColumns'
 import { STATUS_ORDER } from '@/lib/types'
 
 // D-227/D-230: Default plus predefined views. Each one's columns/sort/filter apply atomically
-// when selected (JobApplicationsPage.switchView); resizing, reordering or using "Select columns"
+// when selected (ApplicationsPage.switchView); resizing, reordering or using "Select columns"
 // afterward forks into an implicit Custom view instead of changing the predefined one's own
 // definition.
 export type ViewId =
@@ -18,7 +18,7 @@ export type ViewId =
   | 'processing_status'
   | 'history_dates'
 
-export type JobView = {
+export type JobApplicationView = {
   id: ViewId
   label: string
   icon: LucideIcon
@@ -26,7 +26,7 @@ export type JobView = {
   sort: SortState
   // A plain Filters object for most views; a function for one whose filter is relative to today
   // (Active/Cold applications' 30-day recency condition, Phase 14 D-275) - resolved at selection
-  // time (JobApplicationsPage.switchView), never baked into a stored constant, so it never goes
+  // time (ApplicationsPage.switchView), never baked into a stored constant, so it never goes
   // stale.
   filters: Filters | ((now: Date) => Filters)
 }
@@ -57,7 +57,7 @@ const NON_DEAD_STATUSES = STATUS_ORDER.filter(
   (status) => !['Rejected', 'Withdrawn', 'Expired'].includes(status),
 )
 
-export const JOB_VIEWS: readonly JobView[] = [
+export const JOB_APPLICATION_VIEWS: readonly JobApplicationView[] = [
   {
     id: 'default',
     label: 'Default',
@@ -169,6 +169,6 @@ export const JOB_VIEWS: readonly JobView[] = [
   },
 ]
 
-export const VIEW_BY_ID: Readonly<Record<ViewId, JobView>> = Object.fromEntries(
-  JOB_VIEWS.map((view) => [view.id, view])
-) as Record<ViewId, JobView>
+export const VIEW_BY_ID: Readonly<Record<ViewId, JobApplicationView>> = Object.fromEntries(
+  JOB_APPLICATION_VIEWS.map((view) => [view.id, view])
+) as Record<ViewId, JobApplicationView>

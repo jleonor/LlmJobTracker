@@ -6,7 +6,7 @@ import { TruncatedText } from '@/components/app/TruncatedText'
 import { TARGET_TYPE_LABELS } from '@/lib/openApplicationLabels'
 import { OPEN_APPLICATION_STATUS_ORDER, type OpenApplication } from '@/lib/types'
 
-// D-298 (Phase 17): the Open Applications table's own column registry, mirroring jobColumns.tsx's
+// D-298 (Phase 17): the Open Applications table's own column registry, mirroring jobApplicationColumns.tsx's
 // shape and resize/reorder/sort/filter machinery - trimmed to this entity's own fields (no Lane
 // or Match score, D-249; a 5-status set instead of 7; 5 processing flags instead of 6).
 export type ColumnId =
@@ -31,7 +31,7 @@ export type ColumnId =
   | 'withdrawn_date'
   | 'expired_date'
 
-// The checklist value standing in for a null value - matches jobColumns.ts's own UNSET.
+// The checklist value standing in for a null value - matches jobApplicationColumns.ts's own UNSET.
 export const UNSET = '(none)'
 
 export type FilterSpec =
@@ -146,7 +146,7 @@ export const OPEN_APPLICATION_COLUMNS: readonly OpenApplicationColumn[] = [
     // 'text', not 'ordered' (D-298 fix): target_type is nullable, unlike Status - 'ordered'
     // only ever lists its fixed order's own values, so a null row could never be selected by
     // any filter choice. 'text' options are data-driven and include the UNSET option, the same
-    // way jobColumns.ts's own nullable text columns (Lane, Location) already handle this.
+    // way jobApplicationColumns.ts's own nullable text columns (Lane, Location) already handle this.
     compare: (a, b, direction) =>
       compareNullableStrings(targetTypeLabel(a.target_type), targetTypeLabel(b.target_type), direction),
     filter: { kind: 'text', value: (app) => targetTypeLabel(app.target_type) },
