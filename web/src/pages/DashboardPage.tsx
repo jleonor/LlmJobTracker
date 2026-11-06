@@ -261,8 +261,8 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
     [sliced, slicedOpen, excludeWeekends],
   )
   const rates = useMemo(
-    () => combinedWholeHistoryRates(rangeApplications, rangeOpenApplications),
-    [rangeApplications, rangeOpenApplications],
+    () => combinedWholeHistoryRates(rangeApplications, rangeOpenApplications, new Date(), excludeWeekends),
+    [rangeApplications, rangeOpenApplications, excludeWeekends],
   )
   // D-302: spans the slider's own range instead of a fixed trailing year.
   const heatmap = useMemo(
@@ -273,7 +273,10 @@ export function DashboardPage({ settings, queue }: { settings: Settings; queue: 
   // counts the heatmap already has, except Active jobs which needs its own reconstruction.
   const [sentChartView, setSentChartView] = useState<SentChartView>('calendar')
   const cumulativeHeatmap = useMemo(() => cumulativeCounts(heatmap), [heatmap])
-  const weekdayAverages = useMemo(() => averageCountByWeekday(heatmap), [heatmap])
+  const weekdayAverages = useMemo(
+    () => averageCountByWeekday(heatmap, excludeWeekends),
+    [heatmap, excludeWeekends],
+  )
   const activeOverTime = useMemo(
     () => activeApplicationsOverTime(sliced, slicedOpen, startDate, endDate, excludeWeekends),
     [sliced, slicedOpen, startDate, endDate, excludeWeekends],

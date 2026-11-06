@@ -328,6 +328,26 @@ describe('wholeHistoryRates', () => {
   it('returns null with no status history anywhere', () => {
     expect(wholeHistoryRates([application()])).toBeNull()
   })
+
+  it('divides by business days/weeks instead of calendar ones when excludeWeekends is set (D-308)', () => {
+    const applications = [
+      application({
+        status_history: [
+          { status: 'Identified', changed_at: '2026-09-01T00:00:00Z' }, // Tuesday
+          { status: 'Applied', changed_at: '2026-09-06T00:00:00Z' },
+        ],
+      }),
+      application({
+        status_history: [{ status: 'Identified', changed_at: '2026-09-05T00:00:00Z' }],
+      }),
+    ]
+    const now = new Date('2026-09-11T00:00:00Z') // Friday, 10 calendar days / 8 business days later
+    const rates = wholeHistoryRates(applications, now, true)
+    expect(rates).not.toBeNull()
+    expect(rates?.identifiedPerDay).toBeCloseTo(2 / 8)
+    expect(rates?.appliedPerDay).toBeCloseTo(1 / 8)
+    expect(rates?.identifiedPerWeek).toBeCloseTo(2 / (8 / 5))
+  })
 })
 
 describe('applicationsSentHeatmap', () => {
@@ -366,6 +386,42 @@ describe('applicationsSentHeatmap', () => {
     // 2026-10-16 is a Friday, 2026-10-17/18 are the weekend, 2026-10-19 is a Monday.
     const heatmap = applicationsSentHeatmap(applications, '2026-10-16', '2026-10-19', true)
     expect(heatmap.map((day) => day.date)).toEqual(['2026-10-16', '2026-10-19'])
+  })
+
+  it('rolls a weekend Applied event onto the next business day instead of losing it (D-308)', () => {
+    const applications = [
+      application({
+        // 2026-10-17/18 is the weekend; both land on the following Monday (10-19).
+        status_history: [
+          { status: 'Applied', changed_at: '2026-10-17T09:00:00Z' },
+          { status: 'Applied', changed_at: '2026-10-18T09:00:00Z' },
+          { status: 'Applied', changed_at: '2026-10-19T09:00:00Z' },
+        ],
+      }),
+    ]
+    const withWeekends = applicationsSentHeatmap(applications, '2026-10-16', '2026-10-19')
+    const totalWithWeekends = withWeekends.reduce((sum, day) => sum + day.count, 0)
+    const excluded = applicationsSentHeatmap(applications, '2026-10-16', '2026-10-19', true)
+    const totalExcluded = excluded.reduce((sum, day) => sum + day.count, 0)
+    // Same total either way - excluding weekends changes which day a count is shown on, never
+    // whether it's counted at all (this is also what keeps the Cumulative chart's last point and
+    // the "Count over time" sum matching the "Applications sent" stat tile).
+    expect(totalExcluded).toBe(totalWithWeekends)
+    expect(excluded).toEqual([
+      { date: '2026-10-16', count: 0 },
+      { date: '2026-10-19', count: 3 }, // Saturday's + Sunday's + Monday's own Applied events
+    ])
+  })
+
+  it('folds a trailing weekend carry into the last business day when the range ends mid-weekend (D-308)', () => {
+    const applications = [
+      application({
+        status_history: [{ status: 'Applied', changed_at: '2026-10-17T09:00:00Z' }], // Saturday
+      }),
+    ]
+    // The range itself ends on the Saturday, so there's no following Monday to roll onto within it.
+    const excluded = applicationsSentHeatmap(applications, '2026-10-16', '2026-10-17', true)
+    expect(excluded).toEqual([{ date: '2026-10-16', count: 1 }])
   })
 })
 
@@ -417,6 +473,21 @@ describe('averageCountByWeekday (D-304)', () => {
       'Friday',
       'Saturday',
       'Sunday',
+    ])
+  })
+
+  it('drops Saturday/Sunday entirely when excludeWeekends is set, not just zeroes them (D-308)', () => {
+    const days = [
+      { date: '2026-10-05', count: 2 }, // Monday
+      { date: '2026-10-06', count: 0 }, // Tuesday
+    ]
+    const result = averageCountByWeekday(days, true)
+    expect(result.map((entry) => entry.weekday)).toEqual([
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
     ])
   })
 })
@@ -542,6 +613,16 @@ describe('combinedWholeHistoryRates', () => {
 
   it('is null when neither list has any status history', () => {
     expect(combinedWholeHistoryRates([], [])).toBeNull()
+  })
+
+  it('divides by business days when excludeWeekends is set (D-308)', () => {
+    const now = new Date('2026-10-12T00:00:00Z') // Monday
+    const jobApplications = [
+      application({ status_history: [{ status: 'Identified', changed_at: '2026-10-05T00:00:00Z' }] }), // Monday, 7 calendar / 5 business days earlier
+    ]
+    const rates = combinedWholeHistoryRates(jobApplications, [], now, true)
+    expect(rates).not.toBeNull()
+    expect(rates?.identifiedPerDay).toBeCloseTo(1 / 5)
   })
 })
 

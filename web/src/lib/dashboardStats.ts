@@ -437,13 +437,18 @@ export type WholeHistoryRates = {
 }
 
 // Pass the FULL, unsliced application list here, never the slicer-filtered one (D-241).
+// D-308: excludeWeekends switches the "per day"/"per week" denominator from calendar days/weeks
+// to business days/weeks, the same way the lead-time average does - the numerators (how many
+// Identified/Applied events actually happened) are never filtered by weekday.
 export function wholeHistoryRates(
   applications: JobApplication[],
   now: Date = new Date(),
+  excludeWeekends = false,
 ): WholeHistoryRates | null {
   return ratesFromEntries(
     applications.flatMap((application) => application.status_history),
     now,
+    excludeWeekends,
   )
 }
 
@@ -453,6 +458,7 @@ export function combinedWholeHistoryRates(
   jobApplications: JobApplication[],
   openApplications: OpenApplication[],
   now: Date = new Date(),
+  excludeWeekends = false,
 ): WholeHistoryRates | null {
   return ratesFromEntries(
     [
@@ -460,17 +466,29 @@ export function combinedWholeHistoryRates(
       ...openApplications.flatMap((application) => application.status_history),
     ],
     now,
+    excludeWeekends,
   )
 }
 
-function ratesFromEntries(allEntries: StatusHistoryEntry[], now: Date): WholeHistoryRates | null {
+function ratesFromEntries(
+  allEntries: StatusHistoryEntry[],
+  now: Date,
+  excludeWeekends = false,
+): WholeHistoryRates | null {
   if (allEntries.length === 0) return null
   const earliest = allEntries.reduce(
     (min, entry) => (entry.changed_at < min ? entry.changed_at : min),
     allEntries[0].changed_at,
   )
-  const elapsedDays = Math.max(1, daysBetween(earliest, now.toISOString()))
-  const elapsedWeeks = elapsedDays / 7
+  const elapsedDays = Math.max(
+    1,
+    excludeWeekends
+      ? businessDaysBetween(earliest, now.toISOString())
+      : daysBetween(earliest, now.toISOString()),
+  )
+  // A "week" is 5 business days, not 7 calendar days, once weekends are excluded - keeping
+  // per-week consistent with per-day × (days in a week) under whichever accounting is active.
+  const elapsedWeeks = elapsedDays / (excludeWeekends ? 5 : 7)
   const identifiedCount = allEntries.filter((entry) => entry.status === 'Identified').length
   const appliedCount = allEntries.filter((entry) => entry.status === 'Applied').length
   return {
@@ -556,12 +574,27 @@ function heatmapFromEntries(
   const days: HeatmapDay[] = []
   const cursor = new Date(`${startDate}T00:00:00Z`)
   const end = new Date(`${endDate}T00:00:00Z`)
+  // D-308 fix: a Saturday/Sunday's own count rolls forward onto the next business day instead of
+  // being dropped, so the total across `days` (what the Cumulative chart's last point, and the
+  // sum "Count over time" draws, come to) always matches the "Applications sent" stat tile's own
+  // weekend-agnostic count - excluding weekends changes *when* a count is shown, never whether it
+  // is counted at all.
+  let carry = 0
   while (cursor <= end) {
     const key = toDateKey(cursor)
-    if (!excludeWeekends || !isWeekend(key)) {
-      days.push({ date: key, count: countsByDay.get(key) ?? 0 })
+    const count = (countsByDay.get(key) ?? 0) + carry
+    if (excludeWeekends && isWeekend(key)) {
+      carry = count
+    } else {
+      days.push({ date: key, count })
+      carry = 0
     }
     cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  // The range itself can end mid-weekend, with nothing left to roll onto - fold any remainder
+  // into the last business day shown rather than lose it.
+  if (carry > 0 && days.length > 0) {
+    days[days.length - 1].count += carry
   }
   return days
 }
@@ -586,8 +619,15 @@ export type WeekdayAverage = { weekday: string; average: number }
 const WEEKDAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 // "Average per day of week": buckets the same per-day counts by weekday (Monday-first) and
-// averages across however many of that weekday fall in the given range.
-export function averageCountByWeekday(days: HeatmapDay[]): WeekdayAverage[] {
+// averages across however many of that weekday fall in the given range. D-308: when weekends
+// are excluded, Saturday/Sunday are dropped from the result entirely rather than shown as a
+// zero-height bar - `days` itself never has weekend entries in that case (heatmapFromEntries
+// rolls them onto the following Monday), so this is about what the chart draws, not just the
+// data it's fed.
+export function averageCountByWeekday(
+  days: HeatmapDay[],
+  excludeWeekends = false,
+): WeekdayAverage[] {
   const totals = new Array(7).fill(0)
   const occurrences = new Array(7).fill(0)
   for (const day of days) {
@@ -596,7 +636,8 @@ export function averageCountByWeekday(days: HeatmapDay[]): WeekdayAverage[] {
     totals[mondayFirst] += day.count
     occurrences[mondayFirst] += 1
   }
-  return WEEKDAY_LABELS.map((weekday, index) => ({
+  const labels = excludeWeekends ? WEEKDAY_LABELS.slice(0, 5) : WEEKDAY_LABELS
+  return labels.map((weekday, index) => ({
     weekday,
     average: occurrences[index] === 0 ? 0 : totals[index] / occurrences[index],
   }))
