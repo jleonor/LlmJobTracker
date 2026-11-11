@@ -2044,7 +2044,9 @@ def create_app(
     )
     def retry_claude_job(job_id: int, conn: Annotated[Connection, Depends(get_db)]) -> ClaudeJob:
         if not queue.retry(conn, job_id):
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Not failed.")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="Not failed or cancelled."
+            )
         return _with_live_text(queue, _job_or_404(conn, job_id))
 
     @app.get(

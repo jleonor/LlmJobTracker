@@ -218,7 +218,7 @@ function JobCard({ job, position, onChanged }: CardProps) {
                 Resume
               </Button>
             )}
-            {job.status === 'failed' && (
+            {(job.status === 'failed' || job.status === 'cancelled') && (
               <Button disabled={busy} onClick={() => void act(retryClaudeJob)}>
                 Retry
               </Button>

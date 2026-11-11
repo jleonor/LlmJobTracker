@@ -173,7 +173,7 @@ class ClaudeJobQueue:
         return resumed
 
     def retry(self, conn: sqlite3.Connection, job_id: int) -> bool:
-        """Requeue a failed job (the LLM history page's Retry button)."""
+        """Requeue a failed or cancelled job (the LLM history page's Retry button)."""
         retried = retry_job(conn, job_id)
         if retried:
             self.wake()

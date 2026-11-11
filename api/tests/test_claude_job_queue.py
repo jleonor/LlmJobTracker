@@ -190,9 +190,32 @@ def test_retry_requeues_the_failed_prompt_and_the_rest_run(db_path: Path) -> Non
         assert read_job(db_path, job_id) == ("done", ["done", "done"])
 
 
-def test_retry_is_refused_unless_the_job_is_failed(db_path: Path, fake_client: TestClient) -> None:
+def test_retry_is_refused_unless_the_job_is_failed_or_cancelled(
+    db_path: Path, fake_client: TestClient
+) -> None:
     job_id = submit(db_path, queue_of(fake_client), "queued", ["one"])
     assert fake_client.post(f"/claude-jobs/{job_id}/retry").status_code == 409
+
+
+def test_retry_requeues_a_cancelled_job(
+    db_path: Path, runner: FakeRunner, fake_client: TestClient
+) -> None:
+    queue = queue_of(fake_client)
+    job_id = submit(db_path, queue, "cancel me", ["one", "two"])
+
+    cancelled = fake_client.post(f"/claude-jobs/{job_id}/cancel")
+    assert cancelled.status_code == 200
+    assert read_job(db_path, job_id) == ("cancelled", ["cancelled", "cancelled"])
+
+    retried = fake_client.post(f"/claude-jobs/{job_id}/retry")
+    assert retried.status_code == 200
+    assert retried.json()["status"] == "queued"
+    assert read_job(db_path, job_id) == ("queued", ["queued", "queued"])
+
+    while queue.process_next():
+        pass
+    assert runner.prompts == ["one", "two"]
+    assert read_job(db_path, job_id) == ("done", ["done", "done"])
 
 
 def test_a_rejected_output_fails_its_prompt(db_path: Path, runner: FakeRunner) -> None:
