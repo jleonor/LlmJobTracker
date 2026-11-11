@@ -29,6 +29,7 @@ from llmjobtracker.claude_jobs import (
     reset_retry_attempts,
     resume_due_jobs,
     resume_job,
+    retry_job,
     set_prompt_status,
     set_prompt_text,
     store_answer,
@@ -170,6 +171,13 @@ class ClaudeJobQueue:
         if resumed:
             self.wake()
         return resumed
+
+    def retry(self, conn: sqlite3.Connection, job_id: int) -> bool:
+        """Requeue a failed job (the LLM history page's Retry button)."""
+        retried = retry_job(conn, job_id)
+        if retried:
+            self.wake()
+        return retried
 
     def trigger_staged(self, conn: sqlite3.Connection) -> list[int]:
         """Start every staged Claude Job at once (D-286/D-288's header button)."""

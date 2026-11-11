@@ -152,6 +152,49 @@ def test_a_failed_prompt_fails_the_job_and_skips_the_rest(db_path: Path) -> None
     assert prompt_statuses == ["failed", "queued"]
 
 
+def test_retry_requeues_the_failed_prompt_and_the_rest_run(db_path: Path) -> None:
+    class FlakyRunner:
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+            self.fail_next = True
+
+        def run(
+            self,
+            prompt: str,
+            cancel: threading.Event | None = None,
+            json_schema: dict[str, Any] | None = None,
+            on_text: Any = None,
+        ) -> RunResult:
+            self.prompts.append(prompt)
+            if self.fail_next:
+                self.fail_next = False
+                return RunResult(ok=False, error="Claude Code run failed (error_max_budget).")
+            return RunResult(ok=True, text=f"answer for {prompt}")
+
+    flaky = FlakyRunner()
+    queue = ClaudeJobQueue(db_path, flaky)
+    job_id = submit(db_path, queue, "broken", ["one", "two"])
+
+    queue.process_next()
+    assert read_job(db_path, job_id) == ("failed", ["failed", "queued"])
+
+    client = client_for(db_path, flaky)
+    with client:
+        retried = client.post(f"/claude-jobs/{job_id}/retry")
+        assert retried.status_code == 200
+        assert retried.json()["status"] == "queued"
+
+        while queue.process_next():
+            pass
+        assert flaky.prompts == ["one", "one", "two"]
+        assert read_job(db_path, job_id) == ("done", ["done", "done"])
+
+
+def test_retry_is_refused_unless_the_job_is_failed(db_path: Path, fake_client: TestClient) -> None:
+    job_id = submit(db_path, queue_of(fake_client), "queued", ["one"])
+    assert fake_client.post(f"/claude-jobs/{job_id}/retry").status_code == 409
+
+
 def test_a_rejected_output_fails_its_prompt(db_path: Path, runner: FakeRunner) -> None:
     def reject(_conn: sqlite3.Connection, _prompt: object, _result: RunResult) -> None:
         raise PromptRejected("A fact has no source.")

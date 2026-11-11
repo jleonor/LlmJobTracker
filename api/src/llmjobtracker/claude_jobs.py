@@ -313,6 +313,26 @@ def resume_job(conn: sqlite3.Connection, job_id: int, *, reset_attempts: bool = 
     return resumed
 
 
+def retry_job(conn: sqlite3.Connection, job_id: int) -> bool:
+    """Requeue a failed job so the worker runs its failed prompt again (the user's Retry button).
+
+    The prompts before it stay 'done'; only the one that failed goes back to 'queued', the same
+    state `recover_interrupted` leaves an interrupted prompt in.
+    """
+    retried = transition(conn, job_id, ("failed",), "queued", error=None)
+    if retried:
+        with conn:
+            conn.execute(
+                """
+                UPDATE claude_job_prompts SET status = 'queued', error = NULL
+                WHERE claude_job_id = ? AND status = 'failed'
+                """,
+                (job_id,),
+            )
+        reset_retry_attempts(conn, job_id)
+    return retried
+
+
 def trigger_staged_jobs(conn: sqlite3.Connection) -> list[int]:
     """Flip every staged Claude Job to queued, app-wide, in creation order (D-286).
 

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { RunTrace } from '@/components/app/RunTrace'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ApiError, cancelClaudeJob, resumeClaudeJob } from '@/lib/api'
+import { ApiError, cancelClaudeJob, resumeClaudeJob, retryClaudeJob } from '@/lib/api'
 import { QUEUE_STATUS_TEXT, QUEUE_TONE } from '@/lib/tone'
 import type { ClaudeJob } from '@/lib/types'
 import type { QueueState } from '@/lib/useClaudeJobs'
@@ -216,6 +216,11 @@ function JobCard({ job, position, onChanged }: CardProps) {
             {job.status === 'paused' && (
               <Button disabled={busy} onClick={() => void act(resumeClaudeJob)}>
                 Resume
+              </Button>
+            )}
+            {job.status === 'failed' && (
+              <Button disabled={busy} onClick={() => void act(retryClaudeJob)}>
+                Retry
               </Button>
             )}
             {CAN_CANCEL.includes(job.status) && (
