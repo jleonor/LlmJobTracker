@@ -5,7 +5,11 @@ name: Package builds
 # user to install themselves (Windows) or hand to a contact for testing on real hardware (macOS,
 # D-279 - there is no local Mac to develop or verify this against day to day).
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
 
 jobs:
   windows:
@@ -89,3 +93,24 @@ jobs:
           name: llmjobtracker-macos
           path: electron/release/*.dmg
           if-no-files-found: error
+
+  release:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.tag }}" \
+            dist/llmjobtracker-windows/*.exe \
+            dist/llmjobtracker-macos/*.dmg \
+            --repo "${{ github.repository }}" \
+            --title "${{ inputs.tag }}" \
+            --notes "Unsigned Windows and macOS builds."
